@@ -24,7 +24,7 @@ class RecentTicketsSection extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text(
-              'Recent Tickets',
+              'Recent Documents',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 20,
