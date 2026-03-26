@@ -1,4 +1,7 @@
+import 'package:eforward_app/Pages/dashboard.dart';
 import 'package:flutter/material.dart';
+import 'package:eforward_app/pages/login.dart';
+import 'package:eforward_app/pages/settings.dart';
 
 class BottomNavigator extends StatelessWidget {
   final int selectedIndex;
@@ -14,10 +17,16 @@ class BottomNavigator extends StatelessWidget {
   Widget build(BuildContext context) {
     return BottomNavigationBar(
       currentIndex: selectedIndex,
-      onTap: onTap,
-      backgroundColor: const Color(0xFF1E1E1E),
-      selectedItemColor: const Color(0xFFFFB4AC),
-      unselectedItemColor: const Color(0xFF6B6B6B),
+       onTap: (index) => index == 1
+          ? Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen()))
+          : index == 2
+              ? Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage()))
+          : index == 0
+              ? Navigator.push(context, MaterialPageRoute(builder: (_) => const DashboardPage()))
+          : onTap(index),
+      backgroundColor: Colors.white,
+      selectedItemColor: Color(0xFFCC0000),
+      unselectedItemColor: Color(0xFF0a0a0a),
       type: BottomNavigationBarType.fixed,
       items: const [
         BottomNavigationBarItem(
@@ -31,10 +40,12 @@ class BottomNavigator extends StatelessWidget {
           label: 'Sign',
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.settings_outlined),
-          activeIcon: Icon(Icons.settings),
-          label: 'Settings',
-        ),
+         icon: Icon(Icons.settings_outlined),
+         activeIcon: Icon(Icons.settings),
+         label: 'Settings',
+       ),
+        
+       
       ],
     );
   }

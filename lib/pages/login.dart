@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dashboard.dart'; // 👈 add this
 
 class LoginScreen extends StatefulWidget {
@@ -10,8 +11,32 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
+  bool _rememberMe = false;
   final TextEditingController _emailController = TextEditingController();    // 👈 add
   final TextEditingController _passwordController = TextEditingController(); // 👈 add
+
+   @override
+  void initState() {
+    super.initState();
+    _loadRememberedEmail();
+  }
+
+  // 👇 2. ADD these 2 methods HERE
+  void _loadRememberedEmail() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('remember_me') ?? false) {
+      _emailController.text = prefs.getString('saved_email') ?? '';
+      setState(() => _rememberMe = true);
+    }
+  }
+
+  void _saveRememberMe(String email) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('remember_me', _rememberMe);
+    _rememberMe
+        ? await prefs.setString('saved_email', email)
+        : await prefs.remove('saved_email');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -114,18 +139,46 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
-              SizedBox(height: 40),
+              SizedBox(height: 20),
 
+          //Remember Me Checkbox      
+              Row(
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: Checkbox(
+                        value: _rememberMe,
+                        onChanged: (val) => setState(() => _rememberMe = val ?? false),
+                        activeColor: Color.fromARGB(255, 1, 0, 0), // or your theme color
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        side: BorderSide(color: Colors.black38, width: 1.5),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      "Remember Me",
+                      style: TextStyle(
+                        color: const Color.fromARGB(133, 15, 1, 1),
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
+
+                SizedBox(height: 20),
               // Login Button
               SizedBox(
                 width: double.infinity,
                 height: 48,
                 child: ElevatedButton.icon(
-                  onPressed: () {
+                  onPressed: () async {
                     String email = _emailController.text.trim();
                     String password = _passwordController.text.trim();
 
                     if (email == "mark.almueda@ardentnetworks.com.ph" && password == "Mark001!") {
+                      _saveRememberMe(email); 
                       Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(builder: (context) => DashboardPage()),

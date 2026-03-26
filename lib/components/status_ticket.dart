@@ -26,7 +26,7 @@ class RecentTicketsSection extends StatelessWidget {
             const Text(
               'Recent Documents',
               style: TextStyle(
-                color: Colors.white,
+                color: Color(0xFF0a0a0a),
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 0.3,

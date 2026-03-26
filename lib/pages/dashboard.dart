@@ -18,18 +18,18 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: const Icon(Icons.draw, color: Color(0xFFFFB4AC)),
-        backgroundColor: const Color(0xFF131313),
+        leading: const Icon(Icons.draw, color: Color(0xFFCC0000)),
+        backgroundColor: Colors.white,
         title: const Text(
           "Signing Documents",
           style: TextStyle(
-            color: Color(0xFFFFB4AC),
+            color: Color(0xFFCC0000),
             fontSize: 24,
             fontWeight: FontWeight.bold,
           ),
         ),
       ),
-      backgroundColor: const Color(0xFF131313),
+      backgroundColor: Colors.white,
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -69,6 +69,14 @@ class _DashboardPageState extends State<DashboardPage> {
                   priority: TicketPriority.low,
                 ),
                 TicketData(
+                  id: 'J098485',
+                  title: 'Software Update Rollout',
+                  createdBy: 'David Lee',
+                  dateTime: 'Oct 24, 11:30 AM',
+                  progress: 0.75,
+                  priority: TicketPriority.low,
+                ),
+                 TicketData(
                   id: 'J098485',
                   title: 'Software Update Rollout',
                   createdBy: 'David Lee',
