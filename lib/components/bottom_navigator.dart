@@ -1,7 +1,7 @@
-import 'package:eforward_app/Pages/dashboard.dart';
+import 'package:eforward_app/Pages/dashboard/dashboard.dart';
+import 'package:eforward_app/pages/document/sign.dart';
 import 'package:flutter/material.dart';
-import 'package:eforward_app/pages/login.dart';
-import 'package:eforward_app/pages/settings.dart';
+import 'package:eforward_app/pages/settings/settings.dart';
 
 class BottomNavigator extends StatelessWidget {
   final int selectedIndex;
@@ -17,12 +17,21 @@ class BottomNavigator extends StatelessWidget {
   Widget build(BuildContext context) {
     return BottomNavigationBar(
       currentIndex: selectedIndex,
-       onTap: (index) => index == 1
-          ? Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen()))
+      onTap: (index) => index == 1
+          ? Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SignScreen()),
+            )
           : index == 2
-              ? Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage()))
+          ? Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsPage()),
+            )
           : index == 0
-              ? Navigator.push(context, MaterialPageRoute(builder: (_) => const DashboardPage()))
+          ? Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DashboardPage()),
+            )
           : onTap(index),
       backgroundColor: Colors.white,
       selectedItemColor: Color(0xFFCC0000),
@@ -40,12 +49,10 @@ class BottomNavigator extends StatelessWidget {
           label: 'Sign',
         ),
         BottomNavigationBarItem(
-         icon: Icon(Icons.settings_outlined),
-         activeIcon: Icon(Icons.settings),
-         label: 'Settings',
-       ),
-        
-       
+          icon: Icon(Icons.settings_outlined),
+          activeIcon: Icon(Icons.settings),
+          label: 'Settings',
+        ),
       ],
     );
   }

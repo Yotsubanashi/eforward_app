@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:eforward_app/pages/login.dart'; // 👈 import your login screen
+import 'package:eforward_app/pages/auth/login.dart'; // 👈 import your login screen
 import 'package:eforward_app/components/bottom_navigator.dart';
+import '../auth/change_password.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
-
 
   @override
   Widget build(BuildContext context) {
@@ -15,7 +15,6 @@ class SettingsPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
             // Header
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
@@ -47,7 +46,6 @@ class SettingsPage extends StatelessWidget {
             Center(
               child: Column(
                 children: [
-
                   // Avatar
                   Stack(
                     alignment: Alignment.bottomCenter,
@@ -57,7 +55,10 @@ class SettingsPage extends StatelessWidget {
                         height: 120,
                         decoration: BoxDecoration(
                           color: const Color(0xFFF0F0F0),
-                          border: Border.all(color: const Color(0xFFDDDDDD), width: 1.5),
+                          border: Border.all(
+                            color: const Color(0xFFDDDDDD),
+                            width: 1.5,
+                          ),
                         ),
                         child: const Icon(
                           Icons.person,
@@ -94,7 +95,6 @@ class SettingsPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
 
-                 
                   const SizedBox(height: 12),
 
                   // ID / Unit / Status
@@ -129,10 +129,15 @@ class SettingsPage extends StatelessWidget {
               iconColor: const Color(0xFFCC0000),
               label: "SYSTEM ACCESS",
               title: "CHANGE PASSWORD",
-              trailing: const Icon(Icons.chevron_right, color: Color(0xFFAAAAAA), size: 20),
-              onTap: () {
-                // TODO: navigate to change password screen
-              },
+              trailing: const Icon(
+                Icons.chevron_right,
+                color: Color(0xFFAAAAAA),
+                size: 20,
+              ),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
+              ),
             ),
 
             const Divider(height: 1, color: Color(0xFFEEEEEE)),
@@ -144,7 +149,11 @@ class SettingsPage extends StatelessWidget {
               iconColor: const Color(0xFF555555),
               label: "SESSION MANAGEMENT",
               title: "LOGOUT",
-              trailing: const Icon(Icons.power_settings_new, color: Color(0xFFAAAAAA), size: 18),
+              trailing: const Icon(
+                Icons.power_settings_new,
+                color: Color(0xFFAAAAAA),
+                size: 18,
+              ),
               onTap: () {
                 Navigator.pushReplacement(
                   context,
@@ -218,15 +227,9 @@ class SettingsPage extends StatelessWidget {
             trailing,
           ],
         ),
-
-        
       ),
-      
     );
-   
   }
-  
-  void setState(int Function() param0) {}
-  
-}
 
+  void setState(int Function() param0) {}
+}

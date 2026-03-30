@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dashboard.dart'; // 👈 add this
+import '../dashboard/dashboard.dart'; // 👈 add this
+import 'forgot_password.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,10 +13,12 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   bool _rememberMe = false;
-  final TextEditingController _emailController = TextEditingController();    // 👈 add
-  final TextEditingController _passwordController = TextEditingController(); // 👈 add
+  final TextEditingController _emailController =
+      TextEditingController(); // 👈 add
+  final TextEditingController _passwordController =
+      TextEditingController(); // 👈 add
 
-   @override
+  @override
   void initState() {
     super.initState();
     _loadRememberedEmail();
@@ -48,19 +51,24 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
               // Logo + Brand
               Row(
                 children: [
-                  Icon(Icons.shield_outlined, color: Color(0xFFCC0000), size: 20),
+                  Icon(
+                    Icons.shield_outlined,
+                    color: Color(0xFFCC0000),
+                    size: 20,
+                  ),
                   SizedBox(width: 6),
-                  Text("E-FORWARD",
+                  Text(
+                    "E-FORWARD",
                     style: TextStyle(
                       color: Color(0xFFCC0000),
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 2,
-                    )),
+                    ),
+                  ),
                 ],
               ),
               SizedBox(height: 102),
@@ -69,12 +77,14 @@ class _LoginScreenState extends State<LoginScreen> {
               Center(
                 child: Column(
                   children: [
-                    Text("SECURE ACCESS",
+                    Text(
+                      "SECURE ACCESS",
                       style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 2,
-                      )),
+                      ),
+                    ),
                     SizedBox(height: 8),
                     Text(
                       "INSTITUTIONAL-GRADE APPROVAL WORKFLOW\nAND DOCUMENT GOVERNANCE.",
@@ -91,8 +101,14 @@ class _LoginScreenState extends State<LoginScreen> {
               SizedBox(height: 40),
 
               // Email Field
-              Text("EMAIL",
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+              Text(
+                "EMAIL",
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.5,
+                ),
+              ),
               SizedBox(height: 6),
               TextField(
                 controller: _emailController, // 👈 add
@@ -110,8 +126,14 @@ class _LoginScreenState extends State<LoginScreen> {
               SizedBox(height: 24),
 
               // Password Field
-              Text("PASSWORD",
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+              Text(
+                "PASSWORD",
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.5,
+                ),
+              ),
               SizedBox(height: 6),
               TextField(
                 controller: _passwordController, // 👈 add
@@ -121,7 +143,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   hintStyle: TextStyle(color: Colors.black26, fontSize: 12),
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                      _obscurePassword
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
                       color: Colors.black38,
                       size: 20,
                     ),
@@ -141,33 +165,41 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               SizedBox(height: 20),
 
-          //Remember Me Checkbox      
+              //Remember Me Checkbox
               Row(
-                  children: [
-                    SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: Checkbox(
-                        value: _rememberMe,
-                        onChanged: (val) => setState(() => _rememberMe = val ?? false),
-                        activeColor: Color.fromARGB(255, 1, 0, 0), // or your theme color
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        side: BorderSide(color: Colors.black38, width: 1.5),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: Checkbox(
+                      value: _rememberMe,
+                      onChanged: (val) =>
+                          setState(() => _rememberMe = val ?? false),
+                      activeColor: Color.fromARGB(
+                        255,
+                        1,
+                        0,
+                        0,
+                      ), // or your theme color
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      side: BorderSide(color: Colors.black38, width: 1.5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(3),
                       ),
                     ),
-                    SizedBox(width: 8),
-                    Text(
-                      "Remember Me",
-                      style: TextStyle(
-                        color: const Color.fromARGB(133, 15, 1, 1),
-                        fontSize: 15,
-                      ),
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    "Remember Me",
+                    style: TextStyle(
+                      color: const Color.fromARGB(133, 15, 1, 1),
+                      fontSize: 15,
                     ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
 
-                SizedBox(height: 20),
+              SizedBox(height: 20),
               // Login Button
               SizedBox(
                 width: double.infinity,
@@ -177,11 +209,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     String email = _emailController.text.trim();
                     String password = _passwordController.text.trim();
 
-                    if (email == "mark.almueda@ardentnetworks.com.ph" && password == "Mark001!") {
-                      _saveRememberMe(email); 
+                    if (email == "mark.almueda@ardentnetworks.com.ph" &&
+                        password == "Mark001!") {
+                      _saveRememberMe(email);
                       Navigator.pushReplacement(
                         context,
-                        MaterialPageRoute(builder: (context) => DashboardPage()),
+                        MaterialPageRoute(
+                          builder: (context) => DashboardPage(),
+                        ),
                       );
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -193,12 +228,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     }
                   }, // 👈 updated
                   icon: Icon(Icons.arrow_forward, color: Colors.white),
-                  label: Text("LOGIN",
+                  label: Text(
+                    "LOGIN",
                     style: TextStyle(
                       color: Colors.white,
                       letterSpacing: 2,
                       fontWeight: FontWeight.bold,
-                    )),
+                    ),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Color(0xFFCC0000),
                     shape: RoundedRectangleBorder(
@@ -212,13 +249,20 @@ class _LoginScreenState extends State<LoginScreen> {
               // Forgot Password
               Center(
                 child: TextButton(
-                  onPressed: () {},
-                  child: Text("FORGOT PASSWORD",
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ForgotPasswordScreen(),
+                    ),
+                  ),
+                  child: Text(
+                    "FORGOT PASSWORD",
                     style: TextStyle(
                       color: Colors.black54,
                       fontSize: 12,
                       letterSpacing: 1.5,
-                    )),
+                    ),
+                  ),
                 ),
               ),
             ],
