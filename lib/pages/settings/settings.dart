@@ -1,16 +1,127 @@
+import 'dart:io';
+import 'package:eforward_app/pages/auth/change_password.dart';
+import 'package:eforward_app/pages/auth/login.dart';
 import 'package:flutter/material.dart';
-import 'package:eforward_app/pages/auth/login.dart'; // 👈 import your login screen
+import 'package:image_picker/image_picker.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
-import '../auth/change_password.dart';
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
   @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  int _selectedIndex = 2;
+  File? _profileImage;
+  String _displayName = "Mark Cedrick M. Almueda";
+  final String _role = "Technical Support";
+
+  Future<void> _pickImage() async {
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (picked != null) setState(() => _profileImage = File(picked.path));
+  }
+
+  void _showEditNameDialog() {
+    final controller = TextEditingController(text: _displayName);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        title: const Text(
+          "EDIT NAME",
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.5,
+            color: Color(0xFF1A1A1A),
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "FULL NAME",
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.5,
+                color: Colors.black45,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1A1A1A),
+              ),
+              decoration: const InputDecoration(
+                enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.black26),
+                ),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFFCC0000)),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              "CANCEL",
+              style: TextStyle(
+                color: Colors.black45,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                setState(() => _displayName = controller.text.trim());
+              }
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFCC0000),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            child: const Text(
+              "SAVE",
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    int selectedIndex = 2;
     return Scaffold(
       backgroundColor: Colors.white,
+      bottomNavigationBar: BottomNavigator(
+        selectedIndex: _selectedIndex,
+        onTap: (_) {},
+      ),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -42,28 +153,49 @@ class SettingsPage extends StatelessWidget {
             const Divider(height: 1, color: Color(0xFFEEEEEE)),
             const SizedBox(height: 24),
 
-            // Profile Card
+            // Profile Section
             Center(
               child: Column(
                 children: [
-                  // Avatar
+                  // Avatar with camera badge
                   Stack(
-                    alignment: Alignment.bottomCenter,
                     children: [
-                      Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF0F0F0),
-                          border: Border.all(
-                            color: const Color(0xFFDDDDDD),
-                            width: 1.5,
+                      GestureDetector(
+                        onTap: _pickImage,
+                        child: Container(
+                          width: 120,
+                          height: 120,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F0F0),
+                            border: Border.all(
+                              color: const Color(0xFFDDDDDD),
+                              width: 1.5,
+                            ),
                           ),
+                          child: _profileImage != null
+                              ? Image.file(_profileImage!, fit: BoxFit.cover)
+                              : const Icon(
+                                  Icons.person,
+                                  size: 50,
+                                  color: Color(0xFF999999),
+                                ),
                         ),
-                        child: const Icon(
-                          Icons.person,
-                          size: 50,
-                          color: Color(0xFF999999),
+                      ),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: GestureDetector(
+                          onTap: _pickImage,
+                          child: Container(
+                            width: 30,
+                            height: 30,
+                            color: const Color(0xFFCC0000),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              size: 15,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -71,37 +203,52 @@ class SettingsPage extends StatelessWidget {
 
                   const SizedBox(height: 16),
 
-                  // Name
-                  const Text(
-                    "Mark Cedrick M. Almueda",
-                    style: TextStyle(
-                      fontSize: 25,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.5,
-                      color: Color(0xFF1A1A1A),
-                    ),
+                  // Name + edit icon
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          _displayName,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                            color: Color(0xFF1A1A1A),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: _showEditNameDialog,
+                        child: const Icon(
+                          Icons.edit_outlined,
+                          size: 16,
+                          color: Color(0xFFCC0000),
+                        ),
+                      ),
+                    ],
                   ),
+
                   const SizedBox(height: 4),
 
-                  // Role
-                  const Text(
-                    "Technical Support",
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Color(0xFF1A1A1A),
-                      letterSpacing: 1.5,
+                  Text(
+                    _role,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF555555),
+                      letterSpacing: 0.5,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 10),
 
                   const SizedBox(height: 12),
 
-                  // ID / Unit / Status
-                  Text(
+                  const Text(
                     "ID: 001 · UNIT: 01",
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: 12,
                       color: Colors.black38,
                       letterSpacing: 1,
                     ),
@@ -110,7 +257,7 @@ class SettingsPage extends StatelessWidget {
                   const Text(
                     "STATUS: ACTIVE",
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: 12,
                       color: Colors.black38,
                       letterSpacing: 1,
                     ),
@@ -154,21 +301,15 @@ class SettingsPage extends StatelessWidget {
                 color: Color(0xFFAAAAAA),
                 size: 18,
               ),
-              onTap: () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                );
-              },
+              onTap: () => Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              ),
             ),
 
             const Divider(height: 1, color: Color(0xFFEEEEEE)),
           ],
         ),
-      ),
-      bottomNavigationBar: BottomNavigator(
-        selectedIndex: selectedIndex,
-        onTap: (index) => setState(() => selectedIndex = index),
       ),
     );
   }
@@ -230,6 +371,4 @@ class SettingsPage extends StatelessWidget {
       ),
     );
   }
-
-  void setState(int Function() param0) {}
 }

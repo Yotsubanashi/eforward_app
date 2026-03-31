@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'login.dart'; // 👈 import your login screen
+// 👈 import your login screen
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});

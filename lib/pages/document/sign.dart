@@ -1,20 +1,24 @@
 import 'dart:io';
+import 'dart:convert';
 import 'dart:ui' as ui;
+import 'package:eforward_app/pages/document/view_sign.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ─── Signature Painter ───────────────────────────────────────────────────────
 
 class SignaturePainter extends CustomPainter {
   final List<List<Offset?>> strokes;
+  final Color penColor;
 
-  SignaturePainter(this.strokes);
+  SignaturePainter(this.strokes, {this.penColor = const Color(0xFF1A1A1A)});
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFF1A1A1A)
+      ..color = penColor
       ..strokeWidth = 2.0
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
@@ -91,15 +95,11 @@ class _SignScreenState extends State<SignScreen>
   }
 
   void _onPanUpdate(DragUpdateDetails details) {
-    setState(() {
-      _currentStroke.add(details.localPosition);
-    });
+    setState(() => _currentStroke.add(details.localPosition));
   }
 
   void _onPanEnd(DragEndDetails details) {
-    setState(() {
-      _currentStroke.add(null);
-    });
+    setState(() => _currentStroke.add(null));
   }
 
   void _undoStroke() {
@@ -116,17 +116,104 @@ class _SignScreenState extends State<SignScreen>
   }
 
   Future<void> _saveSignature() async {
-    setState(() => _isSaving = true);
-    await Future.delayed(const Duration(milliseconds: 1200));
-    setState(() => _isSaving = false);
-    if (mounted) {
+    final currentTab = _tabController.index;
+
+    // Validate before saving
+    if (currentTab == 0 && _strokes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Signature saved successfully!"),
-          backgroundColor: Colors.green,
+          content: Text("Please draw your signature first."),
+          backgroundColor: Color(0xFFCC0000),
         ),
       );
-      Navigator.pop(context);
+      return;
+    }
+    if (currentTab == 1 && _typeController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please type your signature first."),
+          backgroundColor: Color(0xFFCC0000),
+        ),
+      );
+      return;
+    }
+    if (currentTab == 2 && _uploadedImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please upload a signature image first."),
+          backgroundColor: Color(0xFFCC0000),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    final prefs = await SharedPreferences.getInstance();
+
+    if (currentTab == 0) {
+      // Draw — capture canvas as base64 PNG
+      try {
+        final boundary =
+            _canvasKey.currentContext?.findRenderObject()
+                as RenderRepaintBoundary?;
+        if (boundary != null) {
+          final image = await boundary.toImage(pixelRatio: 3.0);
+          final byteData = await image.toByteData(
+            format: ui.ImageByteFormat.png,
+          );
+          if (byteData != null) {
+            final base64Str = base64Encode(byteData.buffer.asUint8List());
+            await prefs.setString('signature_draw_data', base64Str);
+          }
+        }
+      } catch (e) {
+        debugPrint('Draw capture error: $e');
+      }
+      await prefs.setString('signature_type', 'draw');
+    } else if (currentTab == 1) {
+      // Type
+      await prefs.setString('signature_type', 'type');
+      await prefs.setString('signature_text', _typeController.text.trim());
+      await prefs.setString('signature_font', _selectedFont);
+    } else {
+      // Capture
+      await prefs.setString('signature_type', 'capture');
+      if (_uploadedImage != null) {
+        await prefs.setString('signature_image_path', _uploadedImage!.path);
+      }
+    }
+
+    // Save timestamp in Philippine time (PHT/GMT+8)
+    final now = DateTime.now().toUtc().add(const Duration(hours: 8));
+    final months = [
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC',
+    ];
+    final timestamp =
+        '${months[now.month - 1]} ${now.day}, ${now.year} · ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} PHT';
+    await prefs.setString('signature_timestamp', timestamp);
+    await prefs.setBool('has_signature', true); // 👈 mark signature as saved
+
+    setState(() => _isSaving = false);
+
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const ViewSignPage(),
+        ), // 👈 go to view
+      );
     }
   }
 
@@ -143,7 +230,22 @@ class _SignScreenState extends State<SignScreen>
             color: Color(0xFF1A1A1A),
             size: 20,
           ),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () async {
+            final prefs = await SharedPreferences.getInstance();
+            final hasSignature = prefs.getBool('has_signature') ?? false;
+            if (mounted) {
+              if (hasSignature) {
+                // Came from ViewSignPage (editing) — go back to it
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ViewSignPage()),
+                );
+              } else {
+                // First time — just go back
+                Navigator.pop(context);
+              }
+            }
+          },
         ),
         title: const Text(
           "SIGNATURE",
@@ -180,7 +282,6 @@ class _SignScreenState extends State<SignScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Title
             const Text(
               "DIGITAL\nSIGNATURE",
               style: TextStyle(
@@ -205,7 +306,6 @@ class _SignScreenState extends State<SignScreen>
                 height: 1.6,
               ),
             ),
-
             const SizedBox(height: 24),
 
             // Tab Bar
@@ -236,7 +336,6 @@ class _SignScreenState extends State<SignScreen>
                 ],
               ),
             ),
-
             const SizedBox(height: 20),
 
             // Tab Content
@@ -251,7 +350,6 @@ class _SignScreenState extends State<SignScreen>
                 ],
               ),
             ),
-
             const SizedBox(height: 24),
 
             // Save Button
@@ -301,7 +399,6 @@ class _SignScreenState extends State<SignScreen>
                       ),
               ),
             ),
-
             const SizedBox(height: 24),
 
             // Legal Validity Notice
@@ -316,14 +413,10 @@ class _SignScreenState extends State<SignScreen>
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(
-                    Icons.info_outline,
-                    color: Color(0xFFCC0000),
-                    size: 18,
-                  ),
-                  const SizedBox(width: 10),
-                  const Expanded(
+                children: const [
+                  Icon(Icons.info_outline, color: Color(0xFFCC0000), size: 18),
+                  SizedBox(width: 10),
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -351,7 +444,6 @@ class _SignScreenState extends State<SignScreen>
                 ],
               ),
             ),
-
             const SizedBox(height: 24),
           ],
         ),
@@ -363,7 +455,6 @@ class _SignScreenState extends State<SignScreen>
   Widget _buildDrawTab() {
     return Column(
       children: [
-        // Canvas
         Expanded(
           child: Container(
             width: double.infinity,
@@ -373,7 +464,6 @@ class _SignScreenState extends State<SignScreen>
             ),
             child: Stack(
               children: [
-                // Drawing area
                 GestureDetector(
                   onPanStart: _onPanStart,
                   onPanUpdate: _onPanUpdate,
@@ -381,13 +471,11 @@ class _SignScreenState extends State<SignScreen>
                   child: RepaintBoundary(
                     key: _canvasKey,
                     child: CustomPaint(
-                      painter: SignaturePainter(_strokes),
+                      painter: SignaturePainter(_strokes, penColor: _penColor),
                       size: Size.infinite,
                     ),
                   ),
                 ),
-
-                // Sign above line hint
                 if (_strokes.isEmpty)
                   const Center(
                     child: Column(
@@ -419,13 +507,9 @@ class _SignScreenState extends State<SignScreen>
             ),
           ),
         ),
-
         const SizedBox(height: 12),
-
-        // Controls
         Row(
           children: [
-            // Undo
             GestureDetector(
               onTap: _undoStroke,
               child: Row(
@@ -445,8 +529,6 @@ class _SignScreenState extends State<SignScreen>
               ),
             ),
             const SizedBox(width: 20),
-
-            // Clear
             GestureDetector(
               onTap: _clearCanvas,
               child: Row(
@@ -466,8 +548,6 @@ class _SignScreenState extends State<SignScreen>
               ),
             ),
             const SizedBox(width: 16),
-
-            // Color dots
             _buildColorDot(const Color(0xFF1A1A1A)),
             const SizedBox(width: 8),
             _buildColorDot(const Color(0xFFCC0000)),
@@ -502,10 +582,32 @@ class _SignScreenState extends State<SignScreen>
   }
 
   // ─── TYPE TAB ───────────────────────────────────────────────────────────────
+  TextStyle _getTypeTextStyle() {
+    final isEmpty = _typeController.text.isEmpty;
+    final base = TextStyle(
+      fontSize: isEmpty ? 13 : 28,
+      color: isEmpty ? Colors.black26 : const Color(0xFF1A1A1A),
+      fontWeight: FontWeight.w400,
+    );
+
+    switch (_selectedFont) {
+      case 'Cursive':
+        return base.copyWith(fontStyle: FontStyle.italic, fontFamily: 'serif');
+      case 'Serif':
+        return base.copyWith(fontStyle: FontStyle.normal, fontFamily: 'serif');
+      case 'Script':
+        return base.copyWith(
+          fontStyle: FontStyle.italic,
+          fontFamily: 'sans-serif',
+        );
+      default:
+        return base;
+    }
+  }
+
   Widget _buildTypeTab() {
     return Column(
       children: [
-        // Preview
         Expanded(
           child: Container(
             width: double.infinity,
@@ -521,27 +623,12 @@ class _SignScreenState extends State<SignScreen>
                     ? "Your signature will appear here"
                     : _typeController.text,
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: _selectedFont == 'Cursive'
-                      ? 'cursive'
-                      : _selectedFont == 'Serif'
-                      ? 'serif'
-                      : null,
-                  fontSize: _typeController.text.isEmpty ? 13 : 28,
-                  fontStyle: FontStyle.italic,
-                  color: _typeController.text.isEmpty
-                      ? Colors.black26
-                      : const Color(0xFF1A1A1A),
-                  fontWeight: FontWeight.w400,
-                ),
+                style: _getTypeTextStyle(),
               ),
             ),
           ),
         ),
-
         const SizedBox(height: 12),
-
-        // Text input
         TextField(
           controller: _typeController,
           onChanged: (_) => setState(() {}),
@@ -557,10 +644,7 @@ class _SignScreenState extends State<SignScreen>
             ),
           ),
         ),
-
         const SizedBox(height: 8),
-
-        // Font selector
         Row(
           children: _fonts.map((font) {
             final selected = _selectedFont == font;
@@ -644,10 +728,7 @@ class _SignScreenState extends State<SignScreen>
             ),
           ),
         ),
-
         const SizedBox(height: 12),
-
-        // Re-upload button
         if (_uploadedImage != null)
           GestureDetector(
             onTap: _pickImage,

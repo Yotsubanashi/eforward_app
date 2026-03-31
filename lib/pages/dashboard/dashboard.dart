@@ -215,7 +215,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: _recentActivity.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                separatorBuilder: (_, _) => const SizedBox(height: 12),
                 itemBuilder: (context, index) =>
                     _buildActivityCard(_recentActivity[index]),
               ),
@@ -227,7 +227,7 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
       bottomNavigationBar: BottomNavigator(
         selectedIndex: _selectedIndex,
-        onTap: (index) => setState(() => _selectedIndex = index),
+        onTap: (_) {},
       ),
     );
   }

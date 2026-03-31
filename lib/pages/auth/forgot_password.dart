@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'login.dart';
 import 'otp.dart'; // 👈 added
 
 class ForgotPasswordScreen extends StatefulWidget {
