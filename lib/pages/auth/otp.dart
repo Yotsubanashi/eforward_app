@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../dashboard/dashboard.dart'; // 👈 change to your next screen
+import '../../services/auth_api.dart';
+import '../dashboard/dashboard.dart';
+import 'login.dart';
 
 class OtpScreen extends StatefulWidget {
-  const OtpScreen({super.key});
+  final String email;
+
+  const OtpScreen({super.key, required this.email});
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
@@ -16,6 +20,7 @@ class _OtpScreenState extends State<OtpScreen> {
     (_) => TextEditingController(),
   );
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
+  final AuthApi _authApi = AuthApi();
 
   int _secondsRemaining = 179; // 02:59
   Timer? _timer;
@@ -36,6 +41,7 @@ class _OtpScreenState extends State<OtpScreen> {
     for (var f in _focusNodes) {
       f.dispose();
     }
+    _authApi.dispose();
     super.dispose();
   }
 
@@ -49,6 +55,35 @@ class _OtpScreenState extends State<OtpScreen> {
         setState(() => _secondsRemaining--);
       }
     });
+  }
+
+  Future<void> _resendOtp() async {
+    final result = await _authApi.resendOtp(email: widget.email);
+
+    if (!mounted) return;
+
+    if (result.isSuccess) {
+      debugPrint('OTP resent to email: ${result.message}');
+      _startTimer();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('OTP resent to your email.'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    debugPrint(
+      'Failed to resend OTP [${result.statusCode}]: ${result.message}',
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        backgroundColor: const Color(0xFFCC0000),
+      ),
+    );
   }
 
   String get _timerText {
@@ -71,18 +106,85 @@ class _OtpScreenState extends State<OtpScreen> {
     }
 
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 1500));
+
+    final result = await _authApi.verifyOtp(email: widget.email, otp: _otpCode);
+
+    if (!mounted) return;
+
+    if (result.isSuccess) {
+      debugPrint('OTP verified: ${result.data}');
+
+      // Extract token from response
+      final token = result.data?['accessToken'] as String?;
+
+      if (token == null || token.isEmpty) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              "Authentication token not received. Please try again.",
+            ),
+            backgroundColor: Color(0xFFCC0000),
+          ),
+        );
+        return;
+      }
+
+      // Get user profile after successful OTP verification with token
+      final userResult = await _authApi.getMe(token: token);
+
+      if (!mounted) return;
+
+      setState(() => _isLoading = false);
+
+      if (userResult.isSuccess) {
+        debugPrint('User profile loaded: ${userResult.data}');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DashboardPage(userData: userResult.data),
+          ),
+        );
+        return;
+      }
+
+      debugPrint(
+        'Failed to load user profile [${userResult.statusCode}]: ${userResult.message}',
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(userResult.message),
+          backgroundColor: const Color(0xFFCC0000),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = false);
 
-    if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => DashboardPage()),
-      );
-    }
+    debugPrint(
+      'OTP verification failed [${result.statusCode}]: ${result.message}',
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        backgroundColor: const Color(0xFFCC0000),
+      ),
+    );
   }
 
   void _onChanged(String value, int index) {
+    // Convert to uppercase
+    if (value.isNotEmpty) {
+      final upperValue = value.toUpperCase();
+      if (upperValue != _controllers[index].text) {
+        _controllers[index].text = upperValue;
+        _controllers[index].selection = TextSelection.fromPosition(
+          TextPosition(offset: upperValue.length),
+        );
+      }
+    }
+
     if (value.length == 1 && index < 5) {
       _focusNodes[index + 1].requestFocus();
     }
@@ -104,7 +206,13 @@ class _OtpScreenState extends State<OtpScreen> {
             color: Color(0xFF1A1A1A),
             size: 20,
           ),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            // Navigate back to login with pushReplacement to avoid black screen
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+            );
+          },
         ),
         title: const Text(
           "SECURITY",
@@ -252,7 +360,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
             // Resend Code
             TextButton(
-              onPressed: _secondsRemaining == 0 ? _startTimer : null,
+              onPressed: _secondsRemaining == 0 ? _resendOtp : null,
               child: const Text(
                 "RESEND CODE",
                 style: TextStyle(
@@ -342,9 +450,12 @@ class _OtpScreenState extends State<OtpScreen> {
         controller: _controllers[index],
         focusNode: _focusNodes[index],
         textAlign: TextAlign.center,
-        keyboardType: TextInputType.number,
+        textCapitalization: TextCapitalization.characters,
+        keyboardType: TextInputType.text,
         maxLength: 1,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        inputFormatters: [
+          FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+        ],
         onChanged: (value) => _onChanged(value, index),
         style: const TextStyle(
           fontSize: 20,

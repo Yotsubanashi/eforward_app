@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:eforward_app/pages/auth/change_password.dart';
 import 'package:eforward_app/pages/auth/login.dart';
+import 'package:eforward_app/services/auth_api.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
@@ -17,10 +18,40 @@ class _SettingsPageState extends State<SettingsPage> {
   File? _profileImage;
   String _displayName = "Mark Cedrick M. Almueda";
   final String _role = "Technical Support";
+  final AuthApi _authApi = AuthApi();
 
   Future<void> _pickImage() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked != null) setState(() => _profileImage = File(picked.path));
+  }
+
+  Future<void> _handleLogout() async {
+    final result = await _authApi.logout();
+
+    if (!mounted) return;
+
+    if (result.isSuccess) {
+      debugPrint('Logout successful: ${result.data}');
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+      return;
+    }
+
+    debugPrint('Logout failed [${result.statusCode}]: ${result.message}');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        backgroundColor: const Color(0xFFCC0000),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _authApi.dispose();
+    super.dispose();
   }
 
   void _showEditNameDialog() {
@@ -301,10 +332,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 color: Color(0xFFAAAAAA),
                 size: 18,
               ),
-              onTap: () => Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              ),
+              onTap: _handleLogout,
             ),
 
             const Divider(height: 1, color: Color(0xFFEEEEEE)),

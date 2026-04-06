@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'otp.dart'; // 👈 added
+import '../../services/auth_api.dart';
+import 'login.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -10,36 +11,73 @@ class ForgotPasswordScreen extends StatefulWidget {
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final TextEditingController _emailController = TextEditingController();
+  final AuthApi _authApi = AuthApi();
   bool _isLoading = false;
 
   @override
   void dispose() {
     _emailController.dispose();
+    _authApi.dispose();
     super.dispose();
   }
 
   Future<void> _sendResetLink() async {
-    if (_emailController.text.trim().isEmpty) {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please enter your email address."),
-          backgroundColor: Color(0xFFCC0000),
+        SnackBar(
+          content: const Text("Please enter your email address."),
+          backgroundColor: const Color(0xFFCC0000),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(left: 16, right: 16, bottom: 20),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       );
       return;
     }
 
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 1500));
+
+    final result = await _authApi.forgotPassword(email: email);
+
+    if (!mounted) return;
+
     setState(() => _isLoading = false);
 
-    if (mounted) {
-      Navigator.push(
-        // 👈 navigate to OTP screen
-        context,
-        MaterialPageRoute(builder: (_) => const OtpScreen()),
+    if (result.isSuccess) {
+      debugPrint('Forgot password link sent: ${result.data}');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Password reset link sent to $email'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(left: 16, right: 16, bottom: 20),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
       );
+      await Future.delayed(const Duration(milliseconds: 1500));
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+      }
+      return;
     }
+
+    debugPrint(
+      'Forgot password failed [${result.statusCode}]: ${result.message}',
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        backgroundColor: const Color(0xFFCC0000),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.only(left: 16, right: 16, bottom: 20),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
   }
 
   @override
@@ -161,7 +199,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: const [
                             Text(
-                              "SEND OTP",
+                              "SEND PASSWORD LINK",
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 13,

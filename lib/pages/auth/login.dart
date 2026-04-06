@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../dashboard/dashboard.dart'; // 👈 add this
+
+import '../../services/auth_api.dart';
+import '../dashboard/dashboard.dart';
 import 'forgot_password.dart';
+import 'otp.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -13,10 +16,11 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   bool _rememberMe = false;
-  final TextEditingController _emailController =
-      TextEditingController(); // 👈 add
-  final TextEditingController _passwordController =
-      TextEditingController(); // 👈 add
+  bool _isLoading = false;
+
+  final AuthApi _authApi = AuthApi();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
 
   @override
   void initState() {
@@ -39,6 +43,55 @@ class _LoginScreenState extends State<LoginScreen> {
     _rememberMe
         ? await prefs.setString('saved_email', email)
         : await prefs.remove('saved_email');
+  }
+
+  Future<void> _handleLogin() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Email and password are required.'),
+          backgroundColor: Color(0xFFCC0000),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final result = await _authApi.login(email: email, password: password);
+
+    if (!mounted) return;
+
+    setState(() => _isLoading = false);
+
+    if (result.isSuccess) {
+      _saveRememberMe(email);
+      debugPrint('Login success: ${result.data}');
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => OtpScreen(email: email)),
+      );
+      return;
+    }
+
+    debugPrint('Login failed [${result.statusCode}]: ${result.message}');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        backgroundColor: const Color(0xFFCC0000),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _authApi.dispose();
+    super.dispose();
   }
 
   @override
@@ -173,8 +226,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     height: 20,
                     child: Checkbox(
                       value: _rememberMe,
-                      onChanged: (val) =>
-                          setState(() => _rememberMe = val ?? false),
+                      onChanged: _isLoading
+                          ? null
+                          : (val) => setState(() => _rememberMe = val ?? false),
                       activeColor: Color.fromARGB(
                         255,
                         1,
@@ -205,31 +259,19 @@ class _LoginScreenState extends State<LoginScreen> {
                 width: double.infinity,
                 height: 48,
                 child: ElevatedButton.icon(
-                  onPressed: () async {
-                    String email = _emailController.text.trim();
-                    String password = _passwordController.text.trim();
-
-                    if (email == "mark.almueda@ardentnetworks.com.ph" &&
-                        password == "Mark001!") {
-                      _saveRememberMe(email);
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => DashboardPage(),
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text("Invalid email or password!"),
-                          backgroundColor: Color(0xFFCC0000),
-                        ),
-                      );
-                    }
-                  }, // 👈 updated
-                  icon: Icon(Icons.arrow_forward, color: Colors.white),
+                  onPressed: _isLoading ? null : _handleLogin,
+                  icon: _isLoading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.arrow_forward, color: Colors.white),
                   label: Text(
-                    "LOGIN",
+                    _isLoading ? "LOGGING IN..." : "LOGIN",
                     style: TextStyle(
                       color: Colors.white,
                       letterSpacing: 2,

@@ -3,7 +3,9 @@ import 'package:eforward_app/components/bottom_navigator.dart';
 import 'package:eforward_app/pages/document/document_sign.dart'; // 👈 import separate file
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key});
+  final Map<String, dynamic>? userData;
+
+  const DashboardPage({super.key, this.userData});
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -11,6 +13,49 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   int _selectedIndex = 0;
+
+  late String _userName;
+  late String _userEmail;
+  late String _userRole;
+  late List<Map<String, dynamic>> _userModules;
+
+  @override
+  void initState() {
+    super.initState();
+    _userName = 'User';
+    _userEmail = 'N/A';
+    _userRole = 'USER';
+    _userModules = [];
+    _loadUserData();
+  }
+
+  void _loadUserData() {
+    if (widget.userData != null) {
+      final userData = widget.userData!['data'] as Map<String, dynamic>?;
+      if (userData != null) {
+        _userName = '${userData['fname']} ${userData['lname']}';
+        _userEmail = userData['email_add'] ?? 'N/A';
+        _userRole = userData['role'] ?? 'USER';
+
+        // Extract modules
+        final modulesList = userData['modules'] as List?;
+        _userModules = [];
+        if (modulesList != null) {
+          for (var item in modulesList) {
+            if (item is Map<String, dynamic>) {
+              final module = item['module'] as Map<String, dynamic>?;
+              if (module != null) {
+                _userModules.add(module);
+              }
+            }
+          }
+        }
+
+        debugPrint('User: $_userName, Email: $_userEmail, Role: $_userRole');
+        debugPrint('Modules: ${_userModules.length} loaded');
+      }
+    }
+  }
 
   final List<Map<String, dynamic>> _recentActivity = [
     {
@@ -72,14 +117,26 @@ class _DashboardPageState extends State<DashboardPage> {
 
               const SizedBox(height: 28),
 
-              const Text(
-                "WELCOME BACK,\nMark",
-                style: TextStyle(
+              Text(
+                "WELCOME BACK,\n${_userName.isNotEmpty ? _userName.split(' ').first.toUpperCase() : 'User'}",
+                style: const TextStyle(
                   fontSize: 30,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0.5,
                   height: 1.1,
                   color: Color(0xFF1A1A1A),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // User Info
+              Text(
+                'Email: $_userEmail | Role: $_userRole',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.black54,
+                  letterSpacing: 0.5,
                 ),
               ),
 
@@ -198,6 +255,73 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
 
               const SizedBox(height: 32),
+
+              // Accessible Modules
+              if (_userModules.isNotEmpty)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "ACCESSIBLE MODULES",
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            childAspectRatio: 1,
+                          ),
+                      itemCount: _userModules.length,
+                      itemBuilder: (context, index) {
+                        final module = _userModules[index];
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            border: Border.all(color: const Color(0xFFE8E8E8)),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.dashboard,
+                                  color: const Color(0xFFCC0000),
+                                  size: 28,
+                                ),
+                                const SizedBox(height: 8),
+                                Padding(
+                                  padding: const EdgeInsets.all(4),
+                                  child: Text(
+                                    module['module_name'] ?? 'Module',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.5,
+                                      color: Color(0xFF1A1A1A),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 32),
+                  ],
+                ),
 
               const Text(
                 "FOR SIGNING DOCUMENTS",
