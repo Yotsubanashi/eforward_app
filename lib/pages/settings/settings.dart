@@ -14,7 +14,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  int _selectedIndex = 2;
+  final int _selectedIndex = 2;
   File? _profileImage;
   String _displayName = "Mark Cedrick M. Almueda";
   final String _role = "Technical Support";

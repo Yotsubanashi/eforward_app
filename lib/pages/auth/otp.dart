@@ -22,7 +22,7 @@ class _OtpScreenState extends State<OtpScreen> {
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
   final AuthApi _authApi = AuthApi();
 
-  int _secondsRemaining = 179; // 02:59
+  int _secondsRemaining = 300; //5minutes countdown
   Timer? _timer;
   bool _isLoading = false;
 
@@ -35,19 +35,15 @@ class _OtpScreenState extends State<OtpScreen> {
   @override
   void dispose() {
     _timer?.cancel();
-    for (var c in _controllers) {
-      c.dispose();
-    }
-    for (var f in _focusNodes) {
-      f.dispose();
-    }
+    for (var c in _controllers) c.dispose();
+    for (var f in _focusNodes) f.dispose();
     _authApi.dispose();
     super.dispose();
   }
 
   void _startTimer() {
     _timer?.cancel();
-    setState(() => _secondsRemaining = 179);
+    setState(() => _secondsRemaining = 300);
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_secondsRemaining == 0) {
         timer.cancel();
@@ -75,9 +71,7 @@ class _OtpScreenState extends State<OtpScreen> {
       return;
     }
 
-    debugPrint(
-      'Failed to resend OTP [${result.statusCode}]: ${result.message}',
-    );
+    debugPrint('Failed to resend OTP [${result.statusCode}]: ${result.message}');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(result.message),
@@ -114,23 +108,19 @@ class _OtpScreenState extends State<OtpScreen> {
     if (result.isSuccess) {
       debugPrint('OTP verified: ${result.data}');
 
-      // Extract token from response
       final token = result.data?['accessToken'] as String?;
 
       if (token == null || token.isEmpty) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              "Authentication token not received. Please try again.",
-            ),
+            content: Text("Authentication token not received. Please try again."),
             backgroundColor: Color(0xFFCC0000),
           ),
         );
         return;
       }
 
-      // Get user profile after successful OTP verification with token
       final userResult = await _authApi.getMe(token: token);
 
       if (!mounted) return;
@@ -148,9 +138,7 @@ class _OtpScreenState extends State<OtpScreen> {
         return;
       }
 
-      debugPrint(
-        'Failed to load user profile [${userResult.statusCode}]: ${userResult.message}',
-      );
+      debugPrint('Failed to load user profile [${userResult.statusCode}]: ${userResult.message}');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(userResult.message),
@@ -162,9 +150,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
     setState(() => _isLoading = false);
 
-    debugPrint(
-      'OTP verification failed [${result.statusCode}]: ${result.message}',
-    );
+    debugPrint('OTP verification failed [${result.statusCode}]: ${result.message}');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(result.message),
@@ -173,18 +159,15 @@ class _OtpScreenState extends State<OtpScreen> {
     );
   }
 
+  // 👇 Fixed: uses TextEditingValue to prevent mirrored characters
   void _onChanged(String value, int index) {
-    // Convert to uppercase
     if (value.isNotEmpty) {
-      final upperValue = value.toUpperCase();
-      if (upperValue != _controllers[index].text) {
-        _controllers[index].text = upperValue;
-        _controllers[index].selection = TextSelection.fromPosition(
-          TextPosition(offset: upperValue.length),
-        );
-      }
+      final upper = value.toUpperCase();
+      _controllers[index].value = TextEditingValue(
+        text: upper,
+        selection: TextSelection.collapsed(offset: upper.length),
+      );
     }
-
     if (value.length == 1 && index < 5) {
       _focusNodes[index + 1].requestFocus();
     }
@@ -201,18 +184,11 @@ class _OtpScreenState extends State<OtpScreen> {
         backgroundColor: const Color(0xFFF8F8F8),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back,
-            color: Color(0xFF1A1A1A),
-            size: 20,
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF1A1A1A), size: 20),
+          onPressed: () => Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
           ),
-          onPressed: () {
-            // Navigate back to login with pushReplacement to avoid black screen
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const LoginScreen()),
-            );
-          },
         ),
         title: const Text(
           "SECURITY",
@@ -265,16 +241,11 @@ class _OtpScreenState extends State<OtpScreen> {
                   ),
                 ],
               ),
-              child: const Icon(
-                Icons.verified_user,
-                color: Color(0xFFCC0000),
-                size: 32,
-              ),
+              child: const Icon(Icons.verified_user, color: Color(0xFFCC0000), size: 32),
             ),
 
             const SizedBox(height: 24),
 
-            // Title
             const Text(
               "VERIFY ACCOUNT",
               style: TextStyle(
@@ -287,15 +258,10 @@ class _OtpScreenState extends State<OtpScreen> {
 
             const SizedBox(height: 12),
 
-            // Subtitle
             const Text(
               "Enter the 6-digit code sent to your registered\ninstitutional email address.",
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.black45,
-                height: 1.6,
-              ),
+              style: TextStyle(fontSize: 13, color: Colors.black45, height: 1.6),
             ),
 
             const SizedBox(height: 36),
@@ -316,22 +282,15 @@ class _OtpScreenState extends State<OtpScreen> {
                 onPressed: _isLoading ? null : _verifyCode,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFCC0000),
-                  disabledBackgroundColor: const Color(
-                    0xFFCC0000,
-                  ).withOpacity(0.7),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
-                  ),
+                  disabledBackgroundColor: const Color(0xFFCC0000).withOpacity(0.7),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                   elevation: 0,
                 ),
                 child: _isLoading
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -346,11 +305,7 @@ class _OtpScreenState extends State<OtpScreen> {
                             ),
                           ),
                           SizedBox(width: 8),
-                          Icon(
-                            Icons.chevron_right,
-                            color: Colors.white,
-                            size: 20,
-                          ),
+                          Icon(Icons.chevron_right, color: Colors.white, size: 20),
                         ],
                       ),
               ),
@@ -393,7 +348,7 @@ class _OtpScreenState extends State<OtpScreen> {
               ),
             ),
 
-            const SizedBox(height: 122),
+            const SizedBox(height: 32), // 👈 reduced from 122 to 32
 
             // Security Notice
             Container(
@@ -401,8 +356,8 @@ class _OtpScreenState extends State<OtpScreen> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white,
-                border: Border(
-                  left: BorderSide(color: const Color(0xFFCC0000), width: 3),
+                border: const Border(
+                  left: BorderSide(color: Color(0xFFCC0000), width: 3),
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -427,31 +382,31 @@ class _OtpScreenState extends State<OtpScreen> {
                   SizedBox(height: 6),
                   Text(
                     "This verification step is mandatory for all high-value institutional transfers. Ensure you are on a secure network before proceeding.",
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.black54,
-                      height: 1.6,
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.black54, height: 1.6),
                   ),
                 ],
               ),
             ),
+
+            const SizedBox(height: 24),
           ],
         ),
       ),
     );
   }
 
+  // 👇 Fixed _buildOtpBox
   Widget _buildOtpBox(int index) {
     return SizedBox(
-      width: 44,
-      height: 52,
+      width: 54,
+      height: 100,
       child: TextField(
         controller: _controllers[index],
         focusNode: _focusNodes[index],
         textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,            // 👈 fixes mirrored characters
         textCapitalization: TextCapitalization.characters,
-        keyboardType: TextInputType.text,
+        keyboardType: TextInputType.visiblePassword, // 👈 fixes Android rendering
         maxLength: 1,
         inputFormatters: [
           FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),

@@ -28,7 +28,6 @@ class _LoginScreenState extends State<LoginScreen> {
     _loadRememberedEmail();
   }
 
-  // 👇 2. ADD these 2 methods HERE
   void _loadRememberedEmail() async {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool('remember_me') ?? false) {
@@ -99,215 +98,206 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Logo + Brand
-              Row(
-                children: [
-                  Icon(
-                    Icons.shield_outlined,
-                    color: Color(0xFFCC0000),
-                    size: 20,
-                  ),
-                  SizedBox(width: 6),
-                  Text(
-                    "E-FORWARD",
-                    style: TextStyle(
-                      color: Color(0xFFCC0000),
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 2,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 102),
-
-              // Title
-              Center(
-                child: Column(
-                  children: [
+        child: SingleChildScrollView( // 👈 fixes overflow when keyboard opens
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Logo + Brand
+                Row(
+                  children: const [
+                    Icon(Icons.shield_outlined, color: Color(0xFFCC0000), size: 20),
+                    SizedBox(width: 6),
                     Text(
-                      "SECURE ACCESS",
+                      "E-FORWARD",
                       style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
+                        color: Color(0xFFCC0000),
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
                         letterSpacing: 2,
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      "INSTITUTIONAL-GRADE APPROVAL WORKFLOW\nAND DOCUMENT GOVERNANCE.",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.black54,
-                        letterSpacing: 1.2,
                       ),
                     ),
                   ],
                 ),
-              ),
-              SizedBox(height: 40),
+                const SizedBox(height: 102),
 
-              // Email Field
-              Text(
-                "EMAIL",
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.5,
-                ),
-              ),
-              SizedBox(height: 6),
-              TextField(
-                controller: _emailController, // 👈 add
-                decoration: InputDecoration(
-                  hintText: "ENTER EMAIL ADDRESS",
-                  hintStyle: TextStyle(color: Colors.black26, fontSize: 12),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.black26),
+                // Title
+                Center(
+                  child: Column(
+                    children: const [
+                      Text(
+                        "SECURE ACCESS",
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        "INSTITUTIONAL-GRADE APPROVAL WORKFLOW\nAND DOCUMENT GOVERNANCE.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.black54,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ],
                   ),
-                  focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Color(0xFFCC0000)),
-                  ),
                 ),
-              ),
-              SizedBox(height: 24),
+                const SizedBox(height: 40),
 
-              // Password Field
-              Text(
-                "PASSWORD",
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.5,
+                // Email Field
+                const Text(
+                  "EMAIL",
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.5,
+                  ),
                 ),
-              ),
-              SizedBox(height: 6),
-              TextField(
-                controller: _passwordController, // 👈 add
-                obscureText: _obscurePassword,
-                decoration: InputDecoration(
-                  hintText: "ENTER PASSWORD",
-                  hintStyle: TextStyle(color: Colors.black26, fontSize: 12),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscurePassword
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                      color: Colors.black38,
-                      size: 20,
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    hintText: "ENTER EMAIL ADDRESS",
+                    hintStyle: TextStyle(color: Colors.black26, fontSize: 12),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.black26),
                     ),
-                    onPressed: () {
-                      setState(() {
-                        _obscurePassword = !_obscurePassword;
-                      });
-                    },
-                  ),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.black26),
-                  ),
-                  focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Color(0xFFCC0000)),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFFCC0000)),
+                    ),
                   ),
                 ),
-              ),
-              SizedBox(height: 20),
+                const SizedBox(height: 24),
 
-              //Remember Me Checkbox
-              Row(
-                children: [
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: Checkbox(
-                      value: _rememberMe,
-                      onChanged: _isLoading
-                          ? null
-                          : (val) => setState(() => _rememberMe = val ?? false),
-                      activeColor: Color.fromARGB(
-                        255,
-                        1,
-                        0,
-                        0,
-                      ), // or your theme color
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      side: BorderSide(color: Colors.black38, width: 1.5),
+                // Password Field
+                const Text(
+                  "PASSWORD",
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    hintText: "ENTER PASSWORD",
+                    hintStyle: const TextStyle(color: Colors.black26, fontSize: 12),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: Colors.black38,
+                        size: 20,
+                      ),
+                      onPressed: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
+                    ),
+                    enabledBorder: const UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.black26),
+                    ),
+                    focusedBorder: const UnderlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFFCC0000)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Remember Me Checkbox
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: Checkbox(
+                        value: _rememberMe,
+                        onChanged: _isLoading
+                            ? null
+                            : (val) =>
+                                setState(() => _rememberMe = val ?? false),
+                        activeColor: const Color(0xFFCC0000),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        side: const BorderSide(color: Colors.black38, width: 1.5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      "Remember Me",
+                      style: TextStyle(color: Colors.black54, fontSize: 15),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 20),
+
+                // Login Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    onPressed: _isLoading ? null : _handleLogin,
+                    icon: _isLoading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.arrow_forward, color: Colors.white),
+                    label: Text(
+                      _isLoading ? "LOGGING IN..." : "LOGIN",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        letterSpacing: 2,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFCC0000),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(3),
+                        borderRadius: BorderRadius.circular(4),
                       ),
                     ),
                   ),
-                  SizedBox(width: 8),
-                  Text(
-                    "Remember Me",
-                    style: TextStyle(
-                      color: const Color.fromARGB(133, 15, 1, 1),
-                      fontSize: 15,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 24),
 
-              SizedBox(height: 20),
-              // Login Button
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton.icon(
-                  onPressed: _isLoading ? null : _handleLogin,
-                  icon: _isLoading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.arrow_forward, color: Colors.white),
-                  label: Text(
-                    _isLoading ? "LOGGING IN..." : "LOGIN",
-                    style: TextStyle(
-                      color: Colors.white,
-                      letterSpacing: 2,
-                      fontWeight: FontWeight.bold,
+                // Forgot Password
+                Center(
+                  child: TextButton(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ForgotPasswordScreen(),
+                      ),
                     ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFFCC0000),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
+                    child: const Text(
+                      "FORGOT PASSWORD",
+                      style: TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                        letterSpacing: 1.5,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              SizedBox(height: 24),
-
-              // Forgot Password
-              Center(
-                child: TextButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ForgotPasswordScreen(),
-                    ),
-                  ),
-                  child: Text(
-                    "FORGOT PASSWORD",
-                    style: TextStyle(
-                      color: Colors.black54,
-                      fontSize: 12,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
