@@ -69,17 +69,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (result.isSuccess) {
       _saveRememberMe(email);
       debugPrint('Login success: ${result.data}');
-
-      // TODO: Uncomment below to use OTP verification flow
-      // Navigator.pushReplacement(
-      //   context,
-      //   MaterialPageRoute(builder: (context) => OtpScreen(email: email)),
-      // );
-
-      // Temporary: Skip OTP and go directly to dashboard for testing
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const DashboardPage()),
+        MaterialPageRoute(builder: (context) => OtpScreen(email: email)),
       );
       return;
     }
