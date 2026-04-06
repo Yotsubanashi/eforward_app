@@ -69,9 +69,17 @@ class _LoginScreenState extends State<LoginScreen> {
     if (result.isSuccess) {
       _saveRememberMe(email);
       debugPrint('Login success: ${result.data}');
+
+      // TODO: Uncomment below to use OTP verification flow
+      // Navigator.pushReplacement(
+      //   context,
+      //   MaterialPageRoute(builder: (context) => OtpScreen(email: email)),
+      // );
+
+      // Temporary: Skip OTP and go directly to dashboard for testing
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => OtpScreen(email: email)),
+        MaterialPageRoute(builder: (context) => const DashboardPage()),
       );
       return;
     }
@@ -98,7 +106,8 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: SingleChildScrollView( // 👈 fixes overflow when keyboard opens
+        child: SingleChildScrollView(
+          // 👈 fixes overflow when keyboard opens
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
@@ -108,7 +117,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Logo + Brand
                 Row(
                   children: const [
-                    Icon(Icons.shield_outlined, color: Color(0xFFCC0000), size: 20),
+                    Icon(
+                      Icons.shield_outlined,
+                      color: Color(0xFFCC0000),
+                      size: 20,
+                    ),
                     SizedBox(width: 6),
                     Text(
                       "E-FORWARD",
@@ -191,7 +204,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   obscureText: _obscurePassword,
                   decoration: InputDecoration(
                     hintText: "ENTER PASSWORD",
-                    hintStyle: const TextStyle(color: Colors.black26, fontSize: 12),
+                    hintStyle: const TextStyle(
+                      color: Colors.black26,
+                      fontSize: 12,
+                    ),
                     suffixIcon: IconButton(
                       icon: Icon(
                         _obscurePassword
@@ -224,10 +240,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         onChanged: _isLoading
                             ? null
                             : (val) =>
-                                setState(() => _rememberMe = val ?? false),
+                                  setState(() => _rememberMe = val ?? false),
                         activeColor: const Color(0xFFCC0000),
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        side: const BorderSide(color: Colors.black38, width: 1.5),
+                        side: const BorderSide(
+                          color: Colors.black38,
+                          width: 1.5,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(3),
                         ),
