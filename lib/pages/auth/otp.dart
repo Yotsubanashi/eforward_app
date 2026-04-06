@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_api.dart';
 import '../dashboard/dashboard.dart';
 import 'login.dart';
@@ -22,7 +23,7 @@ class _OtpScreenState extends State<OtpScreen> {
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
   final AuthApi _authApi = AuthApi();
 
-  int _secondsRemaining = 300; //5minutes countdown
+  int _secondsRemaining = 300;
   Timer? _timer;
   bool _isLoading = false;
 
@@ -106,9 +107,21 @@ class _OtpScreenState extends State<OtpScreen> {
     if (!mounted) return;
 
     if (result.isSuccess) {
-      debugPrint('OTP verified: ${result.data}');
+      // 👇 Debug — see exact fields from API
+      debugPrint('=== OTP VERIFY RESPONSE ===');
+      result.data?.forEach((key, value) {
+        debugPrint('KEY: $key  →  VALUE: $value');
+      });
+      debugPrint('===========================');
 
-      final token = result.data?['accessToken'] as String?;
+      // Try multiple possible token field names
+      final token = result.data?['data']?['accessToken'] as String?
+          ?? result.data?['data']?['token'] as String?
+          ?? result.data?['data']?['access_token'] as String?
+          ?? result.data?['accessToken'] as String?
+          ?? result.data?['token'] as String?
+          ?? result.data?['access_token'] as String?
+          ?? result.data?['jwt'] as String?;
 
       if (token == null || token.isEmpty) {
         setState(() => _isLoading = false);
@@ -121,6 +134,12 @@ class _OtpScreenState extends State<OtpScreen> {
         return;
       }
 
+      // 👇 Save token to SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('access_token', token);
+      debugPrint('✅ Token saved: $token');
+
+      // 👇 Single getMe call (removed duplicate)
       final userResult = await _authApi.getMe(token: token);
 
       if (!mounted) return;
@@ -159,7 +178,6 @@ class _OtpScreenState extends State<OtpScreen> {
     );
   }
 
-  // 👇 Fixed: uses TextEditingValue to prevent mirrored characters
   void _onChanged(String value, int index) {
     if (value.isNotEmpty) {
       final upper = value.toUpperCase();
@@ -185,10 +203,7 @@ class _OtpScreenState extends State<OtpScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF1A1A1A), size: 20),
-          onPressed: () => Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const LoginScreen()),
-          ),
+          onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           "SECURITY",
@@ -348,7 +363,7 @@ class _OtpScreenState extends State<OtpScreen> {
               ),
             ),
 
-            const SizedBox(height: 32), // 👈 reduced from 122 to 32
+            const SizedBox(height: 32),
 
             // Security Notice
             Container(
@@ -395,18 +410,17 @@ class _OtpScreenState extends State<OtpScreen> {
     );
   }
 
-  // 👇 Fixed _buildOtpBox
   Widget _buildOtpBox(int index) {
     return SizedBox(
-      width: 54,
-      height: 100,
+      width: 44,
+      height: 52,
       child: TextField(
         controller: _controllers[index],
         focusNode: _focusNodes[index],
         textAlign: TextAlign.center,
-        textDirection: TextDirection.ltr,            // 👈 fixes mirrored characters
+        textDirection: TextDirection.ltr,
         textCapitalization: TextCapitalization.characters,
-        keyboardType: TextInputType.visiblePassword, // 👈 fixes Android rendering
+        keyboardType: TextInputType.visiblePassword,
         maxLength: 1,
         inputFormatters: [
           FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
