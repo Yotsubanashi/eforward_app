@@ -1,12 +1,13 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:convert';
 import 'dart:ui' as ui;
+import 'package:eforward_app/pages/dashboard/dashboard.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
-import 'package:eforward_app/pages/dashboard/dashboard.dart';
 import '../../services/auth_api.dart';
 
 // ─── Signature Painter ───────────────────────────────────────────────────────
@@ -58,7 +59,7 @@ class ViewSignPage extends StatefulWidget {
 
 class _ViewSignPageState extends State<ViewSignPage>
     with SingleTickerProviderStateMixin {
-  final int _selectedIndex = 1;
+  int _selectedIndex = 1;
   bool _isEditMode = false;
 
   late TabController _tabController;
@@ -70,9 +71,8 @@ class _ViewSignPageState extends State<ViewSignPage>
   String _signatureFont = 'Cursive';
   String _signatureImagePath = '';
   String? _drawBase64;
-  String _timestamp = '';
-  bool _isLoadingTimestamp = false;
-  String? _apiSignatureUrl; // 👈 holds the image URL from API
+  String? _apiSignatureUrl;      // URL from API JSON response
+  List<int>? _apiSignatureBytes; // raw bytes from API blob response
 
   // Draw tab (edit mode)
   final List<List<Offset?>> _strokes = [];
@@ -115,7 +115,7 @@ class _ViewSignPageState extends State<ViewSignPage>
       _signatureFont = prefs.getString('signature_font') ?? 'Cursive';
       _signatureImagePath = prefs.getString('signature_image_path') ?? '';
       _drawBase64 = prefs.getString('signature_draw_data');
-      _timestamp = prefs.getString('signature_timestamp') ?? '';
+      
 
       if (_signatureType == 'type') {
         _typeController.text = _signatureText;
@@ -129,78 +129,60 @@ class _ViewSignPageState extends State<ViewSignPage>
 
   Future<void> _fetchSignatureFromApi(SharedPreferences prefs) async {
     final token = prefs.getString('access_token') ?? '';
-    debugPrint('=== TOKEN IN VIEW SIGN: $token ==='); // 👈 debug
+    debugPrint('=== TOKEN IN VIEW SIGN: $token ===');
 
     if (token.isEmpty) {
       debugPrint('No token found, skipping signature API fetch.');
       return;
     }
 
-    setState(() => _isLoadingTimestamp = true);
+  
 
     final result = await _authApi.getSignature(token: token);
 
     if (!mounted) return;
 
-    setState(() => _isLoadingTimestamp = false);
+    
 
-    if (result.isSuccess && result.data != null) {
-      debugPrint('Signature API response: ${result.data}'); // 👈 check this log
-
-      // ─── Extract image URL ─────────────────────────────────────────────────
-      // Adjust the key based on what you see in the debug log above
-      final imageUrl =
-          result.data?['imageUrl'] ??
-          result.data?['url'] ??
-          result.data?['signatureUrl'] ??
-          result.data?['image'] ??
-          result.data?['filePath'] ??
-          result.data?['path'] ??
-          '';
-
-      if (imageUrl is String && imageUrl.isNotEmpty) {
-        setState(() => _apiSignatureUrl = imageUrl);
-        debugPrint('Signature URL from API: $imageUrl');
+    if (result.isSuccess) {
+      // Case 1: Raw image bytes
+      if (result.imageBytes != null && result.imageBytes!.isNotEmpty) {
+        debugPrint('Signature loaded as bytes');
+        setState(() => _apiSignatureBytes = result.imageBytes);
       }
 
-      // ─── Extract date ──────────────────────────────────────────────────────
-      final rawDate =
-          result.data?['signedAt'] ??
-          result.data?['createdAt'] ??
-          result.data?['date'] ??
-          result.data?['updatedAt'] ??
-          '';
+      // Case 2: URL
+      if (result.imageUrl != null && result.imageUrl!.isNotEmpty) {
+        debugPrint('Signature URL: ${result.imageUrl}');
+        setState(() => _apiSignatureUrl = result.imageUrl);
+      }
 
-      if (rawDate is String && rawDate.isNotEmpty) {
-        try {
-          final parsed = DateTime.parse(rawDate).toLocal();
-          final months = [
-            'JAN',
-            'FEB',
-            'MAR',
-            'APR',
-            'MAY',
-            'JUN',
-            'JUL',
-            'AUG',
-            'SEP',
-            'OCT',
-            'NOV',
-            'DEC',
-          ];
-          final formatted =
-              '${months[parsed.month - 1]} ${parsed.day}, ${parsed.year}';
-          await prefs.setString('signature_timestamp', formatted);
-          setState(() => _timestamp = formatted);
-          debugPrint('Signature date from API: $formatted');
-        } catch (e) {
-          debugPrint('Date parse error: $e');
+      // Case 3: base64 inside data.base64 (YOUR API FORMAT)
+      final dynamic responseData = result.data;
+      if (responseData is Map) {
+        final dynamic inner = responseData['data'];
+        if (inner is Map) {
+          final base64Str = inner['base64'] as String?;
+          if (base64Str != null && base64Str.isNotEmpty) {
+            debugPrint('Found base64 in data.base64');
+            final pureBase64 = base64Str.contains(',')
+                ? base64Str.split(',').last
+                : base64Str;
+            try {
+              final bytes = base64Decode(pureBase64);
+              setState(() => _apiSignatureBytes = bytes);
+              debugPrint('Decoded signature: ${bytes.length} bytes');
+            } catch (e) {
+              debugPrint('Base64 decode error: $e');
+            }
+          }
         }
       }
+
+      // Extract date
+     
     } else {
-      debugPrint(
-        'Signature API failed [${result.statusCode}]: ${result.message}',
-      );
+      debugPrint('Signature API failed [${result.statusCode}]: ${result.message}');
     }
   }
 
@@ -248,14 +230,12 @@ class _ViewSignPageState extends State<ViewSignPage>
 
     if (currentTab == 0) {
       try {
-        final boundary =
-            _canvasKey.currentContext?.findRenderObject()
-                as RenderRepaintBoundary?;
+        final boundary = _canvasKey.currentContext
+            ?.findRenderObject() as RenderRepaintBoundary?;
         if (boundary != null) {
           final image = await boundary.toImage(pixelRatio: 3.0);
-          final byteData = await image.toByteData(
-            format: ui.ImageByteFormat.png,
-          );
+          final byteData =
+              await image.toByteData(format: ui.ImageByteFormat.png);
           if (byteData != null) {
             final base64Str = base64Encode(byteData.buffer.asUint8List());
             await prefs.setString('signature_draw_data', base64Str);
@@ -287,31 +267,15 @@ class _ViewSignPageState extends State<ViewSignPage>
       }
     }
 
-    // Save local timestamp
-    final now = DateTime.now();
-    final months = [
-      'JAN',
-      'FEB',
-      'MAR',
-      'APR',
-      'MAY',
-      'JUN',
-      'JUL',
-      'AUG',
-      'SEP',
-      'OCT',
-      'NOV',
-      'DEC',
-    ];
-    final timestamp = '${months[now.month - 1]} ${now.day}, ${now.year}';
-    await prefs.setString('signature_timestamp', timestamp);
-    await prefs.setBool('has_signature', true);
+  
+   
 
     setState(() {
-      _timestamp = timestamp;
+      
       _isSaving = false;
       _isEditMode = false;
-      _apiSignatureUrl = null; // 👈 reset so it re-fetches after save
+      _apiSignatureUrl = null;
+      _apiSignatureBytes = null; // 👈 reset so it re-fetches after save
     });
 
     if (mounted) {
@@ -358,8 +322,24 @@ class _ViewSignPageState extends State<ViewSignPage>
   // ─── Signature Preview ────────────────────────────────────────────────────
 
   Widget _buildSavedSignaturePreview() {
-    // 👇 Priority 1: Show API image if available
+    // Priority 1: API blob bytes
+    if (_apiSignatureBytes != null && _apiSignatureBytes!.isNotEmpty) {
+      debugPrint('Displaying API signature bytes');
+      return Center(
+        child: Image.memory(
+          Uint8List.fromList(_apiSignatureBytes!),
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) {
+            debugPrint('Bytes image error: $error');
+            return _buildLocalSignaturePreview();
+          },
+        ),
+      );
+    }
+
+    // Priority 2: API URL
     if (_apiSignatureUrl != null && _apiSignatureUrl!.isNotEmpty) {
+      debugPrint('Displaying API signature URL: $_apiSignatureUrl');
       return Center(
         child: Image.network(
           _apiSignatureUrl!,
@@ -371,14 +351,14 @@ class _ViewSignPageState extends State<ViewSignPage>
             );
           },
           errorBuilder: (context, error, stackTrace) {
-            debugPrint('API image load error: $error');
-            return _buildLocalSignaturePreview(); // fallback
+            debugPrint('URL image error: $error');
+            return _buildLocalSignaturePreview();
           },
         ),
       );
     }
 
-    // 👇 Priority 2: Fallback to local data
+    // Priority 3: Fallback to local
     return _buildLocalSignaturePreview();
   }
 
@@ -421,11 +401,7 @@ class _ViewSignPageState extends State<ViewSignPage>
         backgroundColor: const Color(0xFFF4F5F7),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back,
-            color: Color(0xFF1A1A1A),
-            size: 20,
-          ),
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF1A1A1A), size: 20),
           onPressed: () {
             if (_isEditMode) {
               setState(() {
@@ -433,10 +409,10 @@ class _ViewSignPageState extends State<ViewSignPage>
                 _strokes.clear();
               });
             } else {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const DashboardPage()),
-              );
+               Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const DashboardPage()),
+            );
             }
           },
         ),
@@ -493,11 +469,7 @@ class _ViewSignPageState extends State<ViewSignPage>
             ),
             const Text(
               "Institutional-grade verification for secure documentation. Create, type, or upload your legal identifier below.",
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.black45,
-                height: 1.6,
-              ),
+              style: TextStyle(fontSize: 12, color: Colors.black45, height: 1.6),
             ),
 
             const SizedBox(height: 24),
@@ -511,9 +483,8 @@ class _ViewSignPageState extends State<ViewSignPage>
                 ignoring: !_isEditMode,
                 child: TabBar(
                   controller: _tabController,
-                  labelColor: _isEditMode
-                      ? const Color(0xFFCC0000)
-                      : Colors.black38,
+                  labelColor:
+                      _isEditMode ? const Color(0xFFCC0000) : Colors.black38,
                   unselectedLabelColor: Colors.black26,
                   indicatorColor: _isEditMode
                       ? const Color(0xFFCC0000)
@@ -557,43 +528,6 @@ class _ViewSignPageState extends State<ViewSignPage>
 
             const SizedBox(height: 12),
 
-            // Timestamp (view mode only)
-            if (!_isEditMode)
-              Center(
-                child: Column(
-                  children: [
-                    const Text(
-                      "TIMESTAMP",
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: Colors.black38,
-                        letterSpacing: 1.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    _isLoadingTimestamp
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 1.5,
-                              color: Color(0xFFCC0000),
-                            ),
-                          )
-                        : Text(
-                            _timestamp.isNotEmpty ? _timestamp : '—',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF1A1A1A),
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                  ],
-                ),
-              ),
-
             const SizedBox(height: 24),
 
             // Button
@@ -604,16 +538,14 @@ class _ViewSignPageState extends State<ViewSignPage>
                 onPressed: _isSaving
                     ? null
                     : _isEditMode
-                    ? _saveSignature
-                    : _enterEditMode,
+                        ? _saveSignature
+                        : _enterEditMode,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFCC0000),
-                  disabledBackgroundColor: const Color(
-                    0xFFCC0000,
-                  ).withOpacity(0.6),
+                  disabledBackgroundColor:
+                      const Color(0xFFCC0000).withOpacity(0.6),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
-                  ),
+                      borderRadius: BorderRadius.circular(4)),
                   elevation: 0,
                 ),
                 child: _isSaving
@@ -621,9 +553,7 @@ class _ViewSignPageState extends State<ViewSignPage>
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
+                            strokeWidth: 2, color: Colors.white),
                       )
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -682,10 +612,7 @@ class _ViewSignPageState extends State<ViewSignPage>
                         Text(
                           "This signature will be cryptographically bound to your E-FORWARD identity. Ensure the signature is clear and legible for high-security verification protocols.",
                           style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.black54,
-                            height: 1.6,
-                          ),
+                              fontSize: 12, color: Colors.black54, height: 1.6),
                         ),
                       ],
                     ),
@@ -726,10 +653,8 @@ class _ViewSignPageState extends State<ViewSignPage>
                         child: RepaintBoundary(
                           key: _canvasKey,
                           child: CustomPaint(
-                            painter: _SignaturePainter(
-                              _strokes,
-                              penColor: _penColor,
-                            ),
+                            painter: _SignaturePainter(_strokes,
+                                penColor: _penColor),
                             size: Size.infinite,
                           ),
                         ),
@@ -741,11 +666,10 @@ class _ViewSignPageState extends State<ViewSignPage>
                             children: [
                               SizedBox(height: 120),
                               Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 24),
+                                padding:
+                                    EdgeInsets.symmetric(horizontal: 24),
                                 child: Divider(
-                                  color: Color(0xFFCCCCCC),
-                                  thickness: 1,
-                                ),
+                                    color: Color(0xFFCCCCCC), thickness: 1),
                               ),
                               SizedBox(height: 6),
                               Text(
@@ -776,15 +700,12 @@ class _ViewSignPageState extends State<ViewSignPage>
                   children: const [
                     Icon(Icons.undo, size: 16, color: Colors.black45),
                     SizedBox(width: 4),
-                    Text(
-                      "UNDO",
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.black45,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1,
-                      ),
-                    ),
+                    Text("UNDO",
+                        style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.black45,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1)),
                   ],
                 ),
               ),
@@ -795,15 +716,12 @@ class _ViewSignPageState extends State<ViewSignPage>
                   children: const [
                     Icon(Icons.close, size: 16, color: Colors.black45),
                     SizedBox(width: 4),
-                    Text(
-                      "CLEAR",
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.black45,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1,
-                      ),
-                    ),
+                    Text("CLEAR",
+                        style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.black45,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1)),
                   ],
                 ),
               ),
@@ -899,10 +817,8 @@ class _ViewSignPageState extends State<ViewSignPage>
               child: GestureDetector(
                 onTap: () => setState(() => _selectedFont = font),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: selected
                         ? const Color(0xFFCC0000)
@@ -949,11 +865,8 @@ class _ViewSignPageState extends State<ViewSignPage>
                   : Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: const [
-                        Icon(
-                          Icons.upload_file_outlined,
-                          size: 40,
-                          color: Colors.black12,
-                        ),
+                        Icon(Icons.upload_file_outlined,
+                            size: 40, color: Colors.black12),
                         SizedBox(height: 12),
                         Text(
                           "TAP TO UPLOAD SIGNATURE",
@@ -967,7 +880,8 @@ class _ViewSignPageState extends State<ViewSignPage>
                         SizedBox(height: 4),
                         Text(
                           "JPG, PNG supported",
-                          style: TextStyle(fontSize: 11, color: Colors.black26),
+                          style:
+                              TextStyle(fontSize: 11, color: Colors.black26),
                         ),
                       ],
                     ),
@@ -982,15 +896,12 @@ class _ViewSignPageState extends State<ViewSignPage>
               children: const [
                 Icon(Icons.refresh, size: 16, color: Colors.black45),
                 SizedBox(width: 4),
-                Text(
-                  "REPLACE IMAGE",
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.black45,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1,
-                  ),
-                ),
+                Text("REPLACE IMAGE",
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.black45,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1)),
               ],
             ),
           ),

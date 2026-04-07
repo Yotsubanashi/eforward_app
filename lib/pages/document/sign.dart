@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'dart:ui' as ui;
+import 'package:eforward_app/pages/dashboard/dashboard.dart';
 import 'package:eforward_app/pages/document/view_sign.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -287,7 +288,10 @@ class _SignScreenState extends State<SignScreen>
                   MaterialPageRoute(builder: (_) => const ViewSignPage()),
                 );
               } else {
-                Navigator.pop(context);
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => const DashboardPage()),
+                );
               }
             }
           },

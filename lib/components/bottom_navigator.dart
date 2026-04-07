@@ -1,7 +1,8 @@
-import 'package:eforward_app/pages/dashboard/dashboard.dart';
-import 'package:eforward_app/pages/settings/settings.dart';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:eforward_app/pages/dashboard/dashboard.dart';
+import 'package:eforward_app/pages/settings/settings.dart';
 import 'package:eforward_app/pages/document/sign.dart';
 import 'package:eforward_app/pages/document/view_sign.dart';
 
@@ -16,18 +17,32 @@ class BottomNavigator extends StatelessWidget {
   });
 
   Future<void> _navigate(BuildContext context, int index) async {
-    // Don't navigate if already on the same tab
     if (index == selectedIndex) return;
+
+    final prefs = await SharedPreferences.getInstance();
 
     switch (index) {
       case 0:
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const DashboardPage()),
-        );
+        // 👇 Retrieve saved userData from SharedPreferences
+        final userDataStr = prefs.getString('user_data');
+        Map<String, dynamic>? userData;
+        if (userDataStr != null && userDataStr.isNotEmpty) {
+          try {
+            userData = jsonDecode(userDataStr) as Map<String, dynamic>?;
+          } catch (e) {
+            debugPrint('Error parsing userData: $e');
+          }
+        }
+        if (context.mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => DashboardPage(userData: userData),
+            ),
+          );
+        }
         break;
       case 1:
-        final prefs = await SharedPreferences.getInstance();
         final hasSignature = prefs.getBool('has_signature') ?? false;
         if (context.mounted) {
           Navigator.pushReplacement(
@@ -40,10 +55,12 @@ class BottomNavigator extends StatelessWidget {
         }
         break;
       case 2:
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const SettingsPage()),
-        );
+        if (context.mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const SettingsPage()),
+          );
+        }
         break;
     }
   }
@@ -52,7 +69,7 @@ class BottomNavigator extends StatelessWidget {
   Widget build(BuildContext context) {
     return BottomNavigationBar(
       currentIndex: selectedIndex,
-      onTap: (index) => _navigate(context, index), // 👈 handles all tabs
+      onTap: (index) => _navigate(context, index),
       backgroundColor: Colors.white,
       selectedItemColor: const Color(0xFFCC0000),
       unselectedItemColor: const Color(0xFFAAAAAA),

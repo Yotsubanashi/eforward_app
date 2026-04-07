@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -36,12 +37,8 @@ class _OtpScreenState extends State<OtpScreen> {
   @override
   void dispose() {
     _timer?.cancel();
-    for (var c in _controllers) {
-      c.dispose();
-    }
-    for (var f in _focusNodes) {
-      f.dispose();
-    }
+    for (var c in _controllers) c.dispose();
+    for (var f in _focusNodes) f.dispose();
     _authApi.dispose();
     super.dispose();
   }
@@ -76,9 +73,7 @@ class _OtpScreenState extends State<OtpScreen> {
       return;
     }
 
-    debugPrint(
-      'Failed to resend OTP [${result.statusCode}]: ${result.message}',
-    );
+    debugPrint('Failed to resend OTP [${result.statusCode}]: ${result.message}');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(result.message),
@@ -94,13 +89,6 @@ class _OtpScreenState extends State<OtpScreen> {
   }
 
   String get _otpCode => _controllers.map((c) => c.text).join();
-
-  void _clearOtpFields() {
-    for (var controller in _controllers) {
-      controller.clear();
-    }
-    _focusNodes[0].requestFocus();
-  }
 
   Future<void> _verifyCode() async {
     if (_otpCode.length < 6) {
@@ -120,31 +108,27 @@ class _OtpScreenState extends State<OtpScreen> {
     if (!mounted) return;
 
     if (result.isSuccess) {
-      // 👇 Debug — see exact fields from API
+      // 👇 Debug — print full response structure
       debugPrint('=== OTP VERIFY RESPONSE ===');
+      debugPrint('Full data: ${result.data}');
       result.data?.forEach((key, value) {
         debugPrint('KEY: $key  →  VALUE: $value');
+        // Also print nested maps
+        if (value is Map) {
+          value.forEach((k, v) => debugPrint('  NESTED KEY: $k  →  VALUE: $v'));
+        }
       });
       debugPrint('===========================');
 
-      // Try multiple possible token field names
-      final token =
-          result.data?['data']?['accessToken'] as String? ??
-          result.data?['data']?['token'] as String? ??
-          result.data?['data']?['access_token'] as String? ??
-          result.data?['accessToken'] as String? ??
-          result.data?['token'] as String? ??
-          result.data?['access_token'] as String? ??
-          result.data?['jwt'] as String?;
+      // Deep search for token in any nested structure
+      String? token = _extractToken(result.data);
+      debugPrint('Extracted token: $token');
 
       if (token == null || token.isEmpty) {
         setState(() => _isLoading = false);
-        _clearOtpFields();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              "Authentication token not received. Please try again.",
-            ),
+            content: Text("Authentication token not received. Please try again."),
             backgroundColor: Color(0xFFCC0000),
           ),
         );
@@ -154,7 +138,7 @@ class _OtpScreenState extends State<OtpScreen> {
       // 👇 Save token to SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('access_token', token);
-      debugPrint('✅ Token saved: $token');
+      debugPrint('✅ Token saved successfully!');
 
       // 👇 Single getMe call (removed duplicate)
       final userResult = await _authApi.getMe(token: token);
@@ -165,6 +149,12 @@ class _OtpScreenState extends State<OtpScreen> {
 
       if (userResult.isSuccess) {
         debugPrint('User profile loaded: ${userResult.data}');
+
+        // 👇 Save userData to SharedPreferences so BottomNavigator can restore it
+        if (userResult.data != null) {
+          await prefs.setString('user_data', jsonEncode(userResult.data));
+        }
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -174,11 +164,7 @@ class _OtpScreenState extends State<OtpScreen> {
         return;
       }
 
-      setState(() => _isLoading = false);
-      _clearOtpFields();
-      debugPrint(
-        'Failed to load user profile [${userResult.statusCode}]: ${userResult.message}',
-      );
+      debugPrint('Failed to load user profile [${userResult.statusCode}]: ${userResult.message}');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(userResult.message),
@@ -189,16 +175,43 @@ class _OtpScreenState extends State<OtpScreen> {
     }
 
     setState(() => _isLoading = false);
-    _clearOtpFields();
-    debugPrint(
-      'OTP verification failed [${result.statusCode}]: ${result.message}',
-    );
+
+    debugPrint('OTP verification failed [${result.statusCode}]: ${result.message}');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(result.message),
         backgroundColor: const Color(0xFFCC0000),
       ),
     );
+  }
+
+  // 👇 Deep search for token in any nested structure
+  String? _extractToken(Map<String, dynamic>? data) {
+    if (data == null) return null;
+
+    // Common token field names to check
+    const tokenKeys = [
+      'accessToken', 'access_token', 'token', 'jwt',
+      'authToken', 'auth_token', 'bearerToken', 'bearer_token',
+    ];
+
+    // Check top level
+    for (final key in tokenKeys) {
+      final val = data[key];
+      if (val is String && val.isNotEmpty) return val;
+    }
+
+    // Check one level deep (e.g. data['data']['accessToken'])
+    for (final entry in data.entries) {
+      if (entry.value is Map<String, dynamic>) {
+        for (final key in tokenKeys) {
+          final val = (entry.value as Map<String, dynamic>)[key];
+          if (val is String && val.isNotEmpty) return val;
+        }
+      }
+    }
+
+    return null;
   }
 
   void _onChanged(String value, int index) {
@@ -211,9 +224,6 @@ class _OtpScreenState extends State<OtpScreen> {
     }
     if (value.length == 1 && index < 5) {
       _focusNodes[index + 1].requestFocus();
-    } else if (value.length == 1 && index == 5) {
-      // Auto-submit when last digit is entered
-      _verifyCode();
     }
     if (value.isEmpty && index > 0) {
       _focusNodes[index - 1].requestFocus();
@@ -227,17 +237,9 @@ class _OtpScreenState extends State<OtpScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFFF8F8F8),
         elevation: 0,
-        // ✅ AFTER — navigates cleanly back to LoginScreen
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back,
-            color: Color(0xFF1A1A1A),
-            size: 20,
-          ),
-          onPressed: () => Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const LoginScreen()),
-          ),
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF1A1A1A), size: 20),
+          onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           "SECURITY",
@@ -290,11 +292,7 @@ class _OtpScreenState extends State<OtpScreen> {
                   ),
                 ],
               ),
-              child: const Icon(
-                Icons.verified_user,
-                color: Color(0xFFCC0000),
-                size: 32,
-              ),
+              child: const Icon(Icons.verified_user, color: Color(0xFFCC0000), size: 32),
             ),
 
             const SizedBox(height: 24),
@@ -314,11 +312,7 @@ class _OtpScreenState extends State<OtpScreen> {
             const Text(
               "Enter the 6-digit code sent to your registered\ninstitutional email address.",
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.black45,
-                height: 1.6,
-              ),
+              style: TextStyle(fontSize: 13, color: Colors.black45, height: 1.6),
             ),
 
             const SizedBox(height: 36),
@@ -339,22 +333,15 @@ class _OtpScreenState extends State<OtpScreen> {
                 onPressed: _isLoading ? null : _verifyCode,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFCC0000),
-                  disabledBackgroundColor: const Color(
-                    0xFFCC0000,
-                  ).withOpacity(0.7),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
-                  ),
+                  disabledBackgroundColor: const Color(0xFFCC0000).withOpacity(0.7),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                   elevation: 0,
                 ),
                 child: _isLoading
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -369,11 +356,7 @@ class _OtpScreenState extends State<OtpScreen> {
                             ),
                           ),
                           SizedBox(width: 8),
-                          Icon(
-                            Icons.chevron_right,
-                            color: Colors.white,
-                            size: 20,
-                          ),
+                          Icon(Icons.chevron_right, color: Colors.white, size: 20),
                         ],
                       ),
               ),
@@ -382,18 +365,18 @@ class _OtpScreenState extends State<OtpScreen> {
             const SizedBox(height: 20),
 
             // Resend Code
-            // TextButton(
-            //   onPressed: _secondsRemaining == 0 ? _resendOtp : null,
-            //   child: const Text(
-            //     "RESEND CODE",
-            //     style: TextStyle(
-            //       fontSize: 11,
-            //       fontWeight: FontWeight.w700,
-            //       letterSpacing: 1.5,
-            //       color: Color(0xFF1A1A1A),
-            //     ),
-            //   ),
-            // ),
+            TextButton(
+              onPressed: _secondsRemaining == 0 ? _resendOtp : null,
+              child: const Text(
+                "RESEND CODE",
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.5,
+                  color: Color(0xFF1A1A1A),
+                ),
+              ),
+            ),
 
             // Timer
             RichText(
@@ -450,11 +433,7 @@ class _OtpScreenState extends State<OtpScreen> {
                   SizedBox(height: 6),
                   Text(
                     "This verification step is mandatory for all high-value institutional transfers. Ensure you are on a secure network before proceeding.",
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.black54,
-                      height: 1.6,
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.black54, height: 1.6),
                   ),
                 ],
               ),
@@ -475,6 +454,7 @@ class _OtpScreenState extends State<OtpScreen> {
         controller: _controllers[index],
         focusNode: _focusNodes[index],
         textAlign: TextAlign.center,
+        textAlignVertical: TextAlignVertical.center,
         textDirection: TextDirection.ltr,
         textCapitalization: TextCapitalization.characters,
         keyboardType: TextInputType.visiblePassword,
@@ -484,8 +464,8 @@ class _OtpScreenState extends State<OtpScreen> {
         ],
         onChanged: (value) => _onChanged(value, index),
         style: const TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.w800,
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
           color: Color(0xFF1A1A1A),
           height: 1.0,
         ),
@@ -495,7 +475,7 @@ class _OtpScreenState extends State<OtpScreen> {
           fillColor: Colors.white,
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(
-            vertical: 12,
+            vertical: 14,
             horizontal: 0,
           ),
           enabledBorder: OutlineInputBorder(
