@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:eforward_app/pages/auth/change_password.dart';
 import 'package:eforward_app/pages/auth/login.dart';
-import 'package:eforward_app/services/auth_api.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
@@ -14,44 +13,214 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final int _selectedIndex = 2;
+  int _selectedIndex = 2;
   File? _profileImage;
-  String _displayName = "Mark Cedrick M. Almueda";
-  final String _role = "Technical Support";
-  final AuthApi _authApi = AuthApi();
+  String _firstName = "Mark Cedrick";
+  String _middleName = "M.";
+  String _lastName = "Almueda";
+  String get _displayName => "$_firstName $_middleName $_lastName";
+  final String _emailadd = "mark.almueda@ardentnetworks.com.ph";
+  final String _employeeID = "A0000807";
 
   Future<void> _pickImage() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked != null) setState(() => _profileImage = File(picked.path));
   }
 
-  Future<void> _handleLogout() async {
-    final result = await _authApi.logout();
+  void _showEditProfileSheet() {
+    final firstNameController = TextEditingController(text: _firstName);
+    final middleNameController = TextEditingController(text: _middleName);
+    final lastNameController = TextEditingController(text: _lastName);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: EdgeInsets.only(
+            left: 24, right: 24, top: 24,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    "EDIT PROFILE",
+                    style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w900,
+                      letterSpacing: 1.5, color: Color(0xFF1A1A1A),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: const Icon(Icons.close, size: 18, color: Colors.black45),
+                  ),
+                ],
+              ),
 
-    if (!mounted) return;
+              const SizedBox(height: 24),
 
-    if (result.isSuccess) {
-      debugPrint('Logout successful: ${result.data}');
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
-      return;
-    }
+              // Avatar picker
+              Center(
+                child: Stack(
+                  children: [
+                    GestureDetector(
+                      onTap: () async {
+                        final picked = await ImagePicker()
+                            .pickImage(source: ImageSource.gallery);
+                        if (picked != null) {
+                          setSheetState(() {});
+                          setState(() => _profileImage = File(picked.path));
+                        }
+                      },
+                      child: Container(
+                        width: 90, height: 90,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0F0F0),
+                          border: Border.all(color: const Color(0xFFDDDDDD), width: 1.5),
+                        ),
+                        child: _profileImage != null
+                            ? Image.file(_profileImage!, fit: BoxFit.cover)
+                            : const Icon(Icons.person, size: 40, color: Color(0xFF999999)),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 0, right: 0,
+                      child: Container(
+                        width: 26, height: 26,
+                        color: const Color(0xFFCC0000),
+                        child: const Icon(Icons.camera_alt, size: 13, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
-    debugPrint('Logout failed [${result.statusCode}]: ${result.message}');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(result.message),
-        backgroundColor: const Color(0xFFCC0000),
+              const SizedBox(height: 20),
+
+              // First Name
+              _buildSheetField("FIRST NAME", firstNameController),
+              const SizedBox(height: 16),
+
+              // Middle Name
+              _buildSheetField("MIDDLE NAME", middleNameController),
+              const SizedBox(height: 16),
+
+              // Last Name
+              _buildSheetField("LAST NAME", lastNameController),
+              const SizedBox(height: 16),
+
+              // Position — read only grey
+              _buildReadOnlyField("Email Address", _emailadd),
+              const SizedBox(height: 16),
+
+              // Status — read only grey
+              _buildReadOnlyField("Employee ID", _employeeID),
+              const SizedBox(height: 28),
+
+              // Save button
+              SizedBox(
+                width: double.infinity, height: 48,
+                child: ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      if (firstNameController.text.trim().isNotEmpty)
+                        _firstName = firstNameController.text.trim();
+                      if (middleNameController.text.trim().isNotEmpty)
+                        _middleName = middleNameController.text.trim();
+                      if (lastNameController.text.trim().isNotEmpty)
+                        _lastName = lastNameController.text.trim();
+                    });
+                    Navigator.pop(context);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFCC0000),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                  ),
+                  child: const Text(
+                    "SAVE CHANGES",
+                    style: TextStyle(
+                      color: Colors.white, fontSize: 13,
+                      fontWeight: FontWeight.w800, letterSpacing: 2,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  @override
-  void dispose() {
-    _authApi.dispose();
-    super.dispose();
+  Widget _buildSheetField(String label, TextEditingController controller) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10, fontWeight: FontWeight.w700,
+            letterSpacing: 1.5, color: Colors.black45,
+          ),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controller,
+          style: const TextStyle(
+            fontSize: 14, fontWeight: FontWeight.w600,
+            color: Color(0xFF1A1A1A),
+          ),
+          decoration: const InputDecoration(
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.black26),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFCC0000)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReadOnlyField(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10, fontWeight: FontWeight.w700,
+            letterSpacing: 1.5, color: Colors.black45,
+          ),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          enabled: false,
+          controller: TextEditingController(text: value),
+          style: const TextStyle(
+            fontSize: 14, fontWeight: FontWeight.w500,
+            color: Colors.black38,
+          ),
+          decoration: const InputDecoration(
+            disabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.black12),
+            ),
+            suffixIcon: Icon(Icons.lock_outline, size: 14, color: Colors.black26),
+          ),
+        ),
+      ],
+    );
   }
 
   void _showEditNameDialog() {
@@ -119,16 +288,19 @@ class _SettingsPageState extends State<SettingsPage> {
           ElevatedButton(
             onPressed: () {
               if (controller.text.trim().isNotEmpty) {
-                setState(() => _displayName = controller.text.trim());
+                final parts = controller.text.trim().split(' ');
+                setState(() {
+                  _firstName = parts.isNotEmpty ? parts.first : _firstName;
+                  _lastName = parts.length > 1 ? parts.last : _lastName;
+                  _middleName = parts.length > 2 ? parts[1] : _middleName;
+                });
               }
               Navigator.pop(context);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFCC0000),
               elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(3),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
             ),
             child: const Text(
               "SAVE",
@@ -151,22 +323,19 @@ class _SettingsPageState extends State<SettingsPage> {
       backgroundColor: Colors.white,
       bottomNavigationBar: BottomNavigator(
         selectedIndex: _selectedIndex,
-        onTap: (_) {},
+        onTap: (index) => setState(() => _selectedIndex = index),
       ),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+
             // Header
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
               child: Row(
                 children: [
-                  Container(
-                    width: 3,
-                    height: 18,
-                    color: const Color(0xFFCC0000),
-                  ),
+                  Container(width: 3, height: 18, color: const Color(0xFFCC0000)),
                   const SizedBox(width: 10),
                   const Text(
                     "EFORWARD SETTINGS",
@@ -188,84 +357,38 @@ class _SettingsPageState extends State<SettingsPage> {
             Center(
               child: Column(
                 children: [
-                  // Avatar with camera badge
-                  Stack(
-                    children: [
-                      GestureDetector(
-                        onTap: _pickImage,
-                        child: Container(
-                          width: 120,
-                          height: 120,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF0F0F0),
-                            border: Border.all(
-                              color: const Color(0xFFDDDDDD),
-                              width: 1.5,
-                            ),
-                          ),
-                          child: _profileImage != null
-                              ? Image.file(_profileImage!, fit: BoxFit.cover)
-                              : const Icon(
-                                  Icons.person,
-                                  size: 50,
-                                  color: Color(0xFF999999),
-                                ),
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: GestureDetector(
-                          onTap: _pickImage,
-                          child: Container(
-                            width: 30,
-                            height: 30,
-                            color: const Color(0xFFCC0000),
-                            child: const Icon(
-                              Icons.camera_alt,
-                              size: 15,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+
+                  // Avatar
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F0F0),
+                      border: Border.all(color: const Color(0xFFDDDDDD), width: 1.5),
+                    ),
+                    child: _profileImage != null
+                        ? Image.file(_profileImage!, fit: BoxFit.cover)
+                        : const Icon(Icons.person, size: 50, color: Color(0xFF999999)),
                   ),
 
                   const SizedBox(height: 16),
 
-                  // Name + edit icon
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          _displayName,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.5,
-                            color: Color(0xFF1A1A1A),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: _showEditNameDialog,
-                        child: const Icon(
-                          Icons.edit_outlined,
-                          size: 16,
-                          color: Color(0xFFCC0000),
-                        ),
-                      ),
-                    ],
+                  // Name
+                  Text(
+                    _displayName,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.5,
+                      color: Color(0xFF1A1A1A),
+                    ),
                   ),
 
                   const SizedBox(height: 4),
 
                   Text(
-                    _role,
+                    _emailadd,
                     style: const TextStyle(
                       fontSize: 14,
                       color: Color(0xFF555555),
@@ -276,23 +399,16 @@ class _SettingsPageState extends State<SettingsPage> {
 
                   const SizedBox(height: 12),
 
-                  const Text(
-                    "ID: 001 · UNIT: 01",
+                  Text(
+                    _employeeID,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 15,
                       color: Colors.black38,
                       letterSpacing: 1,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
-                    "STATUS: ACTIVE",
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.black38,
-                      letterSpacing: 1,
-                    ),
-                  ),
+                  
                 ],
               ),
             ),
@@ -300,18 +416,27 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 32),
             const Divider(height: 1, color: Color(0xFFEEEEEE)),
 
+            // Edit Profile
+            _buildMenuItem(
+              context,
+              icon: Icons.person_outline,
+              iconColor: const Color(0xFFCC0000),
+              label: "ACCOUNT",
+              title: "EDIT PROFILE",
+              trailing: const Icon(Icons.chevron_right, color: Color(0xFFAAAAAA), size: 20),
+              onTap: _showEditProfileSheet,
+            ),
+
+            const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
             // Change Password
             _buildMenuItem(
               context,
               icon: Icons.lock_outline,
               iconColor: const Color(0xFFCC0000),
-              label: "SYSTEM ACCESS",
+              label: "SECURITY",
               title: "CHANGE PASSWORD",
-              trailing: const Icon(
-                Icons.chevron_right,
-                color: Color(0xFFAAAAAA),
-                size: 20,
-              ),
+              trailing: const Icon(Icons.chevron_right, color: Color(0xFFAAAAAA), size: 20),
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
@@ -327,12 +452,11 @@ class _SettingsPageState extends State<SettingsPage> {
               iconColor: const Color(0xFF555555),
               label: "SESSION MANAGEMENT",
               title: "LOGOUT",
-              trailing: const Icon(
-                Icons.power_settings_new,
-                color: Color(0xFFAAAAAA),
-                size: 18,
+              trailing: const Icon(Icons.power_settings_new, color: Color(0xFFAAAAAA), size: 18),
+              onTap: () => Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
               ),
-              onTap: _handleLogout,
             ),
 
             const Divider(height: 1, color: Color(0xFFEEEEEE)),

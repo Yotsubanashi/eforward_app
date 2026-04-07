@@ -103,7 +103,101 @@ class AuthApi {
       return AuthLoginResult(
         isSuccess: false,
         statusCode: response.statusCode,
-        message: _extractMessage(decodedBody) ?? 'Failed to load user profile.',
+        message:
+            _extractMessage(decodedBody) ?? 'Failed to load user profile.',
+        data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+      );
+    } catch (error) {
+      return AuthLoginResult(
+        isSuccess: false,
+        statusCode: 0,
+        message: 'Network error: $error',
+      );
+    }
+  }
+
+  // ─── Fetch signature image/date from API ───────────────────────────────────
+  Future<AuthLoginResult> getSignature({required String token}) async {
+    final uri = Uri.parse('$baseUrl/upload/signature/image');
+
+    try {
+      final response = await _client.get(
+        uri,
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final dynamic decodedBody = response.body.isNotEmpty
+          ? jsonDecode(response.body)
+          : null;
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return AuthLoginResult(
+          isSuccess: true,
+          statusCode: response.statusCode,
+          message: _extractMessage(decodedBody) ?? 'Signature loaded.',
+          data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+        );
+      }
+
+      return AuthLoginResult(
+        isSuccess: false,
+        statusCode: response.statusCode,
+        message: _extractMessage(decodedBody) ?? 'Failed to load signature.',
+        data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+      );
+    } catch (error) {
+      return AuthLoginResult(
+        isSuccess: false,
+        statusCode: 0,
+        message: 'Network error: $error',
+      );
+    }
+  }
+
+  // ─── Upload signature image to API ────────────────────────────────────────
+  Future<AuthLoginResult> uploadSignature({
+    required String token,
+    required List<int> imageBytes,
+    required String fileName,
+  }) async {
+    final uri = Uri.parse('$baseUrl/upload/signature');
+
+    try {
+      final request = http.MultipartRequest('POST', uri)
+        ..headers['Authorization'] = 'Bearer $token'
+        ..headers['Accept'] = 'application/json'
+        ..files.add(
+          http.MultipartFile.fromBytes(
+            'signature', // 👈 FormData field name
+            imageBytes,
+            filename: fileName,
+          ),
+        );
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      final dynamic decodedBody = response.body.isNotEmpty
+          ? jsonDecode(response.body)
+          : null;
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return AuthLoginResult(
+          isSuccess: true,
+          statusCode: response.statusCode,
+          message: _extractMessage(decodedBody) ?? 'Signature uploaded.',
+          data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+        );
+      }
+
+      return AuthLoginResult(
+        isSuccess: false,
+        statusCode: response.statusCode,
+        message:
+            _extractMessage(decodedBody) ?? 'Signature upload failed.',
         data: decodedBody is Map<String, dynamic> ? decodedBody : null,
       );
     } catch (error) {

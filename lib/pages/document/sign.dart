@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/auth_api.dart'; // 👈 import API
 
 // ─── Signature Painter ───────────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ class SignScreen extends StatefulWidget {
 class _SignScreenState extends State<SignScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final AuthApi _authApi = AuthApi(); // 👈 API instance
 
   // Draw tab
   final List<List<Offset?>> _strokes = [];
@@ -82,6 +84,7 @@ class _SignScreenState extends State<SignScreen>
 
   @override
   void dispose() {
+    _authApi.dispose(); // 👈 dispose API
     _tabController.dispose();
     _typeController.dispose();
     super.dispose();
@@ -113,6 +116,65 @@ class _SignScreenState extends State<SignScreen>
   Future<void> _pickImage() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked != null) setState(() => _uploadedImage = File(picked.path));
+  }
+
+  // 👇 Upload signature image to API
+  Future<void> _uploadSignatureToApi(
+      SharedPreferences prefs, int currentTab) async {
+    final token = prefs.getString('access_token') ?? '';
+
+    if (token.isEmpty) {
+      debugPrint('No token found, skipping signature upload.');
+      return;
+    }
+
+    List<int>? imageBytes;
+    String fileName = 'signature.png';
+
+    if (currentTab == 0) {
+      // Draw — capture canvas as PNG bytes
+      try {
+        final boundary = _canvasKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?;
+        if (boundary != null) {
+          final image = await boundary.toImage(pixelRatio: 3.0);
+          final byteData =
+              await image.toByteData(format: ui.ImageByteFormat.png);
+          if (byteData != null) {
+            imageBytes = byteData.buffer.asUint8List();
+          }
+        }
+      } catch (e) {
+        debugPrint('Canvas capture error: $e');
+      }
+      fileName = 'signature_draw.png';
+    } else if (currentTab == 1) {
+      // Type — no image to upload
+      debugPrint('Type signature — skipping image upload.');
+      return;
+    } else if (currentTab == 2 && _uploadedImage != null) {
+      // Capture — read file bytes
+      imageBytes = await _uploadedImage!.readAsBytes();
+      fileName = 'signature_capture.png';
+    }
+
+    if (imageBytes == null) {
+      debugPrint('No image bytes to upload.');
+      return;
+    }
+
+    final result = await _authApi.uploadSignature(
+      token: token,
+      imageBytes: imageBytes,
+      fileName: fileName,
+    );
+
+    if (result.isSuccess) {
+      debugPrint('Signature uploaded successfully: ${result.data}');
+    } else {
+      debugPrint(
+          'Signature upload failed [${result.statusCode}]: ${result.message}');
+    }
   }
 
   Future<void> _saveSignature() async {
@@ -154,14 +216,12 @@ class _SignScreenState extends State<SignScreen>
     if (currentTab == 0) {
       // Draw — capture canvas as base64 PNG
       try {
-        final boundary =
-            _canvasKey.currentContext?.findRenderObject()
-                as RenderRepaintBoundary?;
+        final boundary = _canvasKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?;
         if (boundary != null) {
           final image = await boundary.toImage(pixelRatio: 3.0);
-          final byteData = await image.toByteData(
-            format: ui.ImageByteFormat.png,
-          );
+          final byteData =
+              await image.toByteData(format: ui.ImageByteFormat.png);
           if (byteData != null) {
             final base64Str = base64Encode(byteData.buffer.asUint8List());
             await prefs.setString('signature_draw_data', base64Str);
@@ -187,32 +247,23 @@ class _SignScreenState extends State<SignScreen>
     // Save timestamp in Philippine time (PHT/GMT+8)
     final now = DateTime.now().toUtc().add(const Duration(hours: 8));
     final months = [
-      'JAN',
-      'FEB',
-      'MAR',
-      'APR',
-      'MAY',
-      'JUN',
-      'JUL',
-      'AUG',
-      'SEP',
-      'OCT',
-      'NOV',
-      'DEC',
+      'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+      'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
     ];
     final timestamp =
         '${months[now.month - 1]} ${now.day}, ${now.year} · ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} PHT';
     await prefs.setString('signature_timestamp', timestamp);
-    await prefs.setBool('has_signature', true); // 👈 mark signature as saved
+    await prefs.setBool('has_signature', true);
+
+    // 👇 Upload to API after saving locally
+    await _uploadSignatureToApi(prefs, currentTab);
 
     setState(() => _isSaving = false);
 
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) => const ViewSignPage(),
-        ), // 👈 go to view
+        MaterialPageRoute(builder: (_) => const ViewSignPage()),
       );
     }
   }
@@ -225,23 +276,17 @@ class _SignScreenState extends State<SignScreen>
         backgroundColor: const Color(0xFFF4F5F7),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back,
-            color: Color(0xFF1A1A1A),
-            size: 20,
-          ),
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF1A1A1A), size: 20),
           onPressed: () async {
             final prefs = await SharedPreferences.getInstance();
             final hasSignature = prefs.getBool('has_signature') ?? false;
             if (mounted) {
               if (hasSignature) {
-                // Came from ViewSignPage (editing) — go back to it
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(builder: (_) => const ViewSignPage()),
                 );
               } else {
-                // First time — just go back
                 Navigator.pop(context);
               }
             }
@@ -300,11 +345,7 @@ class _SignScreenState extends State<SignScreen>
             ),
             const Text(
               "Institutional-grade verification for secure documentation. Create, type, or upload your legal identifier below.",
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.black45,
-                height: 1.6,
-              ),
+              style: TextStyle(fontSize: 12, color: Colors.black45, height: 1.6),
             ),
             const SizedBox(height: 24),
 
@@ -360,9 +401,8 @@ class _SignScreenState extends State<SignScreen>
                 onPressed: _isSaving ? null : _saveSignature,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFCC0000),
-                  disabledBackgroundColor: const Color(
-                    0xFFCC0000,
-                  ).withOpacity(0.6),
+                  disabledBackgroundColor:
+                      const Color(0xFFCC0000).withOpacity(0.6),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -380,11 +420,7 @@ class _SignScreenState extends State<SignScreen>
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: const [
-                          Icon(
-                            Icons.draw_outlined,
-                            color: Colors.white,
-                            size: 18,
-                          ),
+                          Icon(Icons.draw_outlined, color: Colors.white, size: 18),
                           SizedBox(width: 8),
                           Text(
                             "SAVE SIGNATURE",
@@ -433,10 +469,7 @@ class _SignScreenState extends State<SignScreen>
                         Text(
                           "This signature will be cryptographically bound to your E-FORWARD identity. Ensure the signature is clear and legible for high-security verification protocols.",
                           style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.black54,
-                            height: 1.6,
-                          ),
+                              fontSize: 12, color: Colors.black54, height: 1.6),
                         ),
                       ],
                     ),
@@ -485,9 +518,7 @@ class _SignScreenState extends State<SignScreen>
                         Padding(
                           padding: EdgeInsets.symmetric(horizontal: 24),
                           child: Divider(
-                            color: Color(0xFFCCCCCC),
-                            thickness: 1,
-                          ),
+                              color: Color(0xFFCCCCCC), thickness: 1),
                         ),
                         SizedBox(height: 6),
                         Text(
@@ -516,15 +547,12 @@ class _SignScreenState extends State<SignScreen>
                 children: const [
                   Icon(Icons.undo, size: 16, color: Colors.black45),
                   SizedBox(width: 4),
-                  Text(
-                    "UNDO",
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.black45,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1,
-                    ),
-                  ),
+                  Text("UNDO",
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.black45,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1)),
                 ],
               ),
             ),
@@ -535,15 +563,12 @@ class _SignScreenState extends State<SignScreen>
                 children: const [
                   Icon(Icons.close, size: 16, color: Colors.black45),
                   SizedBox(width: 4),
-                  Text(
-                    "CLEAR",
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.black45,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1,
-                    ),
-                  ),
+                  Text("CLEAR",
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.black45,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1)),
                 ],
               ),
             ),
@@ -597,9 +622,7 @@ class _SignScreenState extends State<SignScreen>
         return base.copyWith(fontStyle: FontStyle.normal, fontFamily: 'serif');
       case 'Script':
         return base.copyWith(
-          fontStyle: FontStyle.italic,
-          fontFamily: 'sans-serif',
-        );
+            fontStyle: FontStyle.italic, fontFamily: 'sans-serif');
       default:
         return base;
     }
@@ -653,10 +676,8 @@ class _SignScreenState extends State<SignScreen>
               child: GestureDetector(
                 onTap: () => setState(() => _selectedFont = font),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: selected
                         ? const Color(0xFFCC0000)
@@ -703,11 +724,8 @@ class _SignScreenState extends State<SignScreen>
                   : Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: const [
-                        Icon(
-                          Icons.upload_file_outlined,
-                          size: 40,
-                          color: Colors.black12,
-                        ),
+                        Icon(Icons.upload_file_outlined,
+                            size: 40, color: Colors.black12),
                         SizedBox(height: 12),
                         Text(
                           "TAP TO UPLOAD SIGNATURE",
@@ -721,7 +739,8 @@ class _SignScreenState extends State<SignScreen>
                         SizedBox(height: 4),
                         Text(
                           "JPG, PNG supported",
-                          style: TextStyle(fontSize: 11, color: Colors.black26),
+                          style:
+                              TextStyle(fontSize: 11, color: Colors.black26),
                         ),
                       ],
                     ),
