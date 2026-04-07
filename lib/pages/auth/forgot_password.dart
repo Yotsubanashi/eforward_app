@@ -223,7 +223,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               // Back to Login
               Center(
                 child: TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  ),
                   child: const Text(
                     "BACK TO LOGIN",
                     style: TextStyle(

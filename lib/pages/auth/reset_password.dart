@@ -92,7 +92,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             color: Color(0xFF1A1A1A),
             size: 20,
           ),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+          ),
         ),
         title: const Text(
           "SECURITY",

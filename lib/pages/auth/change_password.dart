@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-// 👈 import your login screen
+import 'package:eforward_app/pages/settings/settings.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -104,7 +104,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             color: Color(0xFF1A1A1A),
             size: 20,
           ),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const SettingsPage()),
+          ),
         ),
         title: const Text(
           "SECURITY",

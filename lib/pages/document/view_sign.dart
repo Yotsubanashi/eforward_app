@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
+import 'package:eforward_app/pages/dashboard/dashboard.dart';
 import '../../services/auth_api.dart';
 
 // ─── Signature Painter ───────────────────────────────────────────────────────
@@ -148,13 +149,14 @@ class _ViewSignPageState extends State<ViewSignPage>
 
       // ─── Extract image URL ─────────────────────────────────────────────────
       // Adjust the key based on what you see in the debug log above
-      final imageUrl = result.data?['imageUrl']
-          ?? result.data?['url']
-          ?? result.data?['signatureUrl']
-          ?? result.data?['image']
-          ?? result.data?['filePath']
-          ?? result.data?['path']
-          ?? '';
+      final imageUrl =
+          result.data?['imageUrl'] ??
+          result.data?['url'] ??
+          result.data?['signatureUrl'] ??
+          result.data?['image'] ??
+          result.data?['filePath'] ??
+          result.data?['path'] ??
+          '';
 
       if (imageUrl is String && imageUrl.isNotEmpty) {
         setState(() => _apiSignatureUrl = imageUrl);
@@ -162,18 +164,29 @@ class _ViewSignPageState extends State<ViewSignPage>
       }
 
       // ─── Extract date ──────────────────────────────────────────────────────
-      final rawDate = result.data?['signedAt']
-          ?? result.data?['createdAt']
-          ?? result.data?['date']
-          ?? result.data?['updatedAt']
-          ?? '';
+      final rawDate =
+          result.data?['signedAt'] ??
+          result.data?['createdAt'] ??
+          result.data?['date'] ??
+          result.data?['updatedAt'] ??
+          '';
 
       if (rawDate is String && rawDate.isNotEmpty) {
         try {
           final parsed = DateTime.parse(rawDate).toLocal();
           final months = [
-            'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-            'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
+            'JAN',
+            'FEB',
+            'MAR',
+            'APR',
+            'MAY',
+            'JUN',
+            'JUL',
+            'AUG',
+            'SEP',
+            'OCT',
+            'NOV',
+            'DEC',
           ];
           final formatted =
               '${months[parsed.month - 1]} ${parsed.day}, ${parsed.year}';
@@ -186,7 +199,8 @@ class _ViewSignPageState extends State<ViewSignPage>
       }
     } else {
       debugPrint(
-          'Signature API failed [${result.statusCode}]: ${result.message}');
+        'Signature API failed [${result.statusCode}]: ${result.message}',
+      );
     }
   }
 
@@ -234,12 +248,14 @@ class _ViewSignPageState extends State<ViewSignPage>
 
     if (currentTab == 0) {
       try {
-        final boundary = _canvasKey.currentContext
-            ?.findRenderObject() as RenderRepaintBoundary?;
+        final boundary =
+            _canvasKey.currentContext?.findRenderObject()
+                as RenderRepaintBoundary?;
         if (boundary != null) {
           final image = await boundary.toImage(pixelRatio: 3.0);
-          final byteData =
-              await image.toByteData(format: ui.ImageByteFormat.png);
+          final byteData = await image.toByteData(
+            format: ui.ImageByteFormat.png,
+          );
           if (byteData != null) {
             final base64Str = base64Encode(byteData.buffer.asUint8List());
             await prefs.setString('signature_draw_data', base64Str);
@@ -274,8 +290,18 @@ class _ViewSignPageState extends State<ViewSignPage>
     // Save local timestamp
     final now = DateTime.now();
     final months = [
-      'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-      'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC',
     ];
     final timestamp = '${months[now.month - 1]} ${now.day}, ${now.year}';
     await prefs.setString('signature_timestamp', timestamp);
@@ -395,7 +421,11 @@ class _ViewSignPageState extends State<ViewSignPage>
         backgroundColor: const Color(0xFFF4F5F7),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF1A1A1A), size: 20),
+          icon: const Icon(
+            Icons.arrow_back,
+            color: Color(0xFF1A1A1A),
+            size: 20,
+          ),
           onPressed: () {
             if (_isEditMode) {
               setState(() {
@@ -403,7 +433,10 @@ class _ViewSignPageState extends State<ViewSignPage>
                 _strokes.clear();
               });
             } else {
-              Navigator.pop(context);
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const DashboardPage()),
+              );
             }
           },
         ),
@@ -460,7 +493,11 @@ class _ViewSignPageState extends State<ViewSignPage>
             ),
             const Text(
               "Institutional-grade verification for secure documentation. Create, type, or upload your legal identifier below.",
-              style: TextStyle(fontSize: 12, color: Colors.black45, height: 1.6),
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.black45,
+                height: 1.6,
+              ),
             ),
 
             const SizedBox(height: 24),
@@ -474,8 +511,9 @@ class _ViewSignPageState extends State<ViewSignPage>
                 ignoring: !_isEditMode,
                 child: TabBar(
                   controller: _tabController,
-                  labelColor:
-                      _isEditMode ? const Color(0xFFCC0000) : Colors.black38,
+                  labelColor: _isEditMode
+                      ? const Color(0xFFCC0000)
+                      : Colors.black38,
                   unselectedLabelColor: Colors.black26,
                   indicatorColor: _isEditMode
                       ? const Color(0xFFCC0000)
@@ -566,14 +604,16 @@ class _ViewSignPageState extends State<ViewSignPage>
                 onPressed: _isSaving
                     ? null
                     : _isEditMode
-                        ? _saveSignature
-                        : _enterEditMode,
+                    ? _saveSignature
+                    : _enterEditMode,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFCC0000),
-                  disabledBackgroundColor:
-                      const Color(0xFFCC0000).withOpacity(0.6),
+                  disabledBackgroundColor: const Color(
+                    0xFFCC0000,
+                  ).withOpacity(0.6),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4)),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                   elevation: 0,
                 ),
                 child: _isSaving
@@ -581,7 +621,9 @@ class _ViewSignPageState extends State<ViewSignPage>
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -640,7 +682,10 @@ class _ViewSignPageState extends State<ViewSignPage>
                         Text(
                           "This signature will be cryptographically bound to your E-FORWARD identity. Ensure the signature is clear and legible for high-security verification protocols.",
                           style: TextStyle(
-                              fontSize: 12, color: Colors.black54, height: 1.6),
+                            fontSize: 12,
+                            color: Colors.black54,
+                            height: 1.6,
+                          ),
                         ),
                       ],
                     ),
@@ -681,8 +726,10 @@ class _ViewSignPageState extends State<ViewSignPage>
                         child: RepaintBoundary(
                           key: _canvasKey,
                           child: CustomPaint(
-                            painter: _SignaturePainter(_strokes,
-                                penColor: _penColor),
+                            painter: _SignaturePainter(
+                              _strokes,
+                              penColor: _penColor,
+                            ),
                             size: Size.infinite,
                           ),
                         ),
@@ -694,10 +741,11 @@ class _ViewSignPageState extends State<ViewSignPage>
                             children: [
                               SizedBox(height: 120),
                               Padding(
-                                padding:
-                                    EdgeInsets.symmetric(horizontal: 24),
+                                padding: EdgeInsets.symmetric(horizontal: 24),
                                 child: Divider(
-                                    color: Color(0xFFCCCCCC), thickness: 1),
+                                  color: Color(0xFFCCCCCC),
+                                  thickness: 1,
+                                ),
                               ),
                               SizedBox(height: 6),
                               Text(
@@ -728,12 +776,15 @@ class _ViewSignPageState extends State<ViewSignPage>
                   children: const [
                     Icon(Icons.undo, size: 16, color: Colors.black45),
                     SizedBox(width: 4),
-                    Text("UNDO",
-                        style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.black45,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1)),
+                    Text(
+                      "UNDO",
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.black45,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -744,12 +795,15 @@ class _ViewSignPageState extends State<ViewSignPage>
                   children: const [
                     Icon(Icons.close, size: 16, color: Colors.black45),
                     SizedBox(width: 4),
-                    Text("CLEAR",
-                        style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.black45,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1)),
+                    Text(
+                      "CLEAR",
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.black45,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -845,8 +899,10 @@ class _ViewSignPageState extends State<ViewSignPage>
               child: GestureDetector(
                 onTap: () => setState(() => _selectedFont = font),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: selected
                         ? const Color(0xFFCC0000)
@@ -893,8 +949,11 @@ class _ViewSignPageState extends State<ViewSignPage>
                   : Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: const [
-                        Icon(Icons.upload_file_outlined,
-                            size: 40, color: Colors.black12),
+                        Icon(
+                          Icons.upload_file_outlined,
+                          size: 40,
+                          color: Colors.black12,
+                        ),
                         SizedBox(height: 12),
                         Text(
                           "TAP TO UPLOAD SIGNATURE",
@@ -908,8 +967,7 @@ class _ViewSignPageState extends State<ViewSignPage>
                         SizedBox(height: 4),
                         Text(
                           "JPG, PNG supported",
-                          style:
-                              TextStyle(fontSize: 11, color: Colors.black26),
+                          style: TextStyle(fontSize: 11, color: Colors.black26),
                         ),
                       ],
                     ),
@@ -924,12 +982,15 @@ class _ViewSignPageState extends State<ViewSignPage>
               children: const [
                 Icon(Icons.refresh, size: 16, color: Colors.black45),
                 SizedBox(width: 4),
-                Text("REPLACE IMAGE",
-                    style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.black45,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1)),
+                Text(
+                  "REPLACE IMAGE",
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.black45,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1,
+                  ),
+                ),
               ],
             ),
           ),
