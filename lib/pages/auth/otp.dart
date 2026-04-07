@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_api.dart';
 import '../dashboard/dashboard.dart';
-import 'login.dart';
 
 class OtpScreen extends StatefulWidget {
   final String email;
@@ -37,8 +36,12 @@ class _OtpScreenState extends State<OtpScreen> {
   @override
   void dispose() {
     _timer?.cancel();
-    for (var c in _controllers) c.dispose();
-    for (var f in _focusNodes) f.dispose();
+    for (var c in _controllers) {
+      c.dispose();
+    }
+    for (var f in _focusNodes) {
+      f.dispose();
+    }
     _authApi.dispose();
     super.dispose();
   }
@@ -73,7 +76,9 @@ class _OtpScreenState extends State<OtpScreen> {
       return;
     }
 
-    debugPrint('Failed to resend OTP [${result.statusCode}]: ${result.message}');
+    debugPrint(
+      'Failed to resend OTP [${result.statusCode}]: ${result.message}',
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(result.message),
@@ -128,7 +133,9 @@ class _OtpScreenState extends State<OtpScreen> {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Authentication token not received. Please try again."),
+            content: Text(
+              "Authentication token not received. Please try again.",
+            ),
             backgroundColor: Color(0xFFCC0000),
           ),
         );
@@ -164,7 +171,9 @@ class _OtpScreenState extends State<OtpScreen> {
         return;
       }
 
-      debugPrint('Failed to load user profile [${userResult.statusCode}]: ${userResult.message}');
+      debugPrint(
+        'Failed to load user profile [${userResult.statusCode}]: ${userResult.message}',
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(userResult.message),
@@ -176,7 +185,9 @@ class _OtpScreenState extends State<OtpScreen> {
 
     setState(() => _isLoading = false);
 
-    debugPrint('OTP verification failed [${result.statusCode}]: ${result.message}');
+    debugPrint(
+      'OTP verification failed [${result.statusCode}]: ${result.message}',
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(result.message),
@@ -191,8 +202,14 @@ class _OtpScreenState extends State<OtpScreen> {
 
     // Common token field names to check
     const tokenKeys = [
-      'accessToken', 'access_token', 'token', 'jwt',
-      'authToken', 'auth_token', 'bearerToken', 'bearer_token',
+      'accessToken',
+      'access_token',
+      'token',
+      'jwt',
+      'authToken',
+      'auth_token',
+      'bearerToken',
+      'bearer_token',
     ];
 
     // Check top level
@@ -238,7 +255,11 @@ class _OtpScreenState extends State<OtpScreen> {
         backgroundColor: const Color(0xFFF8F8F8),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF1A1A1A), size: 20),
+          icon: const Icon(
+            Icons.arrow_back,
+            color: Color(0xFF1A1A1A),
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
@@ -292,7 +313,11 @@ class _OtpScreenState extends State<OtpScreen> {
                   ),
                 ],
               ),
-              child: const Icon(Icons.verified_user, color: Color(0xFFCC0000), size: 32),
+              child: const Icon(
+                Icons.verified_user,
+                color: Color(0xFFCC0000),
+                size: 32,
+              ),
             ),
 
             const SizedBox(height: 24),
@@ -312,7 +337,11 @@ class _OtpScreenState extends State<OtpScreen> {
             const Text(
               "Enter the 6-digit code sent to your registered\ninstitutional email address.",
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: Colors.black45, height: 1.6),
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.black45,
+                height: 1.6,
+              ),
             ),
 
             const SizedBox(height: 36),
@@ -333,15 +362,22 @@ class _OtpScreenState extends State<OtpScreen> {
                 onPressed: _isLoading ? null : _verifyCode,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFCC0000),
-                  disabledBackgroundColor: const Color(0xFFCC0000).withOpacity(0.7),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                  disabledBackgroundColor: const Color(
+                    0xFFCC0000,
+                  ).withOpacity(0.7),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                   elevation: 0,
                 ),
                 child: _isLoading
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -356,7 +392,11 @@ class _OtpScreenState extends State<OtpScreen> {
                             ),
                           ),
                           SizedBox(width: 8),
-                          Icon(Icons.chevron_right, color: Colors.white, size: 20),
+                          Icon(
+                            Icons.chevron_right,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                         ],
                       ),
               ),
@@ -433,7 +473,11 @@ class _OtpScreenState extends State<OtpScreen> {
                   SizedBox(height: 6),
                   Text(
                     "This verification step is mandatory for all high-value institutional transfers. Ensure you are on a secure network before proceeding.",
-                    style: TextStyle(fontSize: 12, color: Colors.black54, height: 1.6),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.black54,
+                      height: 1.6,
+                    ),
                   ),
                 ],
               ),

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/pages/dashboard/dashboard.dart';
 import 'package:eforward_app/pages/settings/settings.dart';
@@ -43,7 +44,29 @@ class BottomNavigator extends StatelessWidget {
         }
         break;
       case 1:
-        final hasSignature = prefs.getBool('has_signature') ?? false;
+        // Check local first
+        bool hasSignature = prefs.getBool('has_signature') ?? false;
+        final token = prefs.getString('access_token') ?? '';
+
+        // If not found locally, check API
+        if (!hasSignature && token.isNotEmpty) {
+          try {
+            final response = await http.get(
+              Uri.parse(
+                'https://eforward-api.ardentnetworks.com.ph/api/upload/signature/image',
+              ),
+              headers: {'Authorization': 'Bearer $token'},
+            );
+            if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+              hasSignature = true;
+              await prefs.setBool('has_signature', true); // save for next time
+              debugPrint('Signature found on server, updating local flag.');
+            }
+          } catch (e) {
+            debugPrint('Signature check error: $e');
+          }
+        }
+
         if (context.mounted) {
           Navigator.pushReplacement(
             context,
