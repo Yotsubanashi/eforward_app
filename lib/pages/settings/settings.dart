@@ -132,12 +132,15 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: ElevatedButton(
                   onPressed: () {
                     setState(() {
-                      if (firstNameController.text.trim().isNotEmpty)
+                      if (firstNameController.text.trim().isNotEmpty) {
                         _firstName = firstNameController.text.trim();
-                      if (middleNameController.text.trim().isNotEmpty)
+                      }
+                      if (middleNameController.text.trim().isNotEmpty) {
                         _middleName = middleNameController.text.trim();
-                      if (lastNameController.text.trim().isNotEmpty)
+                      }
+                      if (lastNameController.text.trim().isNotEmpty) {
                         _lastName = lastNameController.text.trim();
+                      }
                     });
                     Navigator.pop(context);
                   },

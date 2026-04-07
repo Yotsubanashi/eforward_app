@@ -58,7 +58,7 @@ class ViewSignPage extends StatefulWidget {
 
 class _ViewSignPageState extends State<ViewSignPage>
     with SingleTickerProviderStateMixin {
-  int _selectedIndex = 1;
+  final int _selectedIndex = 1;
   bool _isEditMode = false;
 
   late TabController _tabController;

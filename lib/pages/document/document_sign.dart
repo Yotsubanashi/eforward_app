@@ -97,7 +97,7 @@ class _DocumentSignScreenState extends State<DocumentSignScreen> {
 
     // Generate timestamp in Philippine time (PHT/GMT+8)
     final now = DateTime.now().toUtc().add(const Duration(hours: 8));
-    _signedTimestamp = DateFormat('MMM dd, yyyy · HH:mm').format(now) + ' PHT';
+    _signedTimestamp = '${DateFormat('MMM dd, yyyy · HH:mm').format(now)} PHT';
 
     setState(() => _showSignatureOverlay = true);
 
