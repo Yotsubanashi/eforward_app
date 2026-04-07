@@ -91,6 +91,13 @@ class _OtpScreenState extends State<OtpScreen> {
 
   String get _otpCode => _controllers.map((c) => c.text).join();
 
+  void _clearOtpFields() {
+    for (var controller in _controllers) {
+      controller.clear();
+    }
+    _focusNodes[0].requestFocus();
+  }
+
   Future<void> _verifyCode() async {
     if (_otpCode.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -128,6 +135,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
       if (token == null || token.isEmpty) {
         setState(() => _isLoading = false);
+        _clearOtpFields();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -162,6 +170,8 @@ class _OtpScreenState extends State<OtpScreen> {
         return;
       }
 
+      setState(() => _isLoading = false);
+      _clearOtpFields();
       debugPrint(
         'Failed to load user profile [${userResult.statusCode}]: ${userResult.message}',
       );
@@ -175,7 +185,7 @@ class _OtpScreenState extends State<OtpScreen> {
     }
 
     setState(() => _isLoading = false);
-
+    _clearOtpFields();
     debugPrint(
       'OTP verification failed [${result.statusCode}]: ${result.message}',
     );
@@ -197,6 +207,9 @@ class _OtpScreenState extends State<OtpScreen> {
     }
     if (value.length == 1 && index < 5) {
       _focusNodes[index + 1].requestFocus();
+    } else if (value.length == 1 && index == 5) {
+      // Auto-submit when last digit is entered
+      _verifyCode();
     }
     if (value.isEmpty && index > 0) {
       _focusNodes[index - 1].requestFocus();
@@ -365,18 +378,18 @@ class _OtpScreenState extends State<OtpScreen> {
             const SizedBox(height: 20),
 
             // Resend Code
-            TextButton(
-              onPressed: _secondsRemaining == 0 ? _resendOtp : null,
-              child: const Text(
-                "RESEND CODE",
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.5,
-                  color: Color(0xFF1A1A1A),
-                ),
-              ),
-            ),
+            // TextButton(
+            //   onPressed: _secondsRemaining == 0 ? _resendOtp : null,
+            //   child: const Text(
+            //     "RESEND CODE",
+            //     style: TextStyle(
+            //       fontSize: 11,
+            //       fontWeight: FontWeight.w700,
+            //       letterSpacing: 1.5,
+            //       color: Color(0xFF1A1A1A),
+            //     ),
+            //   ),
+            // ),
 
             // Timer
             RichText(
@@ -470,11 +483,17 @@ class _OtpScreenState extends State<OtpScreen> {
           fontSize: 20,
           fontWeight: FontWeight.w800,
           color: Color(0xFF1A1A1A),
+          height: 1.0,
         ),
         decoration: InputDecoration(
           counterText: "",
           filled: true,
           fillColor: Colors.white,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 12,
+            horizontal: 0,
+          ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(4),
             borderSide: const BorderSide(color: Color(0xFFDDDDDD), width: 1.5),
