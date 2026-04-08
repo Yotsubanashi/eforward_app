@@ -32,28 +32,32 @@ class _DashboardPageState extends State<DashboardPage> {
 
   void _loadUserData() {
     if (widget.userData != null) {
-      final userData = widget.userData!['data'] as Map<String, dynamic>?;
-      if (userData != null) {
-        _userName = '${userData['fname']} ${userData['lname']}';
-        _userEmail = userData['email_add'] ?? 'N/A';
-        _userRole = userData['role'] ?? 'USER';
+      debugPrint('Full userData: ${widget.userData}');
+      
+      // Extract user info from userData['user']
+      final user = widget.userData!['user'] as Map<String, dynamic>?;
+      if (user != null) {
+        _userName = '${user['fname'] ?? ''} ${user['lname'] ?? ''}';
+        _userEmail = user['email_add'] ?? 'N/A';
+        _userRole = user['role'] ?? 'USER';
+      }
 
-        final modulesList = userData['modules'] as List?;
+      // Extract modules from userData['permissions']['modules']
+      final permissions = widget.userData!['permissions'] as Map<String, dynamic>?;
+      if (permissions != null) {
+        final modulesList = permissions['modules'] as List?;
         _userModules = [];
         if (modulesList != null) {
-          for (var item in modulesList) {
-            if (item is Map<String, dynamic>) {
-              final module = item['module'] as Map<String, dynamic>?;
-              if (module != null) {
-                _userModules.add(module);
-              }
+          for (var module in modulesList) {
+            if (module is Map<String, dynamic>) {
+              _userModules.add(module);
             }
           }
         }
-
-        debugPrint('User: $_userName, Email: $_userEmail, Role: $_userRole');
-        debugPrint('Modules: ${_userModules.length} loaded');
       }
+
+      debugPrint('User: $_userName, Email: $_userEmail, Role: $_userRole');
+      debugPrint('Modules: ${_userModules.length} loaded');
     }
   }
 
