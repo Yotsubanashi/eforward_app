@@ -396,4 +396,5 @@ class AuthLoginResult {
   final int statusCode;
   final String message;
   final Map<String, dynamic>? data;
+  final bool requiredOTP;
 }
