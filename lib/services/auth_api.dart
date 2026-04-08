@@ -98,15 +98,16 @@ class AuthApi {
           statusCode: response.statusCode,
           message: _extractMessage(decodedBody) ?? 'User profile loaded.',
           data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+          requiredOTP: false,
         );
       }
 
       return AuthLoginResult(
         isSuccess: false,
         statusCode: response.statusCode,
-        message:
-            _extractMessage(decodedBody) ?? 'Failed to load user profile.',
+        message: _extractMessage(decodedBody) ?? 'Failed to load user profile.',
         data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+        requiredOTP: false,
       );
     } catch (error) {
       return AuthLoginResult(
@@ -124,16 +125,15 @@ class AuthApi {
     try {
       final response = await _client.get(
         uri,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Accept': '*/*',
-        },
+        headers: {'Authorization': 'Bearer $token', 'Accept': '*/*'},
       );
 
       debugPrint('Signature status: ${response.statusCode}');
       debugPrint('Signature content-type: ${response.headers['content-type']}');
       debugPrint('Signature bytes: ${response.bodyBytes.length}');
-      debugPrint('Signature body preview: ${response.body.length > 300 ? response.body.substring(0, 300) : response.body}');
+      debugPrint(
+        'Signature body preview: ${response.body.length > 300 ? response.body.substring(0, 300) : response.body}',
+      );
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final contentType = response.headers['content-type'] ?? '';
@@ -166,25 +166,37 @@ class AuthApi {
               }
             });
             debugPrint('===========================');
-            final imageUrl = decodedBody['imageUrl']
-                ?? decodedBody['url']
-                ?? decodedBody['signatureUrl']
-                ?? decodedBody['image']
-                ?? decodedBody['filePath']
-                ?? decodedBody['path']
-                ?? decodedBody['signature']
-                ?? (decodedBody['data'] is Map ? decodedBody['data']['imageUrl'] : null)
-                ?? (decodedBody['data'] is Map ? decodedBody['data']['url'] : null)
-                ?? (decodedBody['data'] is Map ? decodedBody['data']['filePath'] : null)
-                ?? '';
+            final imageUrl =
+                decodedBody['imageUrl'] ??
+                decodedBody['url'] ??
+                decodedBody['signatureUrl'] ??
+                decodedBody['image'] ??
+                decodedBody['filePath'] ??
+                decodedBody['path'] ??
+                decodedBody['signature'] ??
+                (decodedBody['data'] is Map
+                    ? decodedBody['data']['imageUrl']
+                    : null) ??
+                (decodedBody['data'] is Map
+                    ? decodedBody['data']['url']
+                    : null) ??
+                (decodedBody['data'] is Map
+                    ? decodedBody['data']['filePath']
+                    : null) ??
+                '';
 
-            final rawDate = decodedBody['signedAt']
-                ?? decodedBody['createdAt']
-                ?? decodedBody['date']
-                ?? decodedBody['updatedAt']
-                ?? (decodedBody['data'] is Map ? decodedBody['data']['createdAt'] : null)
-                ?? (decodedBody['data'] is Map ? decodedBody['data']['signedAt'] : null)
-                ?? '';
+            final rawDate =
+                decodedBody['signedAt'] ??
+                decodedBody['createdAt'] ??
+                decodedBody['date'] ??
+                decodedBody['updatedAt'] ??
+                (decodedBody['data'] is Map
+                    ? decodedBody['data']['createdAt']
+                    : null) ??
+                (decodedBody['data'] is Map
+                    ? decodedBody['data']['signedAt']
+                    : null) ??
+                '';
 
             debugPrint('imageUrl: $imageUrl');
             debugPrint('rawDate: $rawDate');
@@ -193,7 +205,9 @@ class AuthApi {
               isSuccess: true,
               statusCode: response.statusCode,
               message: 'Signature loaded.',
-              imageUrl: imageUrl is String && imageUrl.isNotEmpty ? imageUrl : null,
+              imageUrl: imageUrl is String && imageUrl.isNotEmpty
+                  ? imageUrl
+                  : null,
               rawDate: rawDate is String && rawDate.isNotEmpty ? rawDate : null,
               data: decodedBody,
             );
@@ -227,7 +241,7 @@ class AuthApi {
     }
   }
 
-    // ─── Upload signature image to API ────────────────────────────────────────
+  // ─── Upload signature image to API ────────────────────────────────────────
   Future<AuthLoginResult> uploadSignature({
     required String token,
     required List<int> imageBytes,
@@ -260,15 +274,16 @@ class AuthApi {
           statusCode: response.statusCode,
           message: _extractMessage(decodedBody) ?? 'Signature uploaded.',
           data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+          requiredOTP: false,
         );
       }
 
       return AuthLoginResult(
         isSuccess: false,
         statusCode: response.statusCode,
-        message:
-            _extractMessage(decodedBody) ?? 'Signature upload failed.',
+        message: _extractMessage(decodedBody) ?? 'Signature upload failed.',
         data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+        requiredOTP: false,
       );
     } catch (error) {
       return AuthLoginResult(
@@ -302,25 +317,33 @@ class AuthApi {
           : null;
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
+        final Map<String, dynamic>? bodyMap =
+            decodedBody is Map<String, dynamic> ? decodedBody : null;
         return AuthLoginResult(
           isSuccess: true,
           statusCode: response.statusCode,
           message: _extractMessage(decodedBody) ?? successMessage,
-          data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+          data: bodyMap,
+          requiredOTP: bodyMap?['requiredOTP'] ?? false,
         );
       }
 
+      final Map<String, dynamic>? bodyMap = decodedBody is Map<String, dynamic>
+          ? decodedBody
+          : null;
       return AuthLoginResult(
         isSuccess: false,
         statusCode: response.statusCode,
         message: _extractMessage(decodedBody) ?? failureMessage,
-        data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+        data: bodyMap,
+        requiredOTP: bodyMap?['requiredOTP'] ?? false,
       );
     } catch (error) {
       return AuthLoginResult(
         isSuccess: false,
         statusCode: 0,
         message: 'Network error: $error',
+        requiredOTP: false,
       );
     }
   }
@@ -354,10 +377,10 @@ class SignatureResult {
   final bool isSuccess;
   final int statusCode;
   final String message;
-  final List<int>? imageBytes;   // raw image bytes if blob
-  final String? imageUrl;        // URL if JSON response
-  final String? rawDate;         // date string from API
-  final dynamic data;            // full JSON response
+  final List<int>? imageBytes; // raw image bytes if blob
+  final String? imageUrl; // URL if JSON response
+  final String? rawDate; // date string from API
+  final dynamic data; // full JSON response
 }
 
 class AuthLoginResult {
@@ -366,10 +389,12 @@ class AuthLoginResult {
     required this.statusCode,
     required this.message,
     this.data,
+    this.requiredOTP = false,
   });
 
   final bool isSuccess;
   final int statusCode;
   final String message;
   final Map<String, dynamic>? data;
+  final bool requiredOTP; // 👈 Flag to indicate if OTP is required
 }
