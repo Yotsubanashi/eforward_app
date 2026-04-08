@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/auth_api.dart';
+import '../dashboard/dashboard.dart';
 import 'forgot_password.dart';
 import 'otp.dart';
 
@@ -81,14 +84,36 @@ class _LoginScreenState extends State<LoginScreen> {
     if (result.isSuccess) {
       _saveRememberMe(email);
       debugPrint('Login success: ${result.data}');
+      debugPrint('RequiredOTP: ${result.requiredOTP}');
 
-      //  Mark OTP as sent and navigate to OTP screen
-      setState(() => _otpSent = true);
+      // Check if OTP is required based on API response
+      if (result.requiredOTP) {
+        // requiredOTP = true → Go to OTP screen
+        setState(() => _otpSent = true);
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => OtpScreen(email: email)),
+        );
+      } else {
+        // requiredOTP = false → Save token and go to Dashboard
+        final token =
+            result.data?['accessToken'] ??
+            result.data?['access_token'] ??
+            result.data?['token'];
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => OtpScreen(email: email)),
-      );
+        if (token != null && token.toString().isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('access_token', token.toString());
+          if (result.data != null) {
+            await prefs.setString('user_data', jsonEncode(result.data));
+          }
+        }
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const DashboardPage()),
+        );
+      }
       return;
     }
 
