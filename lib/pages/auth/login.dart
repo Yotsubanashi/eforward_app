@@ -16,6 +16,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   bool _rememberMe = false;
   bool _isLoading = false;
+  bool _otpSent = false; //  Flag to prevent multiple OTP sends
 
   final AuthApi _authApi = AuthApi();
   final TextEditingController _emailController = TextEditingController();
@@ -25,6 +26,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _loadRememberedEmail();
+    _otpSent = false; //  Reset OTP flag on screen initialization
   }
 
   void _loadRememberedEmail() async {
@@ -57,6 +59,17 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    //  Prevent multiple OTP sends
+    if (_otpSent) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('OTP already sent. Please check your email.'),
+          backgroundColor: Color(0xFFCC0000),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     final result = await _authApi.login(email: email, password: password);
@@ -68,6 +81,10 @@ class _LoginScreenState extends State<LoginScreen> {
     if (result.isSuccess) {
       _saveRememberMe(email);
       debugPrint('Login success: ${result.data}');
+
+      //  Mark OTP as sent and navigate to OTP screen
+      setState(() => _otpSent = true);
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => OtpScreen(email: email)),
@@ -76,6 +93,10 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     debugPrint('Login failed [${result.statusCode}]: ${result.message}');
+
+    // Reset OTP flag on login failure
+    setState(() => _otpSent = false);
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(result.message),
@@ -98,7 +119,7 @@ class _LoginScreenState extends State<LoginScreen> {
       backgroundColor: Colors.white,
       body: SafeArea(
         child: SingleChildScrollView(
-          // 👈 fixes overflow when keyboard opens
+          //  fixes overflow when keyboard opens
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),

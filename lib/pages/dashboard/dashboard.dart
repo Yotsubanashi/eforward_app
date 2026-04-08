@@ -1,6 +1,7 @@
+import 'package:eforward_app/pages/approvals/approvals.dart';
 import 'package:flutter/material.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
-import 'package:eforward_app/pages/document/document_sign.dart'; // 👈 import separate file
+import 'package:eforward_app/pages/document/document_sign.dart';
 
 class DashboardPage extends StatefulWidget {
   final Map<String, dynamic>? userData;
@@ -37,7 +38,6 @@ class _DashboardPageState extends State<DashboardPage> {
         _userEmail = userData['email_add'] ?? 'N/A';
         _userRole = userData['role'] ?? 'USER';
 
-        // Extract modules
         final modulesList = userData['modules'] as List?;
         _userModules = [];
         if (modulesList != null) {
@@ -94,14 +94,11 @@ class _DashboardPageState extends State<DashboardPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+
               // Brand Header
               Row(
                 children: const [
-                  Icon(
-                    Icons.shield_outlined,
-                    color: Color(0xFFCC0000),
-                    size: 16,
-                  ),
+                  Icon(Icons.shield_outlined, color: Color(0xFFCC0000), size: 16),
                   SizedBox(width: 10),
                   Text(
                     "E-FORWARD",
@@ -130,7 +127,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
               const SizedBox(height: 12),
 
-              // User Info
               Text(
                 'Email: $_userEmail | Role: $_userRole',
                 style: const TextStyle(
@@ -148,104 +144,80 @@ class _DashboardPageState extends State<DashboardPage> {
                   color: Colors.white,
                   border: Border.all(color: const Color(0xFFE8E8E8)),
                 ),
-                child: IntrinsicHeight(
+                child: Container(
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      left: BorderSide(color: Color(0xFFCC0000), width: 3),
+                    ),
+                  ),
+                  padding: const EdgeInsets.all(16),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
+                      // Left — info
                       Expanded(
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            border: Border(
-                              left: BorderSide(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text(
+                              "PENDING APPROVALS",
+                              style: TextStyle(
+                                fontSize: 9,
                                 color: Color(0xFFCC0000),
-                                width: 3,
+                                letterSpacing: 1.2,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
-                          ),
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "REQUIRES ACTION",
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: Color(0xFFCC0000),
-                                  letterSpacing: 1.2,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                            SizedBox(height: 6),
+                            Text(
+                              "14",
+                              style: TextStyle(
+                                fontSize: 38,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF1A1A1A),
+                                height: 1,
                               ),
-                              const SizedBox(height: 8),
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: const [
-                                  Text(
-                                    "14",
-                                    style: TextStyle(
-                                      fontSize: 38,
-                                      fontWeight: FontWeight.w900,
-                                      color: Color(0xFF1A1A1A),
-                                      height: 1,
-                                    ),
-                                  ),
-                                  SizedBox(width: 8),
-                                  Icon(
-                                    Icons.arrow_forward,
-                                    size: 16,
-                                    color: Color(0xFFCC0000),
-                                  ),
-                                ],
+                            ),
+                            SizedBox(height: 6),
+                            Text(
+                              "High-priority authorizations requiring immediate executive review.",
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.black45,
+                                letterSpacing: 0.3,
+                                height: 1.5,
                               ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                "PENDING\nAPPROVALS",
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.black45,
-                                  letterSpacing: 0.5,
-                                  height: 1.5,
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
-                      Container(width: 1, color: const Color(0xFFE8E8E8)),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text(
-                                "VERIFIED TODAY",
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: Colors.black38,
-                                  letterSpacing: 1.2,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              SizedBox(height: 8),
-                              Text(
-                                "28",
-                                style: TextStyle(
-                                  fontSize: 38,
-                                  fontWeight: FontWeight.w900,
-                                  color: Color(0xFF1A1A1A),
-                                  height: 1,
-                                ),
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                "DOCUMENTS\nPROCESSED",
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.black45,
-                                  letterSpacing: 0.5,
-                                  height: 1.5,
-                                ),
-                              ),
-                            ],
+
+                      const SizedBox(width: 16),
+
+                      // Right — REVIEW NOW button
+                      ElevatedButton(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ApprovalsPage()),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFCC0000),
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        child: const Text(
+                          "REVIEW NOW",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.5,
+                            height: 1.4,
                           ),
                         ),
                       ),
@@ -276,11 +248,11 @@ class _DashboardPageState extends State<DashboardPage> {
                       physics: const NeverScrollableScrollPhysics(),
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            crossAxisSpacing: 12,
-                            mainAxisSpacing: 12,
-                            childAspectRatio: 1,
-                          ),
+                        crossAxisCount: 3,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: 1,
+                      ),
                       itemCount: _userModules.length,
                       itemBuilder: (context, index) {
                         final module = _userModules[index];
@@ -294,11 +266,8 @@ class _DashboardPageState extends State<DashboardPage> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(
-                                  Icons.dashboard,
-                                  color: const Color(0xFFCC0000),
-                                  size: 28,
-                                ),
+                                const Icon(Icons.dashboard,
+                                    color: Color(0xFFCC0000), size: 28),
                                 const SizedBox(height: 8),
                                 Padding(
                                   padding: const EdgeInsets.all(4),
@@ -323,14 +292,34 @@ class _DashboardPageState extends State<DashboardPage> {
                   ],
                 ),
 
-              const Text(
-                "FOR SIGNING DOCUMENTS",
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
-                  color: Color(0xFF1A1A1A),
-                ),
+              // Section Header with View All
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    "RECENT ACTIVITY",
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 2,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      // TODO: navigate to full logs/approvals page
+                    },
+                    child: const Text(
+                      "VIEW ALL LOGS →",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1,
+                        color: Color(0xFFCC0000),
+                      ),
+                    ),
+                  ),
+                ],
               ),
 
               const SizedBox(height: 16),
@@ -339,7 +328,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: _recentActivity.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 12),
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
                 itemBuilder: (context, index) =>
                     _buildActivityCard(_recentActivity[index]),
               ),
@@ -361,125 +350,78 @@ class _DashboardPageState extends State<DashboardPage> {
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) =>
-              DocumentSignScreen(document: item), // 👈 goes to separate page
+          builder: (_) => DocumentSignScreen(document: item),
         ),
       ),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: Colors.white,
           border: Border.all(color: const Color(0xFFE8E8E8)),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text(
-              item['id'],
-              style: const TextStyle(
-                fontSize: 10,
-                color: Color(0xFFCC0000),
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1,
-              ),
+
+            // Left — red accent line
+            Container(
+              width: 3,
+              height: 40,
+              color: const Color(0xFFCC0000),
             ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    item['title'],
+            const SizedBox(width: 12),
+
+            // Middle — reference no + status
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item['id'],
                     style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1,
                       color: Color(0xFF1A1A1A),
                     ),
                   ),
-                ),
-                const Icon(
-                  Icons.chevron_right,
-                  color: Colors.black26,
-                  size: 20,
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Icon(
-                  Icons.person_outline,
-                  size: 12,
-                  color: Colors.black38,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  "CREATED BY: ${item['createdBy']}",
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Colors.black45,
-                    letterSpacing: 0.5,
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFCC0000).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: const Text(
+                      "PENDING",
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1,
+                        color: Color(0xFFCC0000),
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 4),
-            Row(
+
+            // Right — time + chevron
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                const Icon(
-                  Icons.calendar_today_outlined,
-                  size: 12,
-                  color: Colors.black38,
-                ),
-                const SizedBox(width: 4),
                 Text(
                   item['dateTime'],
                   style: const TextStyle(
                     fontSize: 10,
-                    color: Colors.black45,
-                    letterSpacing: 0.5,
+                    color: Colors.black38,
+                    letterSpacing: 0.3,
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            const Divider(height: 1, color: Color(0xFFF0F0F0)),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  item['label'],
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Colors.black45,
-                    letterSpacing: 0.8,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  "${(item['progress'] * 100).toInt()}%",
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Colors.black45,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Stack(
-              children: [
-                Container(
-                  height: 4,
-                  width: double.infinity,
-                  color: const Color(0xFFEEEEEE),
-                ),
-                FractionallySizedBox(
-                  widthFactor: item['progress'],
-                  child: Container(height: 4, color: const Color(0xFFCC0000)),
-                ),
+                const SizedBox(height: 6),
+                const Icon(Icons.chevron_right,
+                    color: Colors.black26, size: 18),
               ],
             ),
           ],

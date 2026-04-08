@@ -174,10 +174,7 @@ class _DocumentSignScreenState extends State<DocumentSignScreen> {
             color: Color(0xFF1A1A1A),
             size: 20,
           ),
-          onPressed: () => Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const DashboardPage()),
-          ),
+             onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           "DOCUMENT SIGNING",

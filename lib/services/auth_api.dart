@@ -98,6 +98,7 @@ class AuthApi {
           statusCode: response.statusCode,
           message: _extractMessage(decodedBody) ?? 'User profile loaded.',
           data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+          requiredOTP: false,
         );
       }
 
@@ -106,6 +107,7 @@ class AuthApi {
         statusCode: response.statusCode,
         message: _extractMessage(decodedBody) ?? 'Failed to load user profile.',
         data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+        requiredOTP: false,
       );
     } catch (error) {
       return AuthLoginResult(
@@ -272,6 +274,7 @@ class AuthApi {
           statusCode: response.statusCode,
           message: _extractMessage(decodedBody) ?? 'Signature uploaded.',
           data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+          requiredOTP: false,
         );
       }
 
@@ -280,6 +283,7 @@ class AuthApi {
         statusCode: response.statusCode,
         message: _extractMessage(decodedBody) ?? 'Signature upload failed.',
         data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+        requiredOTP: false,
       );
     } catch (error) {
       return AuthLoginResult(
@@ -313,25 +317,33 @@ class AuthApi {
           : null;
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
+        final Map<String, dynamic>? bodyMap =
+            decodedBody is Map<String, dynamic> ? decodedBody : null;
         return AuthLoginResult(
           isSuccess: true,
           statusCode: response.statusCode,
           message: _extractMessage(decodedBody) ?? successMessage,
-          data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+          data: bodyMap,
+          requiredOTP: bodyMap?['requiredOTP'] ?? false,
         );
       }
 
+      final Map<String, dynamic>? bodyMap = decodedBody is Map<String, dynamic>
+          ? decodedBody
+          : null;
       return AuthLoginResult(
         isSuccess: false,
         statusCode: response.statusCode,
         message: _extractMessage(decodedBody) ?? failureMessage,
-        data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+        data: bodyMap,
+        requiredOTP: bodyMap?['requiredOTP'] ?? false,
       );
     } catch (error) {
       return AuthLoginResult(
         isSuccess: false,
         statusCode: 0,
         message: 'Network error: $error',
+        requiredOTP: false,
       );
     }
   }
@@ -377,12 +389,11 @@ class AuthLoginResult {
     required this.statusCode,
     required this.message,
     this.data,
+    this.requiredOTP = false,
   });
 
   final bool isSuccess;
   final int statusCode;
   final String message;
   final Map<String, dynamic>? data;
-
-  bool? get requiredOTP => data?['requiredOTP'] as bool?;
 }
