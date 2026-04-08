@@ -12,7 +12,7 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  int _selectedIndex = 0;
+  final int _selectedIndex = 0;
 
   late String _userName;
   late String _userEmail;

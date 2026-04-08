@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 
 import 'package:http/http.dart' as http;
 
@@ -116,48 +117,117 @@ class AuthApi {
     }
   }
 
-  // ─── Fetch signature image/date from API ───────────────────────────────────
-  Future<AuthLoginResult> getSignature({required String token}) async {
+  // ─── Fetch signature — returns bytes (blob) or JSON with URL ─────────────
+  Future<SignatureResult> getSignature({required String token}) async {
     final uri = Uri.parse('$baseUrl/upload/signature/image');
 
     try {
       final response = await _client.get(
         uri,
         headers: {
-          'Accept': 'application/json',
           'Authorization': 'Bearer $token',
+          'Accept': '*/*',
         },
       );
 
-      final dynamic decodedBody = response.body.isNotEmpty
-          ? jsonDecode(response.body)
-          : null;
+      debugPrint('Signature status: ${response.statusCode}');
+      debugPrint('Signature content-type: ${response.headers['content-type']}');
+      debugPrint('Signature bytes: ${response.bodyBytes.length}');
+      debugPrint('Signature body preview: ${response.body.length > 300 ? response.body.substring(0, 300) : response.body}');
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        return AuthLoginResult(
-          isSuccess: true,
-          statusCode: response.statusCode,
-          message: _extractMessage(decodedBody) ?? 'Signature loaded.',
-          data: decodedBody is Map<String, dynamic> ? decodedBody : null,
-        );
+        final contentType = response.headers['content-type'] ?? '';
+
+        // Case 1: Image blob
+        if (contentType.contains('image/') ||
+            contentType.contains('octet-stream') ||
+            contentType.contains('binary')) {
+          debugPrint('Got image blob ${response.bodyBytes.length} bytes');
+          return SignatureResult(
+            isSuccess: true,
+            statusCode: response.statusCode,
+            message: 'Signature image loaded.',
+            imageBytes: response.bodyBytes,
+          );
+        }
+
+        // Case 2: Try JSON
+        try {
+          final dynamic decodedBody = jsonDecode(response.body);
+          debugPrint('Signature JSON: $decodedBody');
+
+          if (decodedBody is Map<String, dynamic>) {
+            // Print every key
+            debugPrint('=== SIGNATURE JSON KEYS ===');
+            decodedBody.forEach((key, value) {
+              debugPrint('SIGN KEY: $key  =>  VALUE: $value');
+              if (value is Map) {
+                value.forEach((k, v) => debugPrint('  NESTED: $k  =>  $v'));
+              }
+            });
+            debugPrint('===========================');
+            final imageUrl = decodedBody['imageUrl']
+                ?? decodedBody['url']
+                ?? decodedBody['signatureUrl']
+                ?? decodedBody['image']
+                ?? decodedBody['filePath']
+                ?? decodedBody['path']
+                ?? decodedBody['signature']
+                ?? (decodedBody['data'] is Map ? decodedBody['data']['imageUrl'] : null)
+                ?? (decodedBody['data'] is Map ? decodedBody['data']['url'] : null)
+                ?? (decodedBody['data'] is Map ? decodedBody['data']['filePath'] : null)
+                ?? '';
+
+            final rawDate = decodedBody['signedAt']
+                ?? decodedBody['createdAt']
+                ?? decodedBody['date']
+                ?? decodedBody['updatedAt']
+                ?? (decodedBody['data'] is Map ? decodedBody['data']['createdAt'] : null)
+                ?? (decodedBody['data'] is Map ? decodedBody['data']['signedAt'] : null)
+                ?? '';
+
+            debugPrint('imageUrl: $imageUrl');
+            debugPrint('rawDate: $rawDate');
+
+            return SignatureResult(
+              isSuccess: true,
+              statusCode: response.statusCode,
+              message: 'Signature loaded.',
+              imageUrl: imageUrl is String && imageUrl.isNotEmpty ? imageUrl : null,
+              rawDate: rawDate is String && rawDate.isNotEmpty ? rawDate : null,
+              data: decodedBody,
+            );
+          }
+        } catch (_) {
+          if (response.bodyBytes.isNotEmpty) {
+            debugPrint('Not JSON, raw bytes: ${response.bodyBytes.length}');
+            return SignatureResult(
+              isSuccess: true,
+              statusCode: response.statusCode,
+              message: 'Signature loaded.',
+              imageBytes: response.bodyBytes,
+            );
+          }
+        }
       }
 
-      return AuthLoginResult(
+      debugPrint('Signature fetch failed: ${response.statusCode}');
+      return SignatureResult(
         isSuccess: false,
         statusCode: response.statusCode,
-        message: _extractMessage(decodedBody) ?? 'Failed to load signature.',
-        data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+        message: 'Failed to load signature. Status: ${response.statusCode}',
       );
     } catch (error) {
-      return AuthLoginResult(
+      debugPrint('Signature error: $error');
+      return SignatureResult(
         isSuccess: false,
         statusCode: 0,
-        message: 'Network error: $error',
+        message: 'Network error: \$error',
       );
     }
   }
 
-  // ─── Upload signature image to API ────────────────────────────────────────
+    // ─── Upload signature image to API ────────────────────────────────────────
   Future<AuthLoginResult> uploadSignature({
     required String token,
     required List<int> imageBytes,
@@ -268,6 +338,26 @@ class AuthApi {
   void dispose() {
     _client.close();
   }
+}
+
+class SignatureResult {
+  const SignatureResult({
+    required this.isSuccess,
+    required this.statusCode,
+    required this.message,
+    this.imageBytes,
+    this.imageUrl,
+    this.rawDate,
+    this.data,
+  });
+
+  final bool isSuccess;
+  final int statusCode;
+  final String message;
+  final List<int>? imageBytes;   // raw image bytes if blob
+  final String? imageUrl;        // URL if JSON response
+  final String? rawDate;         // date string from API
+  final dynamic data;            // full JSON response
 }
 
 class AuthLoginResult {

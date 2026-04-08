@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -6,7 +7,6 @@ import 'package:flutter/rendering.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
-import 'package:eforward_app/pages/dashboard/dashboard.dart';
 import '../../services/auth_api.dart';
 
 // ─── Signature Painter ───────────────────────────────────────────────────────
@@ -72,7 +72,8 @@ class _ViewSignPageState extends State<ViewSignPage>
   String? _drawBase64;
   String _timestamp = '';
   bool _isLoadingTimestamp = false;
-  String? _apiSignatureUrl; // 👈 holds the image URL from API
+  String? _apiSignatureUrl; // URL from API JSON response
+  List<int>? _apiSignatureBytes; // raw bytes from API blob response
 
   // Draw tab (edit mode)
   final List<List<Offset?>> _strokes = [];
@@ -108,7 +109,10 @@ class _ViewSignPageState extends State<ViewSignPage>
   Future<void> _loadSignature() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // Load local data first
+    // Show loader immediately
+    setState(() => _isLoadingTimestamp = true);
+
+    // Load local data
     setState(() {
       _signatureType = prefs.getString('signature_type') ?? '';
       _signatureText = prefs.getString('signature_text') ?? '';
@@ -123,13 +127,13 @@ class _ViewSignPageState extends State<ViewSignPage>
       }
     });
 
-    // Then fetch from API
+    // Always fetch from API — source of truth for any device
     await _fetchSignatureFromApi(prefs);
   }
 
   Future<void> _fetchSignatureFromApi(SharedPreferences prefs) async {
     final token = prefs.getString('access_token') ?? '';
-    debugPrint('=== TOKEN IN VIEW SIGN: $token ==='); // 👈 debug
+    debugPrint('=== TOKEN IN VIEW SIGN: $token ===');
 
     if (token.isEmpty) {
       debugPrint('No token found, skipping signature API fetch.');
@@ -144,34 +148,44 @@ class _ViewSignPageState extends State<ViewSignPage>
 
     setState(() => _isLoadingTimestamp = false);
 
-    if (result.isSuccess && result.data != null) {
-      debugPrint('Signature API response: ${result.data}'); // 👈 check this log
-
-      // ─── Extract image URL ─────────────────────────────────────────────────
-      // Adjust the key based on what you see in the debug log above
-      final imageUrl =
-          result.data?['imageUrl'] ??
-          result.data?['url'] ??
-          result.data?['signatureUrl'] ??
-          result.data?['image'] ??
-          result.data?['filePath'] ??
-          result.data?['path'] ??
-          '';
-
-      if (imageUrl is String && imageUrl.isNotEmpty) {
-        setState(() => _apiSignatureUrl = imageUrl);
-        debugPrint('Signature URL from API: $imageUrl');
+    if (result.isSuccess) {
+      // Case 1: Raw image bytes
+      if (result.imageBytes != null && result.imageBytes!.isNotEmpty) {
+        debugPrint('Signature loaded as bytes');
+        setState(() => _apiSignatureBytes = result.imageBytes);
       }
 
-      // ─── Extract date ──────────────────────────────────────────────────────
-      final rawDate =
-          result.data?['signedAt'] ??
-          result.data?['createdAt'] ??
-          result.data?['date'] ??
-          result.data?['updatedAt'] ??
-          '';
+      // Case 2: URL
+      if (result.imageUrl != null && result.imageUrl!.isNotEmpty) {
+        debugPrint('Signature URL: ${result.imageUrl}');
+        setState(() => _apiSignatureUrl = result.imageUrl);
+      }
 
-      if (rawDate is String && rawDate.isNotEmpty) {
+      // Case 3: base64 inside data.base64 (YOUR API FORMAT)
+      final dynamic responseData = result.data;
+      if (responseData is Map) {
+        final dynamic inner = responseData['data'];
+        if (inner is Map) {
+          final base64Str = inner['base64'] as String?;
+          if (base64Str != null && base64Str.isNotEmpty) {
+            debugPrint('Found base64 in data.base64');
+            final pureBase64 = base64Str.contains(',')
+                ? base64Str.split(',').last
+                : base64Str;
+            try {
+              final bytes = base64Decode(pureBase64);
+              setState(() => _apiSignatureBytes = bytes);
+              debugPrint('Decoded signature: ${bytes.length} bytes');
+            } catch (e) {
+              debugPrint('Base64 decode error: $e');
+            }
+          }
+        }
+      }
+
+      // Extract date
+      final rawDate = result.rawDate ?? '';
+      if (rawDate.isNotEmpty) {
         try {
           final parsed = DateTime.parse(rawDate).toLocal();
           final months = [
@@ -192,7 +206,6 @@ class _ViewSignPageState extends State<ViewSignPage>
               '${months[parsed.month - 1]} ${parsed.day}, ${parsed.year}';
           await prefs.setString('signature_timestamp', formatted);
           setState(() => _timestamp = formatted);
-          debugPrint('Signature date from API: $formatted');
         } catch (e) {
           debugPrint('Date parse error: $e');
         }
@@ -311,7 +324,8 @@ class _ViewSignPageState extends State<ViewSignPage>
       _timestamp = timestamp;
       _isSaving = false;
       _isEditMode = false;
-      _apiSignatureUrl = null; // 👈 reset so it re-fetches after save
+      _apiSignatureUrl = null;
+      _apiSignatureBytes = null; // 👈 reset so it re-fetches after save
     });
 
     if (mounted) {
@@ -358,31 +372,71 @@ class _ViewSignPageState extends State<ViewSignPage>
   // ─── Signature Preview ────────────────────────────────────────────────────
 
   Widget _buildSavedSignaturePreview() {
-    // 👇 Priority 1: Show API image if available
-    if (_apiSignatureUrl != null && _apiSignatureUrl!.isNotEmpty) {
-      return Center(
-        child: Image.network(
-          _apiSignatureUrl!,
-          fit: BoxFit.contain,
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return const Center(
-              child: CircularProgressIndicator(color: Color(0xFFCC0000)),
-            );
-          },
-          errorBuilder: (context, error, stackTrace) {
-            debugPrint('API image load error: $error');
-            return _buildLocalSignaturePreview(); // fallback
-          },
-        ),
+    // Show loading while fetching from API
+    if (_isLoadingTimestamp) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFFCC0000)),
       );
     }
 
-    // 👇 Priority 2: Fallback to local data
-    return _buildLocalSignaturePreview();
+    Widget signatureWidget;
+
+    // Priority 1: API blob bytes
+    if (_apiSignatureBytes != null && _apiSignatureBytes!.isNotEmpty) {
+      debugPrint('Displaying API signature bytes');
+      signatureWidget = Image.memory(
+        Uint8List.fromList(_apiSignatureBytes!),
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) {
+          debugPrint('Bytes image error: $error');
+          return _buildLocalSignatureWidget();
+        },
+      );
+    }
+    // Priority 2: API URL
+    else if (_apiSignatureUrl != null && _apiSignatureUrl!.isNotEmpty) {
+      debugPrint('Displaying API signature URL: $_apiSignatureUrl');
+      signatureWidget = Image.network(
+        _apiSignatureUrl!,
+        fit: BoxFit.contain,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return const Center(
+            child: CircularProgressIndicator(color: Color(0xFFCC0000)),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          debugPrint('URL image error: $error');
+          return _buildLocalSignatureWidget();
+        },
+      );
+    }
+    // Priority 3: Local fallback
+    else {
+      signatureWidget = _buildLocalSignatureWidget();
+    }
+
+    // 👇 Wrap with watermark
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Watermark behind signature
+        Opacity(
+          opacity: 0.08,
+          child: Image.asset(
+            'assets/images/eforward_watermark.png',
+            fit: BoxFit.contain,
+            width: 180,
+            height: 180,
+          ),
+        ),
+        // Signature on top
+        signatureWidget,
+      ],
+    );
   }
 
-  Widget _buildLocalSignaturePreview() {
+  Widget _buildLocalSignatureWidget() {
     if (_signatureType == 'draw' && _drawBase64 != null) {
       return Center(
         child: Image.memory(base64Decode(_drawBase64!), fit: BoxFit.contain),
@@ -433,10 +487,7 @@ class _ViewSignPageState extends State<ViewSignPage>
                 _strokes.clear();
               });
             } else {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const DashboardPage()),
-              );
+              Navigator.pop(context);
             }
           },
         ),
@@ -556,43 +607,6 @@ class _ViewSignPageState extends State<ViewSignPage>
             ),
 
             const SizedBox(height: 12),
-
-            // Timestamp (view mode only)
-            if (!_isEditMode)
-              Center(
-                child: Column(
-                  children: [
-                    const Text(
-                      "TIMESTAMP",
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: Colors.black38,
-                        letterSpacing: 1.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    _isLoadingTimestamp
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 1.5,
-                              color: Color(0xFFCC0000),
-                            ),
-                          )
-                        : Text(
-                            _timestamp.isNotEmpty ? _timestamp : '—',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF1A1A1A),
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                  ],
-                ),
-              ),
 
             const SizedBox(height: 24),
 

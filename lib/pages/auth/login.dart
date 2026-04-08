@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/auth_api.dart';
-import '../dashboard/dashboard.dart';
 import 'forgot_password.dart';
 import 'otp.dart';
 

@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:file_picker/file_picker.dart';
@@ -97,7 +96,7 @@ class _DocumentSignScreenState extends State<DocumentSignScreen> {
 
     // Generate timestamp in Philippine time (PHT/GMT+8)
     final now = DateTime.now().toUtc().add(const Duration(hours: 8));
-    _signedTimestamp = DateFormat('MMM dd, yyyy · HH:mm').format(now) + ' PHT';
+    _signedTimestamp = '${DateFormat('MMM dd, yyyy · HH:mm').format(now)} PHT';
 
     setState(() => _showSignatureOverlay = true);
 

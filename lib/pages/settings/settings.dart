@@ -1,8 +1,10 @@
 import 'dart:io';
-import 'package:eforward_app/pages/auth/change_password.dart';
-import 'package:eforward_app/pages/auth/login.dart';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:eforward_app/pages/auth/change_password.dart';
+import 'package:eforward_app/pages/auth/login.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -13,14 +15,76 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  int _selectedIndex = 2;
+  final int _selectedIndex = 2;
   File? _profileImage;
-  String _firstName = "Mark Cedrick";
-  String _middleName = "M.";
-  String _lastName = "Almueda";
-  String get _displayName => "$_firstName $_middleName $_lastName";
-  final String _emailadd = "mark.almueda@ardentnetworks.com.ph";
-  final String _employeeID = "A0000807";
+
+  // 👇 Loaded from API via SharedPreferences
+  String _firstName = '';
+  String _middleName = '';
+  String _lastName = '';
+  String _email = '';
+  String _employeeId = '';
+  String _role = '';
+  bool _isLoading = true;
+
+  String get _displayName =>
+      '$_firstName${_middleName.isNotEmpty ? ' $_middleName' : ''} $_lastName'
+          .trim();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  // 👇 Load credentials from SharedPreferences (saved during OTP login)
+  Future<void> _loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userDataStr = prefs.getString('user_data');
+
+    if (userDataStr != null && userDataStr.isNotEmpty) {
+      try {
+        final Map<String, dynamic> full = jsonDecode(userDataStr);
+        // Support both nested 'data' and flat structure
+        final userData = (full['data'] is Map<String, dynamic>)
+            ? full['data'] as Map<String, dynamic>
+            : full;
+
+        debugPrint('Settings loaded user: $userData');
+
+        setState(() {
+          _firstName =
+              userData['fname'] ??
+              userData['first_name'] ??
+              userData['firstName'] ??
+              '';
+          _middleName =
+              userData['mname'] ??
+              userData['middle_name'] ??
+              userData['middleName'] ??
+              '';
+          _lastName =
+              userData['lname'] ??
+              userData['last_name'] ??
+              userData['lastName'] ??
+              '';
+          _email = userData['email_add'] ?? userData['email'] ?? '';
+          _employeeId =
+              userData['employee_id'] ??
+              userData['employeeId'] ??
+              userData['emp_id'] ??
+              '';
+          _role = userData['role'] ?? userData['position'] ?? '';
+          _isLoading = false;
+        });
+      } catch (e) {
+        debugPrint('Error loading user data: $e');
+        setState(() => _isLoading = false);
+      }
+    } else {
+      setState(() => _isLoading = false);
+    }
+  }
 
   Future<void> _pickImage() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
@@ -41,7 +105,9 @@ class _SettingsPageState extends State<SettingsPage> {
       builder: (context) => StatefulBuilder(
         builder: (context, setSheetState) => Padding(
           padding: EdgeInsets.only(
-            left: 24, right: 24, top: 24,
+            left: 24,
+            right: 24,
+            top: 24,
             bottom: MediaQuery.of(context).viewInsets.bottom + 24,
           ),
           child: Column(
@@ -55,13 +121,19 @@ class _SettingsPageState extends State<SettingsPage> {
                   const Text(
                     "EDIT PROFILE",
                     style: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w900,
-                      letterSpacing: 1.5, color: Color(0xFF1A1A1A),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.5,
+                      color: Color(0xFF1A1A1A),
                     ),
                   ),
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
-                    child: const Icon(Icons.close, size: 18, color: Colors.black45),
+                    child: const Icon(
+                      Icons.close,
+                      size: 18,
+                      color: Colors.black45,
+                    ),
                   ),
                 ],
               ),
@@ -74,30 +146,45 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: [
                     GestureDetector(
                       onTap: () async {
-                        final picked = await ImagePicker()
-                            .pickImage(source: ImageSource.gallery);
+                        final picked = await ImagePicker().pickImage(
+                          source: ImageSource.gallery,
+                        );
                         if (picked != null) {
                           setSheetState(() {});
                           setState(() => _profileImage = File(picked.path));
                         }
                       },
                       child: Container(
-                        width: 90, height: 90,
+                        width: 90,
+                        height: 90,
                         decoration: BoxDecoration(
                           color: const Color(0xFFF0F0F0),
-                          border: Border.all(color: const Color(0xFFDDDDDD), width: 1.5),
+                          border: Border.all(
+                            color: const Color(0xFFDDDDDD),
+                            width: 1.5,
+                          ),
                         ),
                         child: _profileImage != null
                             ? Image.file(_profileImage!, fit: BoxFit.cover)
-                            : const Icon(Icons.person, size: 40, color: Color(0xFF999999)),
+                            : const Icon(
+                                Icons.person,
+                                size: 40,
+                                color: Color(0xFF999999),
+                              ),
                       ),
                     ),
                     Positioned(
-                      bottom: 0, right: 0,
+                      bottom: 0,
+                      right: 0,
                       child: Container(
-                        width: 26, height: 26,
+                        width: 26,
+                        height: 26,
                         color: const Color(0xFFCC0000),
-                        child: const Icon(Icons.camera_alt, size: 13, color: Colors.white),
+                        child: const Icon(
+                          Icons.camera_alt,
+                          size: 13,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ],
@@ -106,51 +193,73 @@ class _SettingsPageState extends State<SettingsPage> {
 
               const SizedBox(height: 20),
 
-              // First Name
+              // Editable name fields
               _buildSheetField("FIRST NAME", firstNameController),
               const SizedBox(height: 16),
-
-              // Middle Name
               _buildSheetField("MIDDLE NAME", middleNameController),
               const SizedBox(height: 16),
-
-              // Last Name
               _buildSheetField("LAST NAME", lastNameController),
               const SizedBox(height: 16),
 
-              // Position — read only grey
-              _buildReadOnlyField("Email Address", _emailadd),
+              // Read-only fields from API
+              _buildReadOnlyField("EMAIL ADDRESS", _email),
               const SizedBox(height: 16),
-
-              // Status — read only grey
-              _buildReadOnlyField("Employee ID", _employeeID),
+              _buildReadOnlyField("EMPLOYEE ID", _employeeId),
+              const SizedBox(height: 16),
+              _buildReadOnlyField("ROLE", _role),
               const SizedBox(height: 28),
 
               // Save button
               SizedBox(
-                width: double.infinity, height: 48,
+                width: double.infinity,
+                height: 48,
                 child: ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      if (firstNameController.text.trim().isNotEmpty)
-                        _firstName = firstNameController.text.trim();
-                      if (middleNameController.text.trim().isNotEmpty)
-                        _middleName = middleNameController.text.trim();
-                      if (lastNameController.text.trim().isNotEmpty)
-                        _lastName = lastNameController.text.trim();
-                    });
+                  onPressed: () async {
+                    if (firstNameController.text.trim().isNotEmpty)
+                      _firstName = firstNameController.text.trim();
+                    if (middleNameController.text.trim().isNotEmpty)
+                      _middleName = middleNameController.text.trim();
+                    if (lastNameController.text.trim().isNotEmpty)
+                      _lastName = lastNameController.text.trim();
+
+                    // 👇 Save updated name back to SharedPreferences
+                    final prefs = await SharedPreferences.getInstance();
+                    final userDataStr = prefs.getString('user_data');
+                    if (userDataStr != null) {
+                      try {
+                        final Map<String, dynamic> full = jsonDecode(
+                          userDataStr,
+                        );
+                        final userData = (full['data'] is Map)
+                            ? full['data'] as Map<String, dynamic>
+                            : full;
+                        userData['fname'] = _firstName;
+                        userData['mname'] = _middleName;
+                        userData['lname'] = _lastName;
+                        await prefs.setString('user_data', jsonEncode(full));
+                        debugPrint('Profile saved to SharedPreferences');
+                      } catch (e) {
+                        debugPrint('Error saving profile: $e');
+                      }
+                    }
+
+                    setState(() {});
                     Navigator.pop(context);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFCC0000),
                     elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
                   ),
                   child: const Text(
                     "SAVE CHANGES",
                     style: TextStyle(
-                      color: Colors.white, fontSize: 13,
-                      fontWeight: FontWeight.w800, letterSpacing: 2,
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2,
                     ),
                   ),
                 ),
@@ -169,15 +278,18 @@ class _SettingsPageState extends State<SettingsPage> {
         Text(
           label,
           style: const TextStyle(
-            fontSize: 10, fontWeight: FontWeight.w700,
-            letterSpacing: 1.5, color: Colors.black45,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.5,
+            color: Colors.black45,
           ),
         ),
         const SizedBox(height: 6),
         TextField(
           controller: controller,
           style: const TextStyle(
-            fontSize: 14, fontWeight: FontWeight.w600,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
             color: Color(0xFF1A1A1A),
           ),
           decoration: const InputDecoration(
@@ -200,120 +312,35 @@ class _SettingsPageState extends State<SettingsPage> {
         Text(
           label,
           style: const TextStyle(
-            fontSize: 10, fontWeight: FontWeight.w700,
-            letterSpacing: 1.5, color: Colors.black45,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.5,
+            color: Colors.black45,
           ),
         ),
         const SizedBox(height: 6),
         TextField(
           enabled: false,
-          controller: TextEditingController(text: value),
+          controller: TextEditingController(
+            text: value.isNotEmpty ? value : '—',
+          ),
           style: const TextStyle(
-            fontSize: 14, fontWeight: FontWeight.w500,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
             color: Colors.black38,
           ),
           decoration: const InputDecoration(
             disabledBorder: UnderlineInputBorder(
               borderSide: BorderSide(color: Colors.black12),
             ),
-            suffixIcon: Icon(Icons.lock_outline, size: 14, color: Colors.black26),
+            suffixIcon: Icon(
+              Icons.lock_outline,
+              size: 14,
+              color: Colors.black26,
+            ),
           ),
         ),
       ],
-    );
-  }
-
-  void _showEditNameDialog() {
-    final controller = TextEditingController(text: _displayName);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-        title: const Text(
-          "EDIT NAME",
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.5,
-            color: Color(0xFF1A1A1A),
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "FULL NAME",
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.5,
-                color: Colors.black45,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF1A1A1A),
-              ),
-              decoration: const InputDecoration(
-                enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.black26),
-                ),
-                focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Color(0xFFCC0000)),
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              "CANCEL",
-              style: TextStyle(
-                color: Colors.black45,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1,
-              ),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                final parts = controller.text.trim().split(' ');
-                setState(() {
-                  _firstName = parts.isNotEmpty ? parts.first : _firstName;
-                  _lastName = parts.length > 1 ? parts.last : _lastName;
-                  _middleName = parts.length > 2 ? parts[1] : _middleName;
-                });
-              }
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFCC0000),
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
-            ),
-            child: const Text(
-              "SAVE",
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.5,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -323,19 +350,22 @@ class _SettingsPageState extends State<SettingsPage> {
       backgroundColor: Colors.white,
       bottomNavigationBar: BottomNavigator(
         selectedIndex: _selectedIndex,
-        onTap: (index) => setState(() => _selectedIndex = index),
+        onTap: (_) {},
       ),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
             // Header
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
               child: Row(
                 children: [
-                  Container(width: 3, height: 18, color: const Color(0xFFCC0000)),
+                  Container(
+                    width: 3,
+                    height: 18,
+                    color: const Color(0xFFCC0000),
+                  ),
                   const SizedBox(width: 10),
                   const Text(
                     "EFORWARD SETTINGS",
@@ -355,62 +385,107 @@ class _SettingsPageState extends State<SettingsPage> {
 
             // Profile Section
             Center(
-              child: Column(
-                children: [
+              child: _isLoading
+                  ? const CircularProgressIndicator(color: Color(0xFFCC0000))
+                  : Column(
+                      children: [
+                        // Avatar
+                        Container(
+                          width: 120,
+                          height: 120,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F0F0),
+                            border: Border.all(
+                              color: const Color(0xFFDDDDDD),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: _profileImage != null
+                              ? Image.file(_profileImage!, fit: BoxFit.cover)
+                              : const Icon(
+                                  Icons.person,
+                                  size: 50,
+                                  color: Color(0xFF999999),
+                                ),
+                        ),
 
-                  // Avatar
-                  Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF0F0F0),
-                      border: Border.all(color: const Color(0xFFDDDDDD), width: 1.5),
+                        const SizedBox(height: 16),
+
+                        // Full Name
+                        Text(
+                          _displayName.isNotEmpty ? _displayName : '—',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                            color: Color(0xFF1A1A1A),
+                          ),
+                        ),
+
+                        const SizedBox(height: 4),
+
+                        // Role
+                        if (_role.isNotEmpty)
+                          Text(
+                            _role,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF555555),
+                              letterSpacing: 0.5,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+
+                        const SizedBox(height: 10),
+
+                        // Email
+                        if (_email.isNotEmpty)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.email_outlined,
+                                size: 13,
+                                color: Colors.black38,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                _email,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black45,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ],
+                          ),
+
+                        const SizedBox(height: 4),
+
+                        // Employee ID
+                        if (_employeeId.isNotEmpty)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.badge_outlined,
+                                size: 13,
+                                color: Colors.black38,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                _employeeId,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black45,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
                     ),
-                    child: _profileImage != null
-                        ? Image.file(_profileImage!, fit: BoxFit.cover)
-                        : const Icon(Icons.person, size: 50, color: Color(0xFF999999)),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Name
-                  Text(
-                    _displayName,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
-                      color: Color(0xFF1A1A1A),
-                    ),
-                  ),
-
-                  const SizedBox(height: 4),
-
-                  Text(
-                    _emailadd,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF555555),
-                      letterSpacing: 0.5,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  Text(
-                    _employeeID,
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: Colors.black38,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  
-                ],
-              ),
             ),
 
             const SizedBox(height: 32),
@@ -423,7 +498,11 @@ class _SettingsPageState extends State<SettingsPage> {
               iconColor: const Color(0xFFCC0000),
               label: "ACCOUNT",
               title: "EDIT PROFILE",
-              trailing: const Icon(Icons.chevron_right, color: Color(0xFFAAAAAA), size: 20),
+              trailing: const Icon(
+                Icons.chevron_right,
+                color: Color(0xFFAAAAAA),
+                size: 20,
+              ),
               onTap: _showEditProfileSheet,
             ),
 
@@ -436,7 +515,11 @@ class _SettingsPageState extends State<SettingsPage> {
               iconColor: const Color(0xFFCC0000),
               label: "SECURITY",
               title: "CHANGE PASSWORD",
-              trailing: const Icon(Icons.chevron_right, color: Color(0xFFAAAAAA), size: 20),
+              trailing: const Icon(
+                Icons.chevron_right,
+                color: Color(0xFFAAAAAA),
+                size: 20,
+              ),
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
@@ -452,7 +535,11 @@ class _SettingsPageState extends State<SettingsPage> {
               iconColor: const Color(0xFF555555),
               label: "SESSION MANAGEMENT",
               title: "LOGOUT",
-              trailing: const Icon(Icons.power_settings_new, color: Color(0xFFAAAAAA), size: 18),
+              trailing: const Icon(
+                Icons.power_settings_new,
+                color: Color(0xFFAAAAAA),
+                size: 18,
+              ),
               onTap: () => Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(builder: (_) => const LoginScreen()),
