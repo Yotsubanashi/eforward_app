@@ -17,8 +17,23 @@ class _ApprovalsPageState extends State<ApprovalsPage>
   String _searchQuery = '';
 
   // Dummy data — replace with API later
-  final List<Map<String, dynamic>> _pendingApprovals = [];
-  final List<Map<String, dynamic>> _historyApprovals = [];
+  final List<Map<String, dynamic>> _pendingApprovals = [
+     {
+    'referenceNo': '#X822704',
+    'particulars': 'OPERATIONAL RISK MEMO',
+    'requester': 'Mark Anthony Canal',
+    'dateSent': 'OCT 23, 2023 | 02:43 PM',
+    'fileUrl': 'https://www.w3.org/WAI/WCAG21/Techniques/pdf/sample.pdf',
+  }
+  ];
+  final List<Map<String, dynamic>> _historyApprovals = [
+       {
+      'referenceNo': '#A001234',
+      'particulars': 'ANNUAL COMPLIANCE REPORT',
+      'requester': 'Sarah Miller',
+      'dateSent': 'SEP 15, 2023 | 10:00 AM',
+    }
+  ];
 
   @override
   void initState() {

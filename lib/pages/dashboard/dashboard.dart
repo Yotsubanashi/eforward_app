@@ -232,69 +232,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
               const SizedBox(height: 32),
 
-              // Accessible Modules
-              if (_userModules.isNotEmpty)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      "ACCESSIBLE MODULES",
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 2,
-                        color: Color(0xFF1A1A1A),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        childAspectRatio: 1,
-                      ),
-                      itemCount: _userModules.length,
-                      itemBuilder: (context, index) {
-                        final module = _userModules[index];
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            border: Border.all(color: const Color(0xFFE8E8E8)),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.dashboard,
-                                    color: Color(0xFFCC0000), size: 28),
-                                const SizedBox(height: 8),
-                                Padding(
-                                  padding: const EdgeInsets.all(4),
-                                  child: Text(
-                                    module['module_name'] ?? 'Module',
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 0.5,
-                                      color: Color(0xFF1A1A1A),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 32),
-                  ],
-                ),
+   
 
               // Section Header with View All
               Row(
