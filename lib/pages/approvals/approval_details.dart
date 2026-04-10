@@ -683,10 +683,44 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   Uint8List? _signatureBytes;
   String? _signatureText;
 
-  // Draggable position
+  // User info for signature metadata
+  String _signerName = '';
+  String _signerEmployeeId = '';
+
+  // Draggable position (screen pixels)
   Offset _signaturePosition = const Offset(80, 200);
-  double _signatureWidth = 200;
-  double _signatureHeight = 100;
+  double _signatureWidth = 280;   // wider to fit signature + metadata
+  double _signatureHeight = 80;
+
+  // PDF container dimensions (to convert screen px → PDF points)
+  double _containerWidth = 0;
+  double _containerHeight = 0;
+
+  // Standard PDF page size in points (Letter: 612x792, A4: 595x842)
+  static const double _pdfPageWidthPt = 595.0;
+  static const double _pdfPageHeightPt = 842.0;
+
+  // Convert screen position to PDF points
+  double _toPdfX(double screenX) {
+    if (_containerWidth == 0) return screenX;
+    return (screenX / _containerWidth) * _pdfPageWidthPt;
+  }
+
+  double _toPdfY(double screenY) {
+    if (_containerHeight == 0) return screenY;
+    // PDF Y is from bottom, screen Y is from top — flip it
+    return _pdfPageHeightPt - ((screenY / _containerHeight) * _pdfPageHeightPt);
+  }
+
+  double _toPdfWidth(double screenW) {
+    if (_containerWidth == 0) return screenW;
+    return (screenW / _containerWidth) * _pdfPageWidthPt;
+  }
+
+  double _toPdfHeight(double screenH) {
+    if (_containerHeight == 0) return screenH;
+    return (screenH / _containerHeight) * _pdfPageHeightPt;
+  }
 
   final TextEditingController _remarksController = TextEditingController();
 
@@ -694,6 +728,82 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   void initState() {
     super.initState();
     _loadSignatureFromApi();
+    _loadUserInfo();
+  }
+
+  Future<void> _loadUserInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Debug: Check all keys in SharedPreferences
+    debugPrint('=== SharedPreferences Debug ===');
+    debugPrint('All keys: ${prefs.getKeys()}');
+    
+    // Try different possible keys for user data
+    final possibleKeys = ['user_data', 'userData', 'user', 'profile', 'user_profile'];
+    String? userDataStr;
+    String? foundKey;
+    
+    for (final key in possibleKeys) {
+      final val = prefs.getString(key);
+      debugPrint('$key: ${val != null ? "found (${val.length} chars)" : "not found"}');
+      if (val != null) {
+        userDataStr = val;
+        foundKey = key;
+        break;
+      }
+    }
+    
+    debugPrint('Using key: $foundKey');
+    debugPrint('================================');
+    
+    if (userDataStr != null) {
+      try {
+        final full = jsonDecode(userDataStr) as Map<String, dynamic>;
+        debugPrint('Full decoded data: $full');
+        
+        // Try to find user data in different possible locations
+        Map<String, dynamic>? userData;
+        if (full['data'] is Map) {
+          userData = full['data'] as Map<String, dynamic>;
+          debugPrint('Found at full[data]');
+        } else if (full['user'] is Map) {
+          userData = full['user'] as Map<String, dynamic>;
+          debugPrint('Found at full[user]');
+        } else {
+          userData = full;
+          debugPrint('Using full object as userData');
+        }
+        
+        debugPrint('userData keys: ${userData.keys}');
+        
+        // Try different possible keys for names
+        final first = userData['fname'] ?? userData['first_name'] ?? userData['firstName'] ?? userData['first'] ?? '';
+        final middle = userData['mname'] ?? userData['middle_name'] ?? userData['middleName'] ?? userData['middle'] ?? '';
+        final last = userData['lname'] ?? userData['last_name'] ?? userData['lastName'] ?? userData['last'] ?? '';
+        
+        // Try different keys for employee ID
+        final empId = userData['employee_id'] ?? userData['employeeId'] ?? userData['emp_id'] ?? userData['empId'] ?? userData['id'] ?? '';
+        
+        debugPrint('Extracted - first: $first, middle: $middle, last: $last, empId: $empId');
+        
+        if (mounted) {
+          setState(() {
+            _signerName = [first, last]
+                .map((p) => p.toString().trim())
+                .where((p) => p.isNotEmpty)
+                .join(' ')
+                .trim();
+            _signerEmployeeId = empId.toString().trim();
+          });
+        }
+        
+        debugPrint('Final - Name: $_signerName, EmpID: $_signerEmployeeId');
+      } catch (e) {
+        debugPrint('Error loading user info: $e');
+      }
+    } else {
+      debugPrint('No user data found in SharedPreferences');
+    }
   }
 
   @override
@@ -877,19 +987,33 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 
       debugPrint('Signature bytes to send: ${sigBytes.length}');
 
+      // PDF placement coordinates
+      final pdfX = _toPdfX(_signaturePosition.dx);
+      final pdfY = _toPdfY(_signaturePosition.dy);
+      final pdfW = _toPdfWidth(_signatureWidth);
+      final pdfH = _toPdfHeight(_signatureHeight);
+
+      debugPrint('PDF coords: x=${pdfX.toStringAsFixed(2)}pt y=${pdfY.toStringAsFixed(2)}pt w=${pdfW.toStringAsFixed(2)}pt h=${pdfH.toStringAsFixed(2)}pt');
+
       final request = http.MultipartRequest('POST', uri)
         ..headers['Authorization'] = 'Bearer $token'
         ..headers['Accept'] = 'application/json'
         ..fields['remarks'] = ''
+        // Try all possible placement field formats the API might accept
+        ..fields['page'] = '1'
+        ..fields['x'] = pdfX.toStringAsFixed(2)
+        ..fields['y'] = pdfY.toStringAsFixed(2)
+        ..fields['width'] = pdfW.toStringAsFixed(2)
+        ..fields['height'] = pdfH.toStringAsFixed(2)
         ..fields['signaturePlacement'] = jsonEncode({
-          'x': _signaturePosition.dx.toStringAsFixed(0),
-          'y': _signaturePosition.dy.toStringAsFixed(0),
-          'width': _signatureWidth.toStringAsFixed(0),
-          'height': _signatureHeight.toStringAsFixed(0),
+          'x': pdfX.toStringAsFixed(2),
+          'y': pdfY.toStringAsFixed(2),
+          'width': pdfW.toStringAsFixed(2),
+          'height': pdfH.toStringAsFixed(2),
           'page': 1,
         });
 
-      // Attach raw signature image from API
+      // Attach as 'signatureImage' (primary field name)
       request.files.add(
         http.MultipartFile.fromBytes(
           'signatureImage',
@@ -899,7 +1023,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         ),
       );
 
-      debugPrint('Sending: fields=${request.fields}, files=${request.files.map((f) => '${f.field}:${f.length}bytes').toList()}');
+      debugPrint('Request fields: ${request.fields}');
+      debugPrint('Request files: ${request.files.map((f) => "${f.field}:${f.length}bytes").toList()}');
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
@@ -966,74 +1091,100 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       );
     }
 
-    return SizedBox(
+    final now = DateTime.now().toLocal();
+    final dateStr =
+        '${now.year}-${now.month.toString().padLeft(2,'0')}-${now.day.toString().padLeft(2,'0')} '
+        '${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}:${now.second.toString().padLeft(2,'0')}';
+    final refNo = widget.item['referenceNo']?.toString()
+        ?? widget.item['routing']?['reference_no']?.toString()
+        ?? '';
+
+    return Container(
       width: _signatureWidth,
       height: _signatureHeight,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFCC0000), width: 1),
+      ),
+      child: Row(
         children: [
-          // Signature area with watermark behind
+          // LEFT — signature image with watermark logo behind
           Expanded(
+            flex: 5,
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // 👇 Logo watermark at the BACK
+                // Watermark logo behind
                 Opacity(
-                  opacity: 0.08,
+                  opacity: 0.10,
                   child: Image.asset(
                     'assets/images/eforward_watermark.png',
-                    width: 70,
-                    height: 70,
                     fit: BoxFit.contain,
                   ),
                 ),
                 // Signature on top
-                _signatureBytes != null
-                    ? Image.memory(
-                        _signatureBytes!,
-                        width: _signatureWidth,
-                        height: _signatureHeight - 20,
-                        fit: BoxFit.contain,
-                      )
-                    : _signatureText != null && _signatureText!.isNotEmpty
-                        ? FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              _signatureText!,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontStyle: FontStyle.italic,
-                                color: Color(0xFF1A1A1A),
-                              ),
-                            ),
-                          )
-                        : const SizedBox.shrink(),
+                if (_signatureBytes != null)
+                  Image.memory(
+                    _signatureBytes!,
+                    fit: BoxFit.contain,
+                  )
+                else if (_signatureText != null && _signatureText!.isNotEmpty)
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      _signatureText!,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontStyle: FontStyle.italic,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
+
           // Divider
-          Container(height: 0.5, color: Colors.black26),
-          // Signed date
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.calendar_today_outlined,
-                    size: 8, color: Colors.black38),
-                const SizedBox(width: 3),
-                Text(
-                  'Signed: ${_getSignedDate()}',
-                  style: const TextStyle(
-                    fontSize: 7,
-                    color: Colors.black45,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ],
+          Container(width: 0.5, color: const Color(0xFFCC0000)),
+
+          // RIGHT — metadata box
+          Expanded(
+            flex: 6,
+            child: Container(
+              color: const Color(0xFFFAFAFA),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _metaRow('Digitally signed by:', _signerName),
+                  _metaRow('Employee ID:',  _signerEmployeeId),
+                  _metaRow('Date:', dateStr),
+                  _metaRow('Ref:', refNo),
+                ],
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _metaRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 1),
+      child: RichText(
+        text: TextSpan(
+          style: const TextStyle(fontSize: 6.5, color: Color(0xFF1A1A1A), height: 1.3),
+          children: [
+            TextSpan(
+              text: '$label ',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            TextSpan(text: value),
+          ],
+        ),
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }
@@ -1118,6 +1269,16 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
+                // Save container size for coordinate conversion
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (_containerWidth != constraints.maxWidth ||
+                      _containerHeight != constraints.maxHeight) {
+                    setState(() {
+                      _containerWidth = constraints.maxWidth;
+                      _containerHeight = constraints.maxHeight;
+                    });
+                  }
+                });
                 return Stack(
                   children: [
 
@@ -1225,10 +1386,10 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               color: Colors.white,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Approve button
                   SizedBox(
-                    width: double.infinity,
                     height: 50,
                     child: ElevatedButton(
                       onPressed: _isSubmitting ? null : _submitApproval,
@@ -1245,10 +1406,12 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                               width: 20,
                               height: 20,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white),
+                                  strokeWidth: 2,
+                                  color: Colors.white),
                             )
                           : Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisAlignment:
+                                  MainAxisAlignment.center,
                               children: const [
                                 Icon(Icons.check_circle_outline,
                                     color: Colors.white, size: 18),
@@ -1257,13 +1420,47 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                   "CONFIRM & APPROVE",
                                   style: TextStyle(
                                     color: Colors.white,
-                                    fontSize: 14,
+                                    fontSize: 13,
                                     fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.5,
+                                    letterSpacing: 1.2,
                                   ),
                                 ),
                               ],
                             ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Cancel button
+                  SizedBox(
+                    height: 50,
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(
+                          color: Color(0xFFCC0000),
+                          width: 1.5,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.close,
+                              color: Color(0xFFCC0000), size: 18),
+                          SizedBox(width: 8),
+                          Text(
+                            "CANCEL",
+                            style: TextStyle(
+                              color: Color(0xFFCC0000),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
