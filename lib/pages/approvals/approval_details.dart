@@ -1,12 +1,15 @@
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
+import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // APPROVAL DETAIL PAGE
@@ -111,11 +114,15 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       }
 
       final uri = Uri.parse('$_baseUrl/upload/document/$fileId');
-      debugPrint('Fetching document: $uri');
+      debugPrint('Fetching fresh document: $uri');
 
       final response = await http.get(
         uri,
-        headers: {'Authorization': 'Bearer $token'},
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Cache-Control': 'no-cache',  // 👈 force fresh fetch
+          'Pragma': 'no-cache',
+        },
       );
 
       debugPrint('Document status: ${response.statusCode}');
@@ -124,14 +131,28 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       if (response.statusCode >= 200 && response.statusCode < 300 &&
           response.bodyBytes.isNotEmpty) {
         final dir = await getTemporaryDirectory();
-        final file = File('${dir.path}/doc_$fileId.pdf');
+
+        // 👇 Use timestamp to always create a new file — never use cached version
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final file = File('${dir.path}/doc_${fileId}_$timestamp.pdf');
+
+        // Delete any old cached versions of this document
+        try {
+          final oldFiles = dir.listSync()
+              .whereType<File>()
+              .where((f) => f.path.contains('doc_${fileId}_'));
+          for (final old in oldFiles) {
+            if (old.path != file.path) await old.delete();
+          }
+        } catch (_) {}
+
         await file.writeAsBytes(response.bodyBytes);
         if (mounted) {
           setState(() {
             _localPdfPath = file.path;
             _isLoadingPdf = false;
           });
-          debugPrint('✅ Document loaded from API');
+          debugPrint('✅ Fresh document loaded: ${file.path}');
         }
       } else {
         await _loadPdfLocal();
@@ -655,6 +676,9 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   bool _isSubmitting = false;
   bool _isLoadingSignature = true;
 
+  // GlobalKey to capture signature widget as image
+  final GlobalKey _signatureKey = GlobalKey();
+
   // Signature data
   Uint8List? _signatureBytes;
   String? _signatureText;
@@ -747,18 +771,50 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   }
 
   void _enterSigningMode() {
-    if (_signatureBytes == null &&
-        (_signatureText == null || _signatureText!.isEmpty)) {
+    debugPrint('Entering signing mode — signatureBytes: ${_signatureBytes?.length ?? 0} bytes, signatureText: $_signatureText, isLoading: $_isLoadingSignature');
+
+    if (_isLoadingSignature) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-              'No signature found. Please create one in the Sign tab first.'),
+          content: Text('Signature still loading. Please wait a moment.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (_signatureBytes == null && (_signatureText == null || _signatureText!.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No signature found. Please create one in the Sign tab first.'),
           backgroundColor: Color(0xFFCC0000),
         ),
       );
       return;
     }
     setState(() => _isSigningMode = true);
+  }
+
+  // Capture the rendered signature widget (with logo + date) as PNG bytes
+  Future<Uint8List?> _captureSignatureImage() async {
+    try {
+      final boundary = _signatureKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+      if (boundary == null) {
+        debugPrint('RepaintBoundary not found — using raw bytes');
+        return _signatureBytes;
+      }
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData != null) {
+        final bytes = byteData.buffer.asUint8List();
+        debugPrint('Captured signature widget: ${bytes.length} bytes');
+        return bytes;
+      }
+    } catch (e) {
+      debugPrint('Capture error: $e — using raw bytes');
+    }
+    return _signatureBytes; // fallback
   }
 
   Future<void> _submitApproval() async {
@@ -768,6 +824,14 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token') ?? '';
       final id = widget.item['routing_id']?.toString() ?? widget.item['id']?.toString() ?? '';
+
+      debugPrint('=== SUBMIT APPROVAL ===');
+      debugPrint('routing_id (id): $id');
+      debugPrint('token: ${token.isNotEmpty ? "present" : "MISSING"}');
+      debugPrint('signatureBytes: ${_signatureBytes?.length ?? 0} bytes');
+      debugPrint('position: ${_signaturePosition.dx}, ${_signaturePosition.dy}');
+      debugPrint('size: ${_signatureWidth} x ${_signatureHeight}');
+      debugPrint('======================');
 
       if (token.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -780,10 +844,38 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         return;
       }
 
-      // ─── POST /approvals/:id/approve ─────────────────────────────────────
-      // FormData: remarks, signatureImage, signaturePlacement
+      if (id.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Document ID not found. Cannot approve.'),
+            backgroundColor: Color(0xFFCC0000),
+          ),
+        );
+        setState(() => _isSubmitting = false);
+        return;
+      }
+
+      // ─── POST /approvals/:id/approve ──────────────────────────────────
       final uri = Uri.parse(
           'https://eforward-api.ardentnetworks.com.ph/api/approvals/$id/approve');
+
+      debugPrint('Approving: POST $uri');
+
+      // Use raw API signature bytes — server handles metadata embedding
+      final sigBytes = _signatureBytes;
+
+      if (sigBytes == null || sigBytes.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Signature not loaded yet. Please wait and try again.'),
+            backgroundColor: Color(0xFFCC0000),
+          ),
+        );
+        setState(() => _isSubmitting = false);
+        return;
+      }
+
+      debugPrint('Signature bytes to send: ${sigBytes.length}');
 
       final request = http.MultipartRequest('POST', uri)
         ..headers['Authorization'] = 'Bearer $token'
@@ -797,22 +889,23 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           'page': 1,
         });
 
-      // Attach signature image bytes if available
-      if (_signatureBytes != null && _signatureBytes!.isNotEmpty) {
-        request.files.add(
-          http.MultipartFile.fromBytes(
-            'signatureImage',
-            _signatureBytes!,
-            filename: 'signature.png',
-          ),
-        );
-      }
+      // Attach raw signature image from API
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'signatureImage',
+          sigBytes,
+          filename: 'signature.png',
+          contentType: MediaType('image', 'png'),
+        ),
+      );
+
+      debugPrint('Sending: fields=${request.fields}, files=${request.files.map((f) => '${f.field}:${f.length}bytes').toList()}');
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
       debugPrint('Approve status: ${response.statusCode}');
-      debugPrint('Approve body: ${response.body}');
+      debugPrint('Approve response: ${response.body}');
 
       if (!mounted) return;
 
@@ -828,8 +921,13 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         Navigator.pop(context);
         Navigator.pop(context);
       } else {
-        final decoded = jsonDecode(response.body);
-        final message = decoded['message'] ?? 'Approval failed. Please try again.';
+        String message = 'Approval failed. Please try again.';
+        try {
+          final decoded = jsonDecode(response.body);
+          message = decoded['message'] ?? message;
+        } catch (_) {
+          message = response.body.isNotEmpty ? response.body : message;
+        }
         setState(() => _isSubmitting = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1071,7 +1169,10 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                 ),
                                 child: Stack(
                                   children: [
-                                    Center(child: _buildSignatureWidget()),
+                                    RepaintBoundary(
+                                      key: _signatureKey,
+                                      child: Center(child: _buildSignatureWidget()),
+                                    ),
                                     // Move icon — top left
                                     const Positioned(
                                       top: 2,
