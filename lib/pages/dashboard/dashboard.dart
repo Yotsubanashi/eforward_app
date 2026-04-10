@@ -33,7 +33,7 @@ class _DashboardPageState extends State<DashboardPage> {
   void _loadUserData() {
     if (widget.userData != null) {
       debugPrint('Full userData: ${widget.userData}');
-      
+
       // Extract user info from userData['user']
       final user = widget.userData!['user'] as Map<String, dynamic>?;
       if (user != null) {
@@ -43,7 +43,8 @@ class _DashboardPageState extends State<DashboardPage> {
       }
 
       // Extract modules from userData['permissions']['modules']
-      final permissions = widget.userData!['permissions'] as Map<String, dynamic>?;
+      final permissions =
+          widget.userData!['permissions'] as Map<String, dynamic>?;
       if (permissions != null) {
         final modulesList = permissions['modules'] as List?;
         _userModules = [];
@@ -98,11 +99,14 @@ class _DashboardPageState extends State<DashboardPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
               // Brand Header
               Row(
                 children: const [
-                  Icon(Icons.shield_outlined, color: Color(0xFFCC0000), size: 16),
+                  Icon(
+                    Icons.shield_outlined,
+                    color: Color(0xFFCC0000),
+                    size: 16,
+                  ),
                   SizedBox(width: 10),
                   Text(
                     "E-FORWARD",
@@ -202,13 +206,17 @@ class _DashboardPageState extends State<DashboardPage> {
                       ElevatedButton(
                         onPressed: () => Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const ApprovalsPage()),
+                          MaterialPageRoute(
+                            builder: (_) => const ApprovalsPage(),
+                          ),
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFCC0000),
                           elevation: 0,
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(4),
                           ),
@@ -252,11 +260,11 @@ class _DashboardPageState extends State<DashboardPage> {
                       physics: const NeverScrollableScrollPhysics(),
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        childAspectRatio: 1,
-                      ),
+                            crossAxisCount: 3,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            childAspectRatio: 1,
+                          ),
                       itemCount: _userModules.length,
                       itemBuilder: (context, index) {
                         final module = _userModules[index];
@@ -270,8 +278,11 @@ class _DashboardPageState extends State<DashboardPage> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(Icons.dashboard,
-                                    color: Color(0xFFCC0000), size: 28),
+                                const Icon(
+                                  Icons.dashboard,
+                                  color: Color(0xFFCC0000),
+                                  size: 28,
+                                ),
                                 const SizedBox(height: 8),
                                 Padding(
                                   padding: const EdgeInsets.all(4),
@@ -353,9 +364,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return InkWell(
       onTap: () => Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => DocumentSignScreen(document: item),
-        ),
+        MaterialPageRoute(builder: (_) => DocumentSignScreen(document: item)),
       ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -366,13 +375,8 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-
             // Left — red accent line
-            Container(
-              width: 3,
-              height: 40,
-              color: const Color(0xFFCC0000),
-            ),
+            Container(width: 3, height: 40, color: const Color(0xFFCC0000)),
             const SizedBox(width: 12),
 
             // Middle — reference no + status
@@ -392,7 +396,9 @@ class _DashboardPageState extends State<DashboardPage> {
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 7, vertical: 2),
+                      horizontal: 7,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFCC0000).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(3),
@@ -424,8 +430,11 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                 ),
                 const SizedBox(height: 6),
-                const Icon(Icons.chevron_right,
-                    color: Colors.black26, size: 18),
+                const Icon(
+                  Icons.chevron_right,
+                  color: Colors.black26,
+                  size: 18,
+                ),
               ],
             ),
           ],
