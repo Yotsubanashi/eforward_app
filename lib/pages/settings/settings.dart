@@ -15,7 +15,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final int _selectedIndex = 2;
+  final int _selectedIndex = 3;
   File? _profileImage;
 
   // 👇 Loaded from API via SharedPreferences

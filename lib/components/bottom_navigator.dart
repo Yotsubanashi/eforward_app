@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -6,8 +7,10 @@ import 'package:eforward_app/pages/dashboard/dashboard.dart';
 import 'package:eforward_app/pages/settings/settings.dart';
 import 'package:eforward_app/pages/document/sign.dart';
 import 'package:eforward_app/pages/document/view_sign.dart';
+import 'package:eforward_app/pages/notifications/notifications.dart';
+import 'package:eforward_app/services/notifications_service.dart';
 
-class BottomNavigator extends StatelessWidget {
+class BottomNavigator extends StatefulWidget {
   final int selectedIndex;
   final ValueChanged<int> onTap;
 
@@ -17,8 +20,32 @@ class BottomNavigator extends StatelessWidget {
     required this.onTap,
   });
 
+  @override
+  State<BottomNavigator> createState() => _BottomNavigatorState();
+}
+
+class _BottomNavigatorState extends State<BottomNavigator> {
+  final NotificationsService _notificationsService = NotificationsService();
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _notificationsService.fetchUnreadCount();
+    // Refresh unread count every 30 seconds
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _notificationsService.fetchUnreadCount();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
   Future<void> _navigate(BuildContext context, int index) async {
-    if (index == selectedIndex) return;
+    if (index == widget.selectedIndex) return;
 
     final prefs = await SharedPreferences.getInstance();
 
@@ -81,6 +108,14 @@ class BottomNavigator extends StatelessWidget {
         if (context.mounted) {
           Navigator.pushReplacement(
             context,
+            MaterialPageRoute(builder: (_) => const NotificationsPage()),
+          );
+        }
+        break;
+      case 3:
+        if (context.mounted) {
+          Navigator.pushReplacement(
+            context,
             MaterialPageRoute(builder: (_) => const SettingsPage()),
           );
         }
@@ -91,7 +126,7 @@ class BottomNavigator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BottomNavigationBar(
-      currentIndex: selectedIndex,
+      currentIndex: widget.selectedIndex,
       onTap: (index) => _navigate(context, index),
       backgroundColor: Colors.white,
       selectedItemColor: const Color(0xFFCC0000),
@@ -108,18 +143,98 @@ class BottomNavigator extends StatelessWidget {
       ),
       type: BottomNavigationBarType.fixed,
       elevation: 8,
-      items: const [
-        BottomNavigationBarItem(
+      items: [
+        const BottomNavigationBarItem(
           icon: Icon(Icons.dashboard_outlined),
           activeIcon: Icon(Icons.dashboard),
           label: 'DASHBOARD',
         ),
-        BottomNavigationBarItem(
+        const BottomNavigationBarItem(
           icon: Icon(Icons.draw_outlined),
           activeIcon: Icon(Icons.draw),
           label: 'SIGN',
         ),
+        // Notifications with reactive badge
         BottomNavigationBarItem(
+          icon: ValueListenableBuilder<int>(
+            valueListenable: _notificationsService.unreadCountNotifier,
+            builder: (context, unreadCount, _) {
+              return Stack(
+                children: [
+                  const Icon(Icons.notifications_outlined),
+                  if (unreadCount > 0)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 2,
+                        ),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFCC0000),
+                          shape: BoxShape.circle,
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 18,
+                          minHeight: 18,
+                        ),
+                        child: Text(
+                          unreadCount > 99 ? '99+' : unreadCount.toString(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          activeIcon: ValueListenableBuilder<int>(
+            valueListenable: _notificationsService.unreadCountNotifier,
+            builder: (context, unreadCount, _) {
+              return Stack(
+                children: [
+                  const Icon(Icons.notifications),
+                  if (unreadCount > 0)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 2,
+                        ),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFCC0000),
+                          shape: BoxShape.circle,
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 18,
+                          minHeight: 18,
+                        ),
+                        child: Text(
+                          unreadCount > 99 ? '99+' : unreadCount.toString(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          label: 'NOTIFICATIONS',
+        ),
+        const BottomNavigationBarItem(
           icon: Icon(Icons.settings_outlined),
           activeIcon: Icon(Icons.settings),
           label: 'SETTINGS',
