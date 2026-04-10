@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'package:eforward_app/pages/approvals/approvals.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -28,9 +29,251 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   bool _isLoadingPdf = false;
   bool _isLoadingDetail = true;
   String? _localPdfPath;
+  bool _isSubmittingRevision = false;
 
   // Detail data from API
   Map<String, dynamic>? _detail;
+
+  // Request Revision form
+  final TextEditingController _revisionRemarksController = TextEditingController();
+
+  @override
+  void dispose() {
+    _revisionRemarksController.dispose();
+    super.dispose();
+  }
+
+  void _showRequestRevisionDialog() {
+    _revisionRemarksController.clear();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "REQUEST REVISION",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    RichText(
+                      text: const TextSpan(
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                        children: [
+                          TextSpan(text: "Remarks "),
+                          TextSpan(
+                            text: "*",
+                            style: TextStyle(
+                              color: Color(0xFFCC0000),
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _revisionRemarksController,
+                      minLines: 4,
+                      maxLines: 6,
+                      decoration: InputDecoration(
+                        hintText: "Enter your revision request remarks...",
+                        hintStyle: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.black38,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(4),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE8E8E8),
+                            width: 1,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(4),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFCC0000),
+                            width: 1.5,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.all(12),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(
+                                color: Colors.black38,
+                                width: 1,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            child: const Text(
+                              "CANCEL",
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1,
+                                color: Colors.black54,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _isSubmittingRevision
+                                ? null
+                                : () => _submitRequestRevision(context),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFCC0000),
+                              disabledBackgroundColor:
+                                  const Color(0xFFCC0000).withOpacity(0.6),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            child: _isSubmittingRevision
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text(
+                                    "SUBMIT",
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 1,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _submitRequestRevision(BuildContext dialogContext) async {
+    final remarks = _revisionRemarksController.text.trim();
+
+    if (remarks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter remarks'),
+          backgroundColor: Color(0xFFCC0000),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSubmittingRevision = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token') ?? '';
+      final id = widget.item['routing_id']?.toString() ??
+          widget.item['id']?.toString() ??
+          '';
+
+      if (token.isEmpty || id.isEmpty) {
+        throw Exception('Missing token or approval ID');
+      }
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl/approvals/$id/request-revision'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'remarks': remarks,
+        }),
+      );
+
+      debugPrint('Request revision status: ${response.statusCode}');
+      debugPrint('Request revision response: ${response.body}');
+
+      if (!mounted) return;
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        Navigator.pop(dialogContext);
+        setState(() => _isSubmittingRevision = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Revision request sent successfully'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        // Navigate back after brief delay
+        await Future.delayed(const Duration(seconds: 2));
+        if (mounted) Navigator.pop(context);
+      } else {
+        String message = 'Failed to submit revision request';
+        try {
+          final decoded = jsonDecode(response.body);
+          message = decoded['message'] ?? message;
+        } catch (_) {}
+        setState(() => _isSubmittingRevision = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: const Color(0xFFCC0000),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Request revision error: $e');
+      setState(() => _isSubmittingRevision = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: const Color(0xFFCC0000),
+        ),
+      );
+    }
+  }
 
   static const String _baseUrl = 'https://eforward-api.ardentnetworks.com.ph/api';
 
@@ -533,6 +776,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                   strokeWidth: 2,
                                   color: Color(0xFFCC0000)),
                             )
+                          
                           : GestureDetector(
                               onTap: _localPdfPath != null
                                   ? () => Navigator.push(
@@ -555,6 +799,8 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  mainAxisSize: MainAxisSize.min,
                                   children: const [
                                     Icon(Icons.visibility_outlined,
                                         color: Colors.white, size: 14),
@@ -570,12 +816,39 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                     ),
                                   ],
                                 ),
+                                
                               ),
                             ),
                     ],
                   ),
-                ],
-              ),
+                  const SizedBox(height: 12),
+                  // REQUEST REVISION button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _showRequestRevisionDialog,
+                      icon: const Icon(Icons.edit_outlined, color: Colors.black, size: 16),
+                      label: const Text(
+                        "REQUEST REVISION",
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4)),
+                      ),
+                    ),
+                  ),
+                ],   
+              ),  
             ),
 
             const SizedBox(height: 16),
