@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/pages/settings/settings.dart';
+import 'package:eforward_app/services/auth_api.dart';
+import 'package:eforward_app/pages/auth/login.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -14,6 +17,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
+
+  final AuthApi _authApi = AuthApi();
 
   bool _obscureCurrent = true;
   bool _obscureNew = true;
@@ -40,55 +45,85 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
+    _authApi.dispose();
     super.dispose();
   }
 
   Future<void> _changePassword() async {
-    if (_currentPasswordController.text.isEmpty ||
-        _newPasswordController.text.isEmpty ||
-        _confirmPasswordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please fill in all fields."),
-          backgroundColor: Color(0xFFCC0000),
-        ),
-      );
+    final currentPw = _currentPasswordController.text.trim();
+    final newPw = _newPasswordController.text.trim();
+    final confirmPw = _confirmPasswordController.text.trim();
+
+    // Validations
+    if (currentPw.isEmpty || newPw.isEmpty || confirmPw.isEmpty) {
+      _showSnackbar("Please fill in all fields.");
       return;
     }
 
-    if (_newPasswordController.text != _confirmPasswordController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("New passwords do not match."),
-          backgroundColor: Color(0xFFCC0000),
-        ),
-      );
+    if (newPw != confirmPw) {
+      _showSnackbar("New passwords do not match.");
       return;
     }
 
     if (!_hasMinLength || !_hasNumber || !_hasSpecialChar || !_hasMixedCase) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Password does not meet security requirements."),
-          backgroundColor: Color(0xFFCC0000),
-        ),
-      );
+      _showSnackbar("Password does not meet security requirements.");
       return;
     }
 
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 1500));
+
+    // Get token
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('access_token') ?? '';
+
+    if (token.isEmpty) {
+      setState(() => _isLoading = false);
+      _showSnackbar("Session expired. Please log in again.");
+      return;
+    }
+
+    // Call API with all 3 fields matching the payload
+    final result = await _authApi.changePassword(
+      token: token,
+      currentPassword: currentPw,
+      newPassword: newPw,
+      confirmPassword: confirmPw,
+    );
+
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
-    if (mounted) {
+    if (result.isSuccess) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Password changed successfully!"),
+          content: Text("Password changed successfully! Please log in again."),
           backgroundColor: Colors.green,
         ),
       );
-      Navigator.pop(context);
+
+      // Clear session and redirect to login
+      await prefs.clear();
+
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    } else {
+      _showSnackbar(result.message);
     }
+  }
+
+  void _showSnackbar(String message, {bool isError = true}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError
+            ? const Color(0xFFCC0000)
+            : const Color(0xFF2E7D32),
+      ),
+    );
   }
 
   @override
@@ -271,7 +306,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
             const SizedBox(height: 28),
 
-            // Reset Password Button
+            // Change Password Button
             SizedBox(
               width: double.infinity,
               height: 50,
@@ -358,14 +393,14 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(
+                children: const [
+                  Icon(
                     Icons.account_circle_outlined,
                     color: Color(0xFFCC0000),
                     size: 20,
                   ),
-                  const SizedBox(width: 10),
-                  const Expanded(
+                  SizedBox(width: 10),
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [

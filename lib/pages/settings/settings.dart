@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/pages/auth/change_password.dart';
 import 'package:eforward_app/pages/auth/login.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
+import 'package:eforward_app/services/auth_api.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -15,10 +16,9 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final int _selectedIndex = 3;
+  final int _selectedIndex = 2;
   File? _profileImage;
 
-  // 👇 Loaded from API via SharedPreferences
   String _firstName = '';
   String _middleName = '';
   String _lastName = '';
@@ -37,7 +37,6 @@ class _SettingsPageState extends State<SettingsPage> {
     _loadUserData();
   }
 
-  // 👇 Load credentials from SharedPreferences (saved during OTP login)
   Future<void> _loadUserData() async {
     final prefs = await SharedPreferences.getInstance();
     final userDataStr = prefs.getString('user_data');
@@ -45,9 +44,10 @@ class _SettingsPageState extends State<SettingsPage> {
     if (userDataStr != null && userDataStr.isNotEmpty) {
       try {
         final Map<String, dynamic> full = jsonDecode(userDataStr);
-        // Support both nested 'data' and flat structure
-        final userData = (full['data'] is Map<String, dynamic>)
-            ? full['data'] as Map<String, dynamic>
+
+        // ✅ API response uses 'user' key
+        final userData = (full['user'] is Map<String, dynamic>)
+            ? full['user'] as Map<String, dynamic>
             : full;
 
         debugPrint('Settings loaded user: $userData');
@@ -95,6 +95,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final firstNameController = TextEditingController(text: _firstName);
     final middleNameController = TextEditingController(text: _middleName);
     final lastNameController = TextEditingController(text: _lastName);
+    bool _isSaving = false;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -214,41 +216,78 @@ class _SettingsPageState extends State<SettingsPage> {
                 width: double.infinity,
                 height: 48,
                 child: ElevatedButton(
-                  onPressed: () async {
-                    if (firstNameController.text.trim().isNotEmpty) {
-                      _firstName = firstNameController.text.trim();
-                    }
-                    if (middleNameController.text.trim().isNotEmpty) {
-                      _middleName = middleNameController.text.trim();
-                    }
-                    if (lastNameController.text.trim().isNotEmpty) {
-                      _lastName = lastNameController.text.trim();
-                    }
+                  onPressed: _isSaving
+                      ? null
+                      : () async {
+                          final newFirst = firstNameController.text.trim();
+                          final newMiddle = middleNameController.text.trim();
+                          final newLast = lastNameController.text.trim();
 
-                    // 👇 Save updated name back to SharedPreferences
-                    final prefs = await SharedPreferences.getInstance();
-                    final userDataStr = prefs.getString('user_data');
-                    if (userDataStr != null) {
-                      try {
-                        final Map<String, dynamic> full = jsonDecode(
-                          userDataStr,
-                        );
-                        final userData = (full['data'] is Map)
-                            ? full['data'] as Map<String, dynamic>
-                            : full;
-                        userData['fname'] = _firstName;
-                        userData['mname'] = _middleName;
-                        userData['lname'] = _lastName;
-                        await prefs.setString('user_data', jsonEncode(full));
-                        debugPrint('Profile saved to SharedPreferences');
-                      } catch (e) {
-                        debugPrint('Error saving profile: $e');
-                      }
-                    }
+                          setSheetState(() => _isSaving = true);
 
-                    setState(() {});
-                    Navigator.pop(context);
-                  },
+                          final prefs = await SharedPreferences.getInstance();
+                          final token = prefs.getString('access_token') ?? '';
+
+                          // ✅ Call API to save to database
+                          final api = AuthApi();
+                          final result = await api.updateProfile(
+                            token: token,
+                            employeeId: _employeeId,
+                            fname: newFirst.isNotEmpty ? newFirst : _firstName,
+                            mname: newMiddle.isNotEmpty
+                                ? newMiddle
+                                : _middleName,
+                            lname: newLast.isNotEmpty ? newLast : _lastName,
+                          );
+
+                          setSheetState(() => _isSaving = false);
+
+                          if (result.isSuccess) {
+                            // Update local variables
+                            if (newFirst.isNotEmpty) _firstName = newFirst;
+                            if (newMiddle.isNotEmpty) _middleName = newMiddle;
+                            if (newLast.isNotEmpty) _lastName = newLast;
+
+                            // ✅ Update SharedPreferences cache
+                            final userDataStr = prefs.getString('user_data');
+                            if (userDataStr != null) {
+                              try {
+                                final Map<String, dynamic> full = jsonDecode(
+                                  userDataStr,
+                                );
+                                final userData = (full['user'] is Map)
+                                    ? full['user'] as Map<String, dynamic>
+                                    : full;
+                                userData['fname'] = _firstName;
+                                userData['mname'] = _middleName;
+                                userData['lname'] = _lastName;
+                                await prefs.setString(
+                                  'user_data',
+                                  jsonEncode(full),
+                                );
+                              } catch (e) {
+                                debugPrint('Error saving profile cache: $e');
+                              }
+                            }
+
+                            setState(() {});
+                            Navigator.pop(context);
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Profile updated successfully.'),
+                                backgroundColor: Color(0xFF2E7D32),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(result.message),
+                                backgroundColor: const Color(0xFFCC0000),
+                              ),
+                            );
+                          }
+                        },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFCC0000),
                     elevation: 0,
@@ -256,15 +295,24 @@ class _SettingsPageState extends State<SettingsPage> {
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
-                  child: const Text(
-                    "SAVE CHANGES",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2,
-                    ),
-                  ),
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          "SAVE CHANGES",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 2,
+                          ),
+                        ),
                 ),
               ),
             ],

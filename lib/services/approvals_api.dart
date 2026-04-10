@@ -1,13 +1,11 @@
 import 'dart:io';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // APPROVAL DETAIL PAGE
@@ -526,11 +524,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   // 👇 Fetch signature from API — { data: { base64: "data:image/png;base64,..." } }
   Future<void> _loadSignatureFromApi() async {
     setState(() => _isLoadingSignature = true);
-
-    // ── CRITICAL: Clear image cache to ensure fresh signature is displayed ──
-    imageCache.clear();
-    imageCache.clearLiveImages();
-
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token') ?? '';
@@ -668,7 +661,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
             'signatureImage',
             _signatureBytes!,
             filename: 'signature.png',
-            contentType: MediaType('image', 'png'), // 👈 Specify content type
           ),
         );
       }
