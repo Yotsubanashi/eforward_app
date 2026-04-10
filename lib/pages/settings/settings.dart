@@ -16,7 +16,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final int _selectedIndex = 2;
+  final int _selectedIndex = 3;
   File? _profileImage;
 
   String _firstName = '';
@@ -477,18 +477,17 @@ class _SettingsPageState extends State<SettingsPage> {
                         const SizedBox(height: 4),
 
                         // Role
-                        if (_role.isNotEmpty)
-                          Text(
-                            _role,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Color(0xFF555555),
-                              letterSpacing: 0.5,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-
-                        const SizedBox(height: 10),
+                        // if (_role.isNotEmpty)
+                        //   Text(
+                        //     _role,
+                        //     style: const TextStyle(
+                        //       fontSize: 14,
+                        //       color: Color(0xFF555555),
+                        //       letterSpacing: 0.5,
+                        //       fontWeight: FontWeight.w500,
+                        //     ),
+                        //   ),
+                        //const SizedBox(height: 10),
 
                         // Email
                         if (_email.isNotEmpty)

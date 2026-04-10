@@ -549,7 +549,7 @@ class _ViewSignPageState extends State<ViewSignPage>
                 ),
               ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
 
             // Action Button
             SizedBox(
@@ -605,7 +605,7 @@ class _ViewSignPageState extends State<ViewSignPage>
               ),
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 190),
 
             // Legal Validity Notice
             Container(
