@@ -23,16 +23,185 @@ class ApprovalDetailPage extends StatefulWidget {
 
 class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   bool _isLoadingPdf = false;
+  bool _isLoadingDetail = true;
   String? _localPdfPath;
+
+  // Detail data from API
+  Map<String, dynamic>? _detail;
+
+  static const String _baseUrl = 'https://eforward-api.ardentnetworks.com.ph/api';
 
   @override
   void initState() {
     super.initState();
-    _loadPdf();
+    setState(() => _isLoadingPdf = true); // show loader immediately
+    _fetchApprovalDetail();               // PDF loads inside this after detail
   }
 
-  Future<void> _loadPdf() async {
+  // ─── GET /approvals/:id/routing ──────────────────────────────────────────
+  Future<void> _fetchApprovalDetail() async {
+    setState(() => _isLoadingDetail = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token') ?? '';
+      final id = widget.item['routing_id']?.toString() ?? widget.item['id']?.toString() ?? '';
+
+      if (token.isEmpty || id.isEmpty) {
+        debugPrint('No token or id — using dummy data');
+        if (mounted) setState(() { _isLoadingDetail = false; });
+        return;
+      }
+
+      final response = await http.get(
+        Uri.parse('$_baseUrl/approvals/$id/routing'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      debugPrint('Approval detail status: ${response.statusCode}');
+      debugPrint('Approval detail body: ${response.body.length > 300 ? response.body.substring(0, 300) : response.body}');
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            _detail = decoded is Map<String, dynamic> ? decoded : null;
+            _isLoadingDetail = false;
+          });
+
+          // 👇 After getting detail, fetch the document file
+          await _loadPdfFromApi(decoded);
+        }
+      } else {
+        if (mounted) {
+          setState(() => _isLoadingDetail = false);
+          await _loadPdfLocal(); // fallback
+        }
+      }
+    } catch (e) {
+      debugPrint('Approval detail error: $e');
+      if (mounted) {
+        setState(() => _isLoadingDetail = false);
+        await _loadPdfLocal();
+      }
+    }
+  }
+
+  // ─── Fetch document from API using file_id ────────────────────────────────
+  Future<void> _loadPdfFromApi(dynamic detailData) async {
     setState(() => _isLoadingPdf = true);
+
+    debugPrint('=== FULL DETAIL RESPONSE ===');
+    _printNested(detailData, 0);
+    debugPrint('============================');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token') ?? '';
+
+      String? fileId = _extractFileId(detailData);
+      debugPrint('Extracted file_id: $fileId');
+
+      if (fileId == null || fileId.isEmpty) {
+        debugPrint('No file_id found — using local PDF fallback');
+        await _loadPdfLocal();
+        return;
+      }
+
+      final uri = Uri.parse('$_baseUrl/upload/document/$fileId');
+      debugPrint('Fetching document: $uri');
+
+      final response = await http.get(
+        uri,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      debugPrint('Document status: ${response.statusCode}');
+      debugPrint('Document bytes: ${response.bodyBytes.length}');
+
+      if (response.statusCode >= 200 && response.statusCode < 300 &&
+          response.bodyBytes.isNotEmpty) {
+        final dir = await getTemporaryDirectory();
+        final file = File('${dir.path}/doc_$fileId.pdf');
+        await file.writeAsBytes(response.bodyBytes);
+        if (mounted) {
+          setState(() {
+            _localPdfPath = file.path;
+            _isLoadingPdf = false;
+          });
+          debugPrint('✅ Document loaded from API');
+        }
+      } else {
+        await _loadPdfLocal();
+      }
+    } catch (e) {
+      debugPrint('Document fetch error: $e');
+      await _loadPdfLocal();
+    }
+  }
+
+  // ─── Recursively print all nested keys ────────────────────────────────────
+  void _printNested(dynamic data, int depth) {
+    final indent = '  ' * depth;
+    if (data is Map) {
+      data.forEach((key, value) {
+        debugPrint('$indent$key: ${value is Map || value is List ? '' : value}');
+        if (value is Map || value is List) _printNested(value, depth + 1);
+      });
+    } else if (data is List) {
+      for (int i = 0; i < data.length; i++) {
+        debugPrint('${indent}[$i]:');
+        _printNested(data[i], depth + 1);
+      }
+    }
+  }
+
+  // ─── Extract file_id from data.files[0].file_id ──────────────────────────
+  String? _extractFileId(dynamic data) {
+    if (data == null) return null;
+
+    // data.files[0].file_id  ← exact structure from API
+    final inner = data is Map ? (data['data'] ?? data) : null;
+    if (inner is Map) {
+      final files = inner['files'];
+      if (files is List && files.isNotEmpty) {
+        final first = files.first;
+        if (first is Map) {
+          final id = first['file_id'] ?? first['fileId'] ?? first['id'];
+          if (id != null) {
+            debugPrint('file_id from files[0]: $id');
+            return id.toString();
+          }
+        }
+      }
+    }
+
+    // Fallback — recursive search
+    if (data is Map) {
+      for (final key in ['file_id', 'fileId', 'document_id', 'documentId']) {
+        final val = data[key];
+        if (val != null && val.toString().isNotEmpty && val.toString() != 'null') {
+          return val.toString();
+        }
+      }
+      for (final val in data.values) {
+        final found = _extractFileId(val);
+        if (found != null) return found;
+      }
+    }
+    if (data is List) {
+      for (final item in data) {
+        final found = _extractFileId(item);
+        if (found != null) return found;
+      }
+    }
+    return null;
+  }
+
+  // ─── Fallback: load from local assets ────────────────────────────────────
+  Future<void> _loadPdfLocal() async {
     try {
       final byteData = await rootBundle.load('assets/documents/sample.pdf');
       final dir = await getTemporaryDirectory();
@@ -45,16 +214,86 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         });
       }
     } catch (e) {
-      debugPrint('PDF load error: $e');
+      debugPrint('Local PDF load error: $e');
       if (mounted) setState(() => _isLoadingPdf = false);
     }
   }
 
+  Future<void> _loadPdf() async {
+    // This is now called only if detail fetch hasn't started yet
+    // Actual PDF loading happens in _loadPdfFromApi after detail is fetched
+  }
+
+  // Helper — get value from API detail or fallback to widget.item
+  // data structure: { data: { routing_id, reference_no, particulars, files[], ... } }
+  String _getValue(String apiKey, String fallbackKey) {
+    final data = _detail?['data'] ?? _detail;
+    if (data is Map) {
+      final val = data[apiKey];
+      if (val != null && val.toString().isNotEmpty && val.toString() != 'null')
+        return val.toString();
+    }
+    return widget.item[fallbackKey]?.toString() ?? '—';
+  }
+
+  // Format ISO date to readable
+  // Get requester from data.owner.fname + mname + lname
+  String _getRequesterName() {
+    final data = _detail?['data'] ?? _detail;
+    if (data is Map) {
+      final owner = data['owner'];
+      if (owner is Map) {
+        final first = owner['fname']?.toString().trim() ?? '';
+        final middle = owner['mname']?.toString().trim() ?? '';
+        final last = owner['lname']?.toString().trim() ?? '';
+        final name = [first, middle, last]
+            .where((p) => p.isNotEmpty)
+            .join(' ')
+            .trim();
+        if (name.isNotEmpty) return name;
+      }
+    }
+    return widget.item['requester']?.toString() ?? '—';
+  }
+
+  String _formatDate(String raw) {
+    if (raw.isEmpty || raw == '—') return raw;
+    try {
+      final dt = DateTime.parse(raw).toLocal();
+      final months = ['JAN','FEB','MAR','APR','MAY','JUN',
+                      'JUL','AUG','SEP','OCT','NOV','DEC'];
+      final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+      final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+      return '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
+          '${hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')} $ampm';
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  // Get filename — data.files[0].original_name
+  String _getFileName() {
+    final data = _detail?['data'] ?? _detail;
+    if (data is Map) {
+      final files = data['files'];
+      if (files is List && files.isNotEmpty) {
+        final first = files.first;
+        if (first is Map) {
+          final name = first['original_name'] ?? first['originalName']
+              ?? first['file_name'] ?? first['fileName'];
+          if (name != null && name.toString().isNotEmpty) {
+            return name.toString();
+          }
+        }
+      }
+    }
+    return widget.item['original_name']?.toString()
+        ?? '${widget.item['particulars'] ?? 'Document'}.pdf';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final item = widget.item;
-    final fileName = item['fileName'] as String?
-        ?? '${item['particulars'] ?? 'Document'}.pdf';
+    final fileName = _getFileName();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F5F7),
@@ -125,7 +364,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  item['referenceNo'] ?? item['id'] ?? '—',
+                  _getValue('reference_no', 'referenceNo'),
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -140,7 +379,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
 
             // Title
             Text(
-              item['particulars'] ?? item['title'] ?? 'Document',
+              _getValue('particulars', 'particulars'),
               style: const TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w900,
@@ -173,17 +412,26 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _buildInfoRow(Icons.person_outline, "REQUESTER",
-                      item['requester'] ?? item['createdBy'] ?? '—'),
-                  const Divider(height: 24, color: Color(0xFFF0F0F0)),
-                  _buildInfoRow(Icons.calendar_today_outlined, "DATE SENT",
-                      item['dateSent'] ?? item['dateTime'] ?? '—'),
-                  const Divider(height: 24, color: Color(0xFFF0F0F0)),
-                  _buildInfoRow(Icons.label_outline, "PARTICULARS",
-                      item['particulars'] ?? '—'),
-                  const Divider(height: 24, color: Color(0xFFF0F0F0)),
-                  _buildInfoRow(Icons.tag, "REFERENCE NO",
-                      item['referenceNo'] ?? item['id'] ?? '—'),
+                  if (_isLoadingDetail)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: CircularProgressIndicator(color: Color(0xFFCC0000)),
+                      ),
+                    )
+                  else ...[
+                    _buildInfoRow(Icons.person_outline, "REQUESTER",
+                        _getRequesterName()),
+                    const Divider(height: 24, color: Color(0xFFF0F0F0)),
+                    _buildInfoRow(Icons.calendar_today_outlined, "DATE SENT",
+                        _formatDate(_getValue('date_sent', 'dateSent'))),
+                    const Divider(height: 24, color: Color(0xFFF0F0F0)),
+                    _buildInfoRow(Icons.label_outline, "PARTICULARS",
+                        _getValue('particulars', 'particulars')),
+                    const Divider(height: 24, color: Color(0xFFF0F0F0)),
+                    _buildInfoRow(Icons.tag, "REFERENCE NO",
+                        _getValue('reference_no', 'referenceNo')),
+                  ],
                 ],
               ),
             ),
@@ -271,7 +519,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                         MaterialPageRoute(
                                           builder: (_) => PdfSignerPage(
                                             pdfPath: _localPdfPath!,
-                                            item: item,
+                                            item: widget.item,
                                           ),
                                         ),
                                       )
@@ -516,36 +764,92 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   Future<void> _submitApproval() async {
     setState(() => _isSubmitting = true);
 
-    // TODO: Connect to approveDocument API:
-    // final prefs = await SharedPreferences.getInstance();
-    // final token = prefs.getString('access_token') ?? '';
-    // final id = widget.item['id'] ?? '';
-    // await approvalsApi.approveDocument(
-    //   token: token,
-    //   id: id,
-    //   remarks: _remarksController.text,
-    //   signatureImageBytes: _signatureBytes ?? [],
-    //   signatureImageFileName: 'signature.png',
-    //   signaturePlacement: '${_signaturePosition.dx},${_signaturePosition.dy}',
-    // );
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token') ?? '';
+      final id = widget.item['routing_id']?.toString() ?? widget.item['id']?.toString() ?? '';
 
-    await Future.delayed(const Duration(seconds: 1)); // simulate
+      if (token.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Session expired. Please login again.'),
+            backgroundColor: Color(0xFFCC0000),
+          ),
+        );
+        setState(() => _isSubmitting = false);
+        return;
+      }
 
-    if (!mounted) return;
+      // ─── POST /approvals/:id/approve ─────────────────────────────────────
+      // FormData: remarks, signatureImage, signaturePlacement
+      final uri = Uri.parse(
+          'https://eforward-api.ardentnetworks.com.ph/api/approvals/$id/approve');
 
-    setState(() => _isSubmitting = false);
+      final request = http.MultipartRequest('POST', uri)
+        ..headers['Authorization'] = 'Bearer $token'
+        ..headers['Accept'] = 'application/json'
+        ..fields['remarks'] = ''
+        ..fields['signaturePlacement'] = jsonEncode({
+          'x': _signaturePosition.dx.toStringAsFixed(0),
+          'y': _signaturePosition.dy.toStringAsFixed(0),
+          'width': _signatureWidth.toStringAsFixed(0),
+          'height': _signatureHeight.toStringAsFixed(0),
+          'page': 1,
+        });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Document approved and routed to next approver!'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
-      ),
-    );
+      // Attach signature image bytes if available
+      if (_signatureBytes != null && _signatureBytes!.isNotEmpty) {
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'signatureImage',
+            _signatureBytes!,
+            filename: 'signature.png',
+          ),
+        );
+      }
 
-    // Pop both PDF page and detail page
-    Navigator.pop(context);
-    Navigator.pop(context);
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      debugPrint('Approve status: ${response.statusCode}');
+      debugPrint('Approve body: ${response.body}');
+
+      if (!mounted) return;
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Document approved and routed to next approver!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        Navigator.pop(context);
+        Navigator.pop(context);
+      } else {
+        final decoded = jsonDecode(response.body);
+        final message = decoded['message'] ?? 'Approval failed. Please try again.';
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: const Color(0xFFCC0000),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Submit error: $e');
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Network error. Please try again.'),
+            backgroundColor: Color(0xFFCC0000),
+          ),
+        );
+      }
+    }
   }
 
   String _getSignedDate() {

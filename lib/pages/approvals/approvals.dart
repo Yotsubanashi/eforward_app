@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
 import 'package:eforward_app/pages/approvals/approval_details.dart';
 
@@ -16,29 +19,30 @@ class _ApprovalsPageState extends State<ApprovalsPage>
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
-  // Dummy data — replace with API later
-  final List<Map<String, dynamic>> _pendingApprovals = [
-     {
-    'referenceNo': '#X822704',
-    'particulars': 'OPERATIONAL RISK MEMO',
-    'requester': 'Mark Anthony Canal',
-    'dateSent': 'OCT 23, 2023 | 02:43 PM',
-    'fileUrl': 'https://www.w3.org/WAI/WCAG21/Techniques/pdf/sample.pdf',
-  }
-  ];
-  final List<Map<String, dynamic>> _historyApprovals = [
-       {
-      'referenceNo': '#A001234',
-      'particulars': 'ANNUAL COMPLIANCE REPORT',
-      'requester': 'Sarah Miller',
-      'dateSent': 'SEP 15, 2023 | 10:00 AM',
-    }
-  ];
+  static const String _baseUrl =
+      'https://eforward-api.ardentnetworks.com.ph/api';
+
+  // API data
+  List<Map<String, dynamic>> _pendingApprovals = [];
+  List<Map<String, dynamic>> _historyApprovals = [];
+  bool _isLoadingPending = false;
+  bool _isLoadingHistory = false;
+  String? _pendingError;
+  String? _historyError;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      // Load history only when that tab is opened
+      if (_tabController.index == 1 &&
+          _historyApprovals.isEmpty &&
+          !_isLoadingHistory) {
+        _fetchHistory();
+      }
+    });
+    _fetchPending();
   }
 
   @override
@@ -46,6 +50,207 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  // ─── GET /approvals/pending ───────────────────────────────────────────────
+  Future<void> _fetchPending({String? search}) async {
+    setState(() {
+      _isLoadingPending = true;
+      _pendingError = null;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token') ?? '';
+
+      if (token.isEmpty) {
+        setState(() {
+          _isLoadingPending = false;
+          _pendingError = 'Session expired. Please login again.';
+        });
+        return;
+      }
+
+      final queryParams = <String, String>{'page': '1', 'limit': '50'};
+      if (search != null && search.isNotEmpty) queryParams['search'] = search;
+
+      final uri = Uri.parse('$_baseUrl/approvals/pending')
+          .replace(queryParameters: queryParams);
+
+      debugPrint('Fetching pending approvals: $uri');
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      debugPrint('Pending status: ${response.statusCode}');
+      debugPrint('Pending body: ${response.body.length > 500 ? response.body.substring(0, 500) : response.body}');
+
+      if (!mounted) return;
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+        final rawList = _extractList(decoded);
+        setState(() {
+          _pendingApprovals =
+              rawList.map((e) => _normalizeItem(e as Map<String, dynamic>)).toList();
+          _isLoadingPending = false;
+        });
+      } else {
+        final decoded = jsonDecode(response.body);
+        setState(() {
+          _isLoadingPending = false;
+          _pendingError = decoded['message'] ?? 'Failed to load approvals.';
+        });
+      }
+    } catch (e) {
+      debugPrint('Fetch pending error: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingPending = false;
+          _pendingError = 'Network error. Please try again.';
+        });
+      }
+    }
+  }
+
+  // ─── GET /approvals/history ───────────────────────────────────────────────
+  Future<void> _fetchHistory({String? search}) async {
+    setState(() {
+      _isLoadingHistory = true;
+      _historyError = null;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token') ?? '';
+
+      if (token.isEmpty) {
+        setState(() {
+          _isLoadingHistory = false;
+          _historyError = 'Session expired.';
+        });
+        return;
+      }
+
+      final queryParams = <String, String>{'page': '1', 'limit': '50'};
+      if (search != null && search.isNotEmpty) queryParams['search'] = search;
+
+      final uri = Uri.parse('$_baseUrl/approvals/history')
+          .replace(queryParameters: queryParams);
+
+      debugPrint('Fetching history: $uri');
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      debugPrint('History status: ${response.statusCode}');
+
+      if (!mounted) return;
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+        final rawList = _extractList(decoded);
+        setState(() {
+          _historyApprovals =
+              rawList.map((e) => _normalizeItem(e as Map<String, dynamic>)).toList();
+          _isLoadingHistory = false;
+        });
+      } else {
+        setState(() {
+          _isLoadingHistory = false;
+          _historyError = 'Failed to load history.';
+        });
+      }
+    } catch (e) {
+      debugPrint('Fetch history error: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingHistory = false;
+          _historyError = 'Network error.';
+        });
+      }
+    }
+  }
+
+  // ─── Extract list from various API response structures ────────────────────
+  List<dynamic> _extractList(dynamic decoded) {
+    if (decoded is List) return decoded;
+    if (decoded is Map) {
+      for (final key in ['data', 'approvals', 'items', 'results', 'list']) {
+        if (decoded[key] is List) return decoded[key] as List;
+        if (decoded[key] is Map && decoded[key]['data'] is List) {
+          return decoded[key]['data'] as List;
+        }
+      }
+    }
+    return [];
+  }
+
+  // ─── Normalize API fields to consistent keys ──────────────────────────────
+  Map<String, dynamic> _normalizeItem(Map<String, dynamic> raw) {
+    // All document data is nested inside raw['routing']
+    final routing = raw['routing'] as Map<String, dynamic>? ?? {};
+    // Requester is inside routing['owner']
+    final owner = routing['owner'] as Map<String, dynamic>? ?? {};
+
+    final firstName = owner['fname']?.toString().trim() ?? '';
+    final middleName = owner['mname']?.toString().trim() ?? '';
+    final lastName = owner['lname']?.toString().trim() ?? '';
+    final requesterName = [firstName, middleName, lastName]
+        .where((p) => p.isNotEmpty)
+        .join(' ')
+        .trim();
+
+    // Format date from ISO to readable
+    String dateSent = raw['date_sent'] ?? '';
+    try {
+      if (dateSent.isNotEmpty) {
+        final dt = DateTime.parse(dateSent).toLocal();
+        final months = ['JAN','FEB','MAR','APR','MAY','JUN',
+                        'JUL','AUG','SEP','OCT','NOV','DEC'];
+        final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+        final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+        dateSent = '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
+            '${hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')} $ampm';
+      }
+    } catch (_) {}
+
+    return {
+      ...raw,
+      'id': raw['routing_id']?.toString() ?? '',
+      'referenceNo': routing['reference_no'] ?? '',
+      'particulars': routing['particulars'] ?? '',
+      'requester': requesterName.isNotEmpty ? requesterName : '—',
+      'dateSent': dateSent,
+      'status': raw['status'] ?? 'PND',
+      // Keep routing object for detail page
+      'routing': routing,
+      'owner': owner,
+    };
+  }
+
+  // ─── Extract requester (kept for compatibility) ────────────────────────────
+  String _extractRequester(Map<String, dynamic> raw) {
+    return raw['requester']?.toString() ?? '—';
+  }
+
+  void _onSearch(String val) {
+    setState(() => _searchQuery = val);
+    if (_tabController.index == 0) {
+      _fetchPending(search: val);
+    } else {
+      _fetchHistory(search: val);
+    }
   }
 
   List<Map<String, dynamic>> get _filteredPending {
@@ -114,14 +319,47 @@ class _ApprovalsPageState extends State<ApprovalsPage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    "APPROVALS",
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1,
-                      color: Color(0xFF1A1A1A),
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "APPROVALS",
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                      // Pending badge
+                      if (_pendingApprovals.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFCC0000).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                                color: const Color(0xFFCC0000).withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.pending_outlined,
+                                  size: 12, color: Color(0xFFCC0000)),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${_pendingApprovals.length} PENDING',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFFCC0000),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 4),
                   const Text(
@@ -147,9 +385,35 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                       fontWeight: FontWeight.w600,
                       letterSpacing: 1.5,
                     ),
-                    tabs: const [
-                      Tab(text: "PENDING"),
-                      Tab(text: "HISTORY"),
+                    tabs: [
+                      Tab(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text("PENDING"),
+                            if (_pendingApprovals.isNotEmpty) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFCC0000),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '${_pendingApprovals.length}',
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const Tab(text: "HISTORY"),
                     ],
                   ),
                 ],
@@ -175,14 +439,13 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                     Expanded(
                       child: TextField(
                         controller: _searchController,
-                        onChanged: (val) =>
-                            setState(() => _searchQuery = val),
+                        onChanged: _onSearch,
                         style: const TextStyle(
                             fontSize: 13, color: Color(0xFF1A1A1A)),
                         decoration: const InputDecoration(
                           hintText: "Search approvals...",
-                          hintStyle:
-                              TextStyle(color: Colors.black26, fontSize: 13),
+                          hintStyle: TextStyle(
+                              color: Colors.black26, fontSize: 13),
                           border: InputBorder.none,
                           isDense: true,
                           contentPadding: EdgeInsets.symmetric(vertical: 0),
@@ -193,7 +456,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                       GestureDetector(
                         onTap: () {
                           _searchController.clear();
-                          setState(() => _searchQuery = '');
+                          _onSearch('');
                         },
                         child: const Padding(
                           padding: EdgeInsets.only(right: 12),
@@ -211,8 +474,20 @@ class _ApprovalsPageState extends State<ApprovalsPage>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildCardList(_filteredPending, isPending: true),
-                  _buildCardList(_filteredHistory, isPending: false),
+                  _buildCardList(
+                    _filteredPending,
+                    isPending: true,
+                    isLoading: _isLoadingPending,
+                    error: _pendingError,
+                    onRefresh: _fetchPending,
+                  ),
+                  _buildCardList(
+                    _filteredHistory,
+                    isPending: false,
+                    isLoading: _isLoadingHistory,
+                    error: _historyError,
+                    onRefresh: _fetchHistory,
+                  ),
                 ],
               ),
             ),
@@ -226,18 +501,123 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     );
   }
 
-  Widget _buildCardList(List<Map<String, dynamic>> items,
-      {required bool isPending}) {
-    if (items.isEmpty) {
-      return _buildEmptyState(isPending: isPending);
+  Widget _buildCardList(
+    List<Map<String, dynamic>> items, {
+    required bool isPending,
+    required bool isLoading,
+    required String? error,
+    required VoidCallback onRefresh,
+  }) {
+    // Loading
+    if (isLoading) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Color(0xFFCC0000)),
+            SizedBox(height: 12),
+            Text(
+              "LOADING...",
+              style: TextStyle(
+                fontSize: 10,
+                letterSpacing: 1.5,
+                color: Colors.black38,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: items.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (context, index) =>
-          _buildApprovalCard(items[index], isPending: isPending),
+    // Error
+    if (error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline,
+                size: 48, color: Color(0xFFCC0000)),
+            const SizedBox(height: 12),
+            Text(
+              error,
+              style: const TextStyle(fontSize: 13, color: Colors.black45),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: onRefresh,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFCC0000),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4)),
+              ),
+              child: const Text(
+                "RETRY",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Empty
+    if (items.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: () async => onRefresh(),
+        color: const Color(0xFFCC0000),
+        child: ListView(
+          children: [
+            SizedBox(
+              height: 300,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.check_circle_outline,
+                        size: 48, color: Colors.black12),
+                    const SizedBox(height: 12),
+                    Text(
+                      isPending ? "All caught up!" : "No history yet.",
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black38,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      isPending
+                          ? "You don't have any pending approvals"
+                          : "Completed approvals will appear here.",
+                      style: const TextStyle(
+                          fontSize: 12, color: Colors.black26),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async => onRefresh(),
+      color: const Color(0xFFCC0000),
+      child: ListView.separated(
+        padding: const EdgeInsets.all(16),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        itemBuilder: (context, index) =>
+            _buildApprovalCard(items[index], isPending: isPending),
+      ),
     );
   }
 
@@ -286,7 +666,9 @@ class _ApprovalsPageState extends State<ApprovalsPage>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                item['referenceNo'] ?? '—',
+                item['referenceNo']?.toString().isNotEmpty == true
+                    ? item['referenceNo'].toString()
+                    : item['id']?.toString() ?? '—',
                 style: const TextStyle(
                   fontSize: 10,
                   color: Color(0xFFCC0000),
@@ -295,8 +677,8 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                 ),
               ),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: isPending
                       ? const Color(0xFFCC0000).withOpacity(0.1)
@@ -309,7 +691,9 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                     fontSize: 9,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1,
-                    color: isPending ? const Color(0xFFCC0000) : Colors.green,
+                    color: isPending
+                        ? const Color(0xFFCC0000)
+                        : Colors.green,
                   ),
                 ),
               ),
@@ -318,9 +702,11 @@ class _ApprovalsPageState extends State<ApprovalsPage>
 
           const SizedBox(height: 10),
 
-          // Particulars (title)
+          // Particulars
           Text(
-            item['particulars'] ?? '—',
+            item['particulars']?.toString().isNotEmpty == true
+                ? item['particulars'].toString()
+                : '—',
             style: const TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w900,
@@ -337,12 +723,15 @@ class _ApprovalsPageState extends State<ApprovalsPage>
               const Icon(Icons.person_outline,
                   size: 12, color: Colors.black38),
               const SizedBox(width: 4),
-              Text(
-                "REQUESTER: ${item['requester'] ?? '—'}",
-                style: const TextStyle(
-                    fontSize: 10,
-                    color: Colors.black45,
-                    letterSpacing: 0.5),
+              Expanded(
+                child: Text(
+                  "REQUESTER: ${item['requester'] ?? '—'}",
+                  style: const TextStyle(
+                      fontSize: 10,
+                      color: Colors.black45,
+                      letterSpacing: 0.5),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),
@@ -356,7 +745,9 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                   size: 12, color: Colors.black38),
               const SizedBox(width: 4),
               Text(
-                item['dateSent'] ?? '—',
+                item['dateSent']?.toString().isNotEmpty == true
+                    ? item['dateSent'].toString()
+                    : '—',
                 style: const TextStyle(
                     fontSize: 10,
                     color: Colors.black45,
@@ -375,14 +766,16 @@ class _ApprovalsPageState extends State<ApprovalsPage>
               width: double.infinity,
               height: 40,
               child: ElevatedButton(
-                onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ApprovalDetailPage(item: item),
-                      ),
-                    );
-                  },
+                onPressed: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ApprovalDetailPage(item: item),
+                  ),
+                );
+                // Refresh list after returning (document may have been approved)
+                _fetchPending();
+              },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFCC0000),
                   elevation: 0,
