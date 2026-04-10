@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 class AuthApi {
   AuthApi({http.Client? client}) : _client = client ?? http.Client();
@@ -10,7 +10,6 @@ class AuthApi {
 
   static const String baseUrl =
       'https://eforward-api.ardentnetworks.com.ph/api';
-  static const String localBaseUrl = 'http://localhost:3000';
 
   Future<AuthLoginResult> login({
     required String email,
@@ -118,103 +117,96 @@ class AuthApi {
     }
   }
 
-  // ─── Fetch signature — returns bytes (blob) or JSON with URL ─────────────
+  // ─── Fetch signature ──────────────────────────────────────────────────────
+  // API response format:
+  // {
+  //   "data": {
+  //     "base64": "data:image/png;base64,iVBOR...",
+  //     "mime_type": "image/png",
+  //     "file_name": "signature_A0000939.png"
+  //   }
+  // }
   Future<SignatureResult> getSignature({required String token}) async {
     final uri = Uri.parse('$baseUrl/upload/signature/image');
 
     try {
       final response = await _client.get(
         uri,
-        headers: {'Authorization': 'Bearer $token', 'Accept': '*/*'},
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
       );
 
       debugPrint('Signature status: ${response.statusCode}');
-      debugPrint('Signature content-type: ${response.headers['content-type']}');
-      debugPrint('Signature bytes: ${response.bodyBytes.length}');
       debugPrint(
         'Signature body preview: ${response.body.length > 300 ? response.body.substring(0, 300) : response.body}',
       );
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        final contentType = response.headers['content-type'] ?? '';
-
-        // Case 1: Image blob
-        if (contentType.contains('image/') ||
-            contentType.contains('octet-stream') ||
-            contentType.contains('binary')) {
-          debugPrint('Got image blob ${response.bodyBytes.length} bytes');
-          return SignatureResult(
-            isSuccess: true,
-            statusCode: response.statusCode,
-            message: 'Signature image loaded.',
-            imageBytes: response.bodyBytes,
-          );
-        }
-
-        // Case 2: Try JSON
         try {
-          final dynamic decodedBody = jsonDecode(response.body);
-          debugPrint('Signature JSON: $decodedBody');
+          final dynamic decoded = jsonDecode(response.body);
 
-          if (decodedBody is Map<String, dynamic>) {
-            // Print every key
-            debugPrint('=== SIGNATURE JSON KEYS ===');
-            decodedBody.forEach((key, value) {
-              debugPrint('SIGN KEY: $key  =>  VALUE: $value');
-              if (value is Map) {
-                value.forEach((k, v) => debugPrint('  NESTED: $k  =>  $v'));
+          if (decoded is Map<String, dynamic>) {
+            // ── Extract base64 from data.base64 ──
+            final dynamic dataField = decoded['data'];
+            String? base64Str;
+            String? rawDate;
+
+            if (dataField is Map) {
+              base64Str = dataField['base64'] as String?;
+              rawDate =
+                  dataField['createdAt'] as String? ??
+                  dataField['signedAt'] as String? ??
+                  dataField['updatedAt'] as String?;
+            }
+
+            // Also check top-level keys as fallback
+            base64Str ??= decoded['base64'] as String?;
+            rawDate ??=
+                decoded['createdAt'] as String? ??
+                decoded['signedAt'] as String? ??
+                decoded['updatedAt'] as String?;
+
+            if (base64Str != null && base64Str.isNotEmpty) {
+              // Strip the data URI prefix: "data:image/png;base64,"
+              final String pureBase64 = base64Str.contains(',')
+                  ? base64Str.split(',').last.trim()
+                  : base64Str.trim();
+
+              try {
+                final bytes = base64Decode(pureBase64);
+                debugPrint(
+                  'Signature decoded from base64: ${bytes.length} bytes',
+                );
+                return SignatureResult(
+                  isSuccess: true,
+                  statusCode: response.statusCode,
+                  message: 'Signature loaded.',
+                  imageBytes: bytes,
+                  rawDate: rawDate,
+                  data: decoded,
+                );
+              } catch (e) {
+                debugPrint('Base64 decode error: $e');
               }
-            });
-            debugPrint('===========================');
-            final imageUrl =
-                decodedBody['imageUrl'] ??
-                decodedBody['url'] ??
-                decodedBody['signatureUrl'] ??
-                decodedBody['image'] ??
-                decodedBody['filePath'] ??
-                decodedBody['path'] ??
-                decodedBody['signature'] ??
-                (decodedBody['data'] is Map
-                    ? decodedBody['data']['imageUrl']
-                    : null) ??
-                (decodedBody['data'] is Map
-                    ? decodedBody['data']['url']
-                    : null) ??
-                (decodedBody['data'] is Map
-                    ? decodedBody['data']['filePath']
-                    : null) ??
-                '';
+            }
 
-            final rawDate =
-                decodedBody['signedAt'] ??
-                decodedBody['createdAt'] ??
-                decodedBody['date'] ??
-                decodedBody['updatedAt'] ??
-                (decodedBody['data'] is Map
-                    ? decodedBody['data']['createdAt']
-                    : null) ??
-                (decodedBody['data'] is Map
-                    ? decodedBody['data']['signedAt']
-                    : null) ??
-                '';
-
-            debugPrint('imageUrl: $imageUrl');
-            debugPrint('rawDate: $rawDate');
-
+            // Fallback: check for a URL field
+            final String? imageUrl = _extractImageUrl(decoded);
             return SignatureResult(
               isSuccess: true,
               statusCode: response.statusCode,
               message: 'Signature loaded.',
-              imageUrl: imageUrl is String && imageUrl.isNotEmpty
-                  ? imageUrl
-                  : null,
-              rawDate: rawDate is String && rawDate.isNotEmpty ? rawDate : null,
-              data: decodedBody,
+              imageUrl: imageUrl,
+              rawDate: rawDate,
+              data: decoded,
             );
           }
-        } catch (_) {
+        } catch (e) {
+          debugPrint('JSON parse error: $e');
+          // If not JSON but has bytes, treat as raw image
           if (response.bodyBytes.isNotEmpty) {
-            debugPrint('Not JSON, raw bytes: ${response.bodyBytes.length}');
             return SignatureResult(
               isSuccess: true,
               statusCode: response.statusCode,
@@ -236,12 +228,29 @@ class AuthApi {
       return SignatureResult(
         isSuccess: false,
         statusCode: 0,
-        message: 'Network error: \$error',
+        message: 'Network error: $error',
       );
     }
   }
 
+  String? _extractImageUrl(Map<String, dynamic> body) {
+    final dynamic data = body['data'];
+    if (data is Map) {
+      return data['imageUrl'] as String? ??
+          data['url'] as String? ??
+          data['filePath'] as String? ??
+          data['file_path'] as String?;
+    }
+    return body['imageUrl'] as String? ??
+        body['url'] as String? ??
+        body['filePath'] as String? ??
+        body['file_path'] as String?;
+  }
+
   // ─── Upload signature image to API ────────────────────────────────────────
+  // POST /api/upload/signature
+  // Field name: "signature"
+  // Response: { "message": "...", "data": { "file_path": "...", "file_name": "...", "mime_type": "..." } }
   Future<AuthLoginResult> uploadSignature({
     required String token,
     required List<int> imageBytes,
@@ -255,14 +264,21 @@ class AuthApi {
         ..headers['Accept'] = 'application/json'
         ..files.add(
           http.MultipartFile.fromBytes(
-            'signature', // 👈 FormData field name
+            'signature', // FormData field name confirmed by API
             imageBytes,
             filename: fileName,
+            contentType: MediaType(
+              'image',
+              'png',
+            ), // 👈 CRITICAL: Specify content type
           ),
         );
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
+
+      debugPrint('Upload status: ${response.statusCode}');
+      debugPrint('Upload response: ${response.body}');
 
       final dynamic decodedBody = response.body.isNotEmpty
           ? jsonDecode(response.body)
@@ -377,10 +393,10 @@ class SignatureResult {
   final bool isSuccess;
   final int statusCode;
   final String message;
-  final List<int>? imageBytes; // raw image bytes if blob
-  final String? imageUrl; // URL if JSON response
-  final String? rawDate; // date string from API
-  final dynamic data; // full JSON response
+  final List<int>? imageBytes;
+  final String? imageUrl;
+  final String? rawDate;
+  final dynamic data;
 }
 
 class AuthLoginResult {

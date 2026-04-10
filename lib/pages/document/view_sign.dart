@@ -9,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
 import '../../services/auth_api.dart';
 
-// ─── Signature Painter ───────────────────────────────────────────────────────
+// ─── Signature Painter ────────────────────────────────────────────────────────
 
 class _SignaturePainter extends CustomPainter {
   final List<List<Offset?>> strokes;
@@ -66,27 +66,17 @@ class _ViewSignPageState extends State<ViewSignPage>
 
   // Loaded signature data
   String _signatureType = '';
-  String _signatureText = '';
-  String _signatureFont = 'Cursive';
   String _signatureImagePath = '';
   String? _drawBase64;
-  String _timestamp = '';
-  bool _isLoadingTimestamp = false;
-  String? _apiSignatureUrl; // URL from API JSON response
-  List<int>? _apiSignatureBytes; // raw bytes from API blob response
+  bool _isLoadingSignature = false;
+  List<int>? _apiSignatureBytes;
 
   // Draw tab (edit mode)
   final List<List<Offset?>> _strokes = [];
   List<Offset?> _currentStroke = [];
   final GlobalKey _canvasKey = GlobalKey();
-  Color _penColor = const Color(0xFF1A1A1A);
 
-  // Type tab (edit mode)
-  final TextEditingController _typeController = TextEditingController();
-  String _selectedFont = 'Cursive';
-  final List<String> _fonts = ['Cursive', 'Serif', 'Script'];
-
-  // Capture tab (edit mode)
+  // Upload tab (edit mode)
   File? _uploadedImage;
 
   bool _isSaving = false;
@@ -94,100 +84,55 @@ class _ViewSignPageState extends State<ViewSignPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _loadSignature();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
-    _typeController.dispose();
     _authApi.dispose();
     super.dispose();
   }
 
   Future<void> _loadSignature() async {
+    // ── CRITICAL: Clear image cache to ensure fresh signature ──
+    imageCache.clear();
+    imageCache.clearLiveImages();
+
     final prefs = await SharedPreferences.getInstance();
-
-    // Show loader immediately
-    setState(() => _isLoadingTimestamp = true);
-
-    // Load local data
     setState(() {
       _signatureType = prefs.getString('signature_type') ?? '';
-      _signatureText = prefs.getString('signature_text') ?? '';
-      _signatureFont = prefs.getString('signature_font') ?? 'Cursive';
       _signatureImagePath = prefs.getString('signature_image_path') ?? '';
       _drawBase64 = prefs.getString('signature_draw_data');
-      _timestamp = prefs.getString('signature_timestamp') ?? '';
-
-      if (_signatureType == 'type') {
-        _typeController.text = _signatureText;
-        _selectedFont = _signatureFont;
-      }
     });
-
-    // Always fetch from API — source of truth for any device
     await _fetchSignatureFromApi(prefs);
   }
 
   Future<void> _fetchSignatureFromApi(SharedPreferences prefs) async {
     final token = prefs.getString('access_token') ?? '';
-    debugPrint('=== TOKEN IN VIEW SIGN: $token ===');
+    if (token.isEmpty) return;
 
-    if (token.isEmpty) {
-      debugPrint('No token found, skipping signature API fetch.');
-      return;
-    }
-
-    setState(() => _isLoadingTimestamp = true);
+    setState(() => _isLoadingSignature = true);
 
     final result = await _authApi.getSignature(token: token);
 
     if (!mounted) return;
 
-    setState(() => _isLoadingTimestamp = false);
-
     if (result.isSuccess) {
-      // Case 1: Raw image bytes
       if (result.imageBytes != null && result.imageBytes!.isNotEmpty) {
-        debugPrint('Signature loaded as bytes');
-        setState(() => _apiSignatureBytes = result.imageBytes);
+        setState(() {
+          _apiSignatureBytes = result.imageBytes;
+          _isLoadingSignature = false;
+        });
+      } else {
+        setState(() => _isLoadingSignature = false);
       }
 
-      // Case 2: URL
-      if (result.imageUrl != null && result.imageUrl!.isNotEmpty) {
-        debugPrint('Signature URL: ${result.imageUrl}');
-        setState(() => _apiSignatureUrl = result.imageUrl);
-      }
-
-      // Case 3: base64 inside data.base64 (YOUR API FORMAT)
-      final dynamic responseData = result.data;
-      if (responseData is Map) {
-        final dynamic inner = responseData['data'];
-        if (inner is Map) {
-          final base64Str = inner['base64'] as String?;
-          if (base64Str != null && base64Str.isNotEmpty) {
-            debugPrint('Found base64 in data.base64');
-            final pureBase64 = base64Str.contains(',')
-                ? base64Str.split(',').last
-                : base64Str;
-            try {
-              final bytes = base64Decode(pureBase64);
-              setState(() => _apiSignatureBytes = bytes);
-              debugPrint('Decoded signature: ${bytes.length} bytes');
-            } catch (e) {
-              debugPrint('Base64 decode error: $e');
-            }
-          }
-        }
-      }
-
-      // Extract date
-      final rawDate = result.rawDate ?? '';
-      if (rawDate.isNotEmpty) {
+      // Save timestamp if available
+      if (result.rawDate != null && result.rawDate!.isNotEmpty) {
         try {
-          final parsed = DateTime.parse(rawDate).toLocal();
+          final parsed = DateTime.parse(result.rawDate!).toLocal();
           final months = [
             'JAN',
             'FEB',
@@ -205,12 +150,12 @@ class _ViewSignPageState extends State<ViewSignPage>
           final formatted =
               '${months[parsed.month - 1]} ${parsed.day}, ${parsed.year}';
           await prefs.setString('signature_timestamp', formatted);
-          setState(() => _timestamp = formatted);
         } catch (e) {
           debugPrint('Date parse error: $e');
         }
       }
     } else {
+      setState(() => _isLoadingSignature = false);
       debugPrint(
         'Signature API failed [${result.statusCode}]: ${result.message}',
       );
@@ -218,12 +163,10 @@ class _ViewSignPageState extends State<ViewSignPage>
   }
 
   void _enterEditMode() {
-    setState(() {
-      _isEditMode = true;
-      _strokes.clear();
-    });
+    setState(() => _isEditMode = true);
   }
 
+  // ─── CRITICAL FIX: Capture canvas bytes BEFORE clearing any state ──────────
   Future<void> _saveSignature() async {
     final currentTab = _tabController.index;
 
@@ -236,16 +179,7 @@ class _ViewSignPageState extends State<ViewSignPage>
       );
       return;
     }
-    if (currentTab == 1 && _typeController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please type your signature first."),
-          backgroundColor: Color(0xFFCC0000),
-        ),
-      );
-      return;
-    }
-    if (currentTab == 2 && _uploadedImage == null) {
+    if (currentTab == 1 && _uploadedImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Please upload a signature image first."),
@@ -257,9 +191,12 @@ class _ViewSignPageState extends State<ViewSignPage>
 
     setState(() => _isSaving = true);
 
-    final prefs = await SharedPreferences.getInstance();
+    // ── Step 1: Capture image bytes FIRST (before any state changes) ──
+    List<int>? capturedBytes;
+    String fileName = 'signature.png';
 
     if (currentTab == 0) {
+      // Draw tab — capture canvas NOW while _strokes is still intact
       try {
         final boundary =
             _canvasKey.currentContext?.findRenderObject()
@@ -270,37 +207,55 @@ class _ViewSignPageState extends State<ViewSignPage>
             format: ui.ImageByteFormat.png,
           );
           if (byteData != null) {
-            final base64Str = base64Encode(byteData.buffer.asUint8List());
-            await prefs.setString('signature_draw_data', base64Str);
-            setState(() => _drawBase64 = base64Str);
+            capturedBytes = byteData.buffer.asUint8List();
+            fileName = 'signature_draw.png';
           }
         }
       } catch (e) {
-        debugPrint('Draw capture error: $e');
+        debugPrint('Canvas capture error: $e');
       }
+    } else if (currentTab == 1 && _uploadedImage != null) {
+      // Upload tab — read file bytes
+      capturedBytes = await _uploadedImage!.readAsBytes();
+      fileName = 'signature_upload.png';
+    }
+
+    if (capturedBytes == null || capturedBytes.isEmpty) {
+      setState(() => _isSaving = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Failed to capture signature. Please try again."),
+            backgroundColor: Color(0xFFCC0000),
+          ),
+        );
+      }
+      return;
+    }
+
+    // ── Step 2: Save locally ──
+    final prefs = await SharedPreferences.getInstance();
+
+    if (currentTab == 0) {
+      final base64Str = base64Encode(capturedBytes);
+      await prefs.setString('signature_draw_data', base64Str);
       await prefs.setString('signature_type', 'draw');
-      setState(() => _signatureType = 'draw');
-    } else if (currentTab == 1) {
-      await prefs.setString('signature_type', 'type');
-      await prefs.setString('signature_text', _typeController.text.trim());
-      await prefs.setString('signature_font', _selectedFont);
       setState(() {
-        _signatureType = 'type';
-        _signatureText = _typeController.text.trim();
-        _signatureFont = _selectedFont;
+        _drawBase64 = base64Str;
+        _signatureType = 'draw';
       });
     } else {
-      await prefs.setString('signature_type', 'capture');
+      await prefs.setString('signature_type', 'upload');
       if (_uploadedImage != null) {
         await prefs.setString('signature_image_path', _uploadedImage!.path);
         setState(() {
-          _signatureType = 'capture';
+          _signatureType = 'upload';
           _signatureImagePath = _uploadedImage!.path;
         });
       }
     }
 
-    // Save local timestamp
+    // Save timestamp
     final now = DateTime.now();
     final months = [
       'JAN',
@@ -320,24 +275,53 @@ class _ViewSignPageState extends State<ViewSignPage>
     await prefs.setString('signature_timestamp', timestamp);
     await prefs.setBool('has_signature', true);
 
+    // ── Step 3: Upload to API using already-captured bytes ──
+    final token = prefs.getString('access_token') ?? '';
+    if (token.isNotEmpty) {
+      final result = await _authApi.uploadSignature(
+        token: token,
+        imageBytes: capturedBytes,
+        fileName: fileName,
+      );
+
+      if (result.isSuccess) {
+        debugPrint('Signature uploaded successfully: ${result.data}');
+      } else {
+        debugPrint(
+          'Signature upload failed [${result.statusCode}]: ${result.message}',
+        );
+      }
+    }
+
+    // ── Step 4: Small delay then re-fetch from API to show new signature ──
+    await Future.delayed(const Duration(milliseconds: 600));
+
+    // Clear cached API data so fresh fetch is displayed
     setState(() {
-      _timestamp = timestamp;
-      _isSaving = false;
-      _isEditMode = false;
-      _apiSignatureUrl = null;
-      _apiSignatureBytes = null; // 👈 reset so it re-fetches after save
+      _apiSignatureBytes = null;
     });
 
+    imageCache.clear();
+    imageCache.clearLiveImages();
+
+    // Fetch updated signature from server
+    await _fetchSignatureFromApi(prefs);
+
     if (mounted) {
+      // Exit edit mode and reset edit state
+      setState(() {
+        _isSaving = false;
+        _isEditMode = false;
+        _strokes.clear();
+        _uploadedImage = null;
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Signature saved successfully!"),
+          content: Text("Signature updated successfully!"),
           backgroundColor: Colors.green,
         ),
       );
-
-      // Re-fetch from API to get updated image URL
-      await _fetchSignatureFromApi(prefs);
     }
   }
 
@@ -361,19 +345,14 @@ class _ViewSignPageState extends State<ViewSignPage>
     setState(() => _currentStroke.add(null));
   }
 
-  void _undoStroke() {
-    if (_strokes.isNotEmpty) setState(() => _strokes.removeLast());
-  }
-
   void _clearCanvas() {
     setState(() => _strokes.clear());
   }
 
-  // ─── Signature Preview ────────────────────────────────────────────────────
+  // ─── Signature Preview ─────────────────────────────────────────────────────
 
   Widget _buildSavedSignaturePreview() {
-    // Show loading while fetching from API
-    if (_isLoadingTimestamp) {
+    if (_isLoadingSignature) {
       return const Center(
         child: CircularProgressIndicator(color: Color(0xFFCC0000)),
       );
@@ -381,9 +360,7 @@ class _ViewSignPageState extends State<ViewSignPage>
 
     Widget signatureWidget;
 
-    // Priority 1: API blob bytes
     if (_apiSignatureBytes != null && _apiSignatureBytes!.isNotEmpty) {
-      debugPrint('Displaying API signature bytes');
       signatureWidget = Image.memory(
         Uint8List.fromList(_apiSignatureBytes!),
         fit: BoxFit.contain,
@@ -392,35 +369,13 @@ class _ViewSignPageState extends State<ViewSignPage>
           return _buildLocalSignatureWidget();
         },
       );
-    }
-    // Priority 2: API URL
-    else if (_apiSignatureUrl != null && _apiSignatureUrl!.isNotEmpty) {
-      debugPrint('Displaying API signature URL: $_apiSignatureUrl');
-      signatureWidget = Image.network(
-        _apiSignatureUrl!,
-        fit: BoxFit.contain,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return const Center(
-            child: CircularProgressIndicator(color: Color(0xFFCC0000)),
-          );
-        },
-        errorBuilder: (context, error, stackTrace) {
-          debugPrint('URL image error: $error');
-          return _buildLocalSignatureWidget();
-        },
-      );
-    }
-    // Priority 3: Local fallback
-    else {
+    } else {
       signatureWidget = _buildLocalSignatureWidget();
     }
 
-    // 👇 Wrap with watermark
     return Stack(
       alignment: Alignment.center,
       children: [
-        // Watermark behind signature
         Opacity(
           opacity: 0.08,
           child: Image.asset(
@@ -430,7 +385,6 @@ class _ViewSignPageState extends State<ViewSignPage>
             height: 180,
           ),
         ),
-        // Signature on top
         signatureWidget,
       ],
     );
@@ -441,20 +395,7 @@ class _ViewSignPageState extends State<ViewSignPage>
       return Center(
         child: Image.memory(base64Decode(_drawBase64!), fit: BoxFit.contain),
       );
-    } else if (_signatureType == 'type' && _signatureText.isNotEmpty) {
-      return Center(
-        child: Text(
-          _signatureText,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 32,
-            fontStyle: FontStyle.italic,
-            color: Color(0xFF1A1A1A),
-            fontWeight: FontWeight.w300,
-          ),
-        ),
-      );
-    } else if (_signatureType == 'capture' && _signatureImagePath.isNotEmpty) {
+    } else if (_signatureType == 'upload' && _signatureImagePath.isNotEmpty) {
       return Center(
         child: Image.file(File(_signatureImagePath), fit: BoxFit.contain),
       );
@@ -543,7 +484,7 @@ class _ViewSignPageState extends State<ViewSignPage>
               color: const Color(0xFFCC0000),
             ),
             const Text(
-              "Institutional-grade verification for secure documentation. Create, type, or upload your legal identifier below.",
+              "Institutional-grade verification for secure documentation. View your current signature below or click the button to change it.",
               style: TextStyle(
                 fontSize: 12,
                 color: Colors.black45,
@@ -553,22 +494,31 @@ class _ViewSignPageState extends State<ViewSignPage>
 
             const SizedBox(height: 24),
 
-            // Tab Bar
-            Container(
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: Color(0xFFE8E8E8))),
+            // Current signature preview (hidden in edit mode)
+            if (!_isEditMode)
+              Container(
+                width: double.infinity,
+                height: 180,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: const Color(0xFFE8E8E8)),
+                ),
+                child: _buildSavedSignaturePreview(),
               ),
-              child: IgnorePointer(
-                ignoring: !_isEditMode,
+
+            if (!_isEditMode) const SizedBox(height: 24),
+
+            // Tab Bar (edit mode only)
+            if (_isEditMode)
+              Container(
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Color(0xFFE8E8E8))),
+                ),
                 child: TabBar(
                   controller: _tabController,
-                  labelColor: _isEditMode
-                      ? const Color(0xFFCC0000)
-                      : Colors.black38,
-                  unselectedLabelColor: Colors.black26,
-                  indicatorColor: _isEditMode
-                      ? const Color(0xFFCC0000)
-                      : Colors.transparent,
+                  labelColor: const Color(0xFFCC0000),
+                  unselectedLabelColor: Colors.black38,
+                  indicatorColor: const Color(0xFFCC0000),
                   indicatorWeight: 2,
                   labelStyle: const TextStyle(
                     fontSize: 11,
@@ -582,35 +532,26 @@ class _ViewSignPageState extends State<ViewSignPage>
                   ),
                   tabs: const [
                     Tab(text: "DRAW"),
-                    Tab(text: "TYPE"),
-                    Tab(text: "CAPTURE"),
+                    Tab(text: "UPLOAD"),
                   ],
                 ),
               ),
-            ),
 
             const SizedBox(height: 20),
 
-            // Tab Content
-            SizedBox(
-              height: 320,
-              child: _isEditMode
-                  ? TabBarView(
-                      controller: _tabController,
-                      children: [
-                        _buildDrawTab(editMode: true),
-                        _buildTypeTab(editMode: true),
-                        _buildCaptureTab(editMode: true),
-                      ],
-                    )
-                  : _buildDrawTab(editMode: false),
-            ),
+            // Tab Content (edit mode only)
+            if (_isEditMode)
+              SizedBox(
+                height: 320,
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [_buildDrawTab(), _buildUploadTab()],
+                ),
+              ),
 
             const SizedBox(height: 12),
 
-            const SizedBox(height: 24),
-
-            // Button
+            // Action Button
             SizedBox(
               width: double.infinity,
               height: 50,
@@ -643,13 +584,15 @@ class _ViewSignPageState extends State<ViewSignPage>
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            _isEditMode ? Icons.draw_outlined : Icons.edit,
+                            _isEditMode ? Icons.save_outlined : Icons.edit,
                             color: Colors.white,
                             size: 18,
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            _isEditMode ? "SAVE SIGNATURE" : "EDIT SIGNATURE",
+                            _isEditMode
+                                ? "SAVE SIGNATURE"
+                                : "REPLACE SIGNATURE",
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 13,
@@ -720,7 +663,7 @@ class _ViewSignPageState extends State<ViewSignPage>
   }
 
   // ─── DRAW TAB ──────────────────────────────────────────────────────────────
-  Widget _buildDrawTab({required bool editMode}) {
+  Widget _buildDrawTab() {
     return Column(
       children: [
         Expanded(
@@ -730,228 +673,100 @@ class _ViewSignPageState extends State<ViewSignPage>
               color: Colors.white,
               border: Border.all(color: const Color(0xFFE8E8E8)),
             ),
-            child: editMode
-                ? Stack(
-                    children: [
-                      GestureDetector(
-                        onPanStart: _onPanStart,
-                        onPanUpdate: _onPanUpdate,
-                        onPanEnd: _onPanEnd,
-                        child: RepaintBoundary(
-                          key: _canvasKey,
-                          child: CustomPaint(
-                            painter: _SignaturePainter(
-                              _strokes,
-                              penColor: _penColor,
-                            ),
-                            size: Size.infinite,
-                          ),
-                        ),
-                      ),
-                      if (_strokes.isEmpty)
-                        const Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              SizedBox(height: 120),
-                              Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 24),
-                                child: Divider(
-                                  color: Color(0xFFCCCCCC),
-                                  thickness: 1,
-                                ),
-                              ),
-                              SizedBox(height: 6),
-                              Text(
-                                "SIGN ABOVE THIS LINE",
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: Colors.black26,
-                                  letterSpacing: 1.5,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              SizedBox(height: 16),
-                            ],
-                          ),
-                        ),
-                    ],
-                  )
-                : _buildSavedSignaturePreview(), // 👈 uses API or local
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (editMode)
-          Row(
-            children: [
-              GestureDetector(
-                onTap: _undoStroke,
-                child: Row(
-                  children: const [
-                    Icon(Icons.undo, size: 16, color: Colors.black45),
-                    SizedBox(width: 4),
-                    Text(
-                      "UNDO",
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.black45,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1,
+            child: Stack(
+              children: [
+                // Watermark behind drawing area
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: 0.08,
+                    child: Center(
+                      child: Image.asset(
+                        'assets/images/eforward_watermark.png',
+                        fit: BoxFit.contain,
+                        width: 180,
+                        height: 180,
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 20),
-              GestureDetector(
-                onTap: _clearCanvas,
-                child: Row(
-                  children: const [
-                    Icon(Icons.close, size: 16, color: Colors.black45),
-                    SizedBox(width: 4),
-                    Text(
-                      "CLEAR",
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.black45,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1,
-                      ),
+                // Drawing layer — RepaintBoundary captures only strokes
+                GestureDetector(
+                  onPanStart: _onPanStart,
+                  onPanUpdate: _onPanUpdate,
+                  onPanEnd: _onPanEnd,
+                  child: RepaintBoundary(
+                    key: _canvasKey,
+                    child: CustomPaint(
+                      painter: _SignaturePainter(_strokes),
+                      size: Size.infinite,
                     ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              _buildColorDot(const Color(0xFF1A1A1A)),
-              const SizedBox(width: 8),
-              _buildColorDot(const Color(0xFFCC0000)),
-              const SizedBox(width: 8),
-              _buildColorDot(const Color(0xFF1565C0)),
-            ],
-          )
-        else
-          const SizedBox(height: 26),
-      ],
-    );
-  }
-
-  Widget _buildColorDot(Color color) {
-    final selected = _penColor == color;
-    return GestureDetector(
-      onTap: () => setState(() => _penColor = color),
-      child: Container(
-        width: 18,
-        height: 18,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: color,
-          border: Border.all(
-            color: selected ? Colors.white : Colors.transparent,
-            width: 2,
-          ),
-          boxShadow: selected
-              ? [BoxShadow(color: color.withOpacity(0.5), blurRadius: 4)]
-              : [],
-        ),
-      ),
-    );
-  }
-
-  // ─── TYPE TAB ──────────────────────────────────────────────────────────────
-  Widget _buildTypeTab({required bool editMode}) {
-    return Column(
-      children: [
-        Expanded(
-          child: Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: const Color(0xFFE8E8E8)),
-            ),
-            alignment: Alignment.center,
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Text(
-                _typeController.text.isEmpty
-                    ? "Your signature will appear here"
-                    : _typeController.text,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: _typeController.text.isEmpty ? 13 : 28,
-                  fontStyle: FontStyle.italic,
-                  color: _typeController.text.isEmpty
-                      ? Colors.black26
-                      : const Color(0xFF1A1A1A),
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
+                if (_strokes.isEmpty)
+                  const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        SizedBox(height: 120),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 24),
+                          child: Divider(
+                            color: Color(0xFFCCCCCC),
+                            thickness: 1,
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          "SIGN ABOVE THIS LINE",
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: Colors.black26,
+                            letterSpacing: 1.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        SizedBox(height: 16),
+                      ],
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
         const SizedBox(height: 12),
-        TextField(
-          controller: _typeController,
-          onChanged: (_) => setState(() {}),
-          style: const TextStyle(fontSize: 13, color: Color(0xFF1A1A1A)),
-          decoration: const InputDecoration(
-            hintText: "Type your full name...",
-            hintStyle: TextStyle(color: Colors.black26, fontSize: 12),
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Color(0xFFE8E8E8)),
-            ),
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Color(0xFFCC0000)),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
         Row(
-          children: _fonts.map((font) {
-            final selected = _selectedFont == font;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: GestureDetector(
-                onTap: () => setState(() => _selectedFont = font),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? const Color(0xFFCC0000)
-                        : Colors.transparent,
-                    border: Border.all(
-                      color: selected
-                          ? const Color(0xFFCC0000)
-                          : Colors.black26,
-                    ),
-                  ),
-                  child: Text(
-                    font.toUpperCase(),
+          children: [
+            GestureDetector(
+              onTap: _clearCanvas,
+              child: Row(
+                children: const [
+                  Icon(Icons.close, size: 16, color: Colors.black45),
+                  SizedBox(width: 4),
+                  Text(
+                    "CLEAR",
                     style: TextStyle(
-                      fontSize: 9,
+                      fontSize: 10,
+                      color: Colors.black45,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 1,
-                      color: selected ? Colors.white : Colors.black45,
                     ),
                   ),
-                ),
+                ],
               ),
-            );
-          }).toList(),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  // ─── CAPTURE TAB ───────────────────────────────────────────────────────────
-  Widget _buildCaptureTab({required bool editMode}) {
+  // ─── UPLOAD TAB ────────────────────────────────────────────────────────────
+  Widget _buildUploadTab() {
     return Column(
       children: [
         Expanded(
           child: GestureDetector(
-            onTap: editMode ? _pickImage : null,
+            onTap: _pickImage,
             child: Container(
               width: double.infinity,
               decoration: BoxDecoration(
@@ -989,7 +804,7 @@ class _ViewSignPageState extends State<ViewSignPage>
           ),
         ),
         const SizedBox(height: 12),
-        if (editMode && _uploadedImage != null)
+        if (_uploadedImage != null)
           GestureDetector(
             onTap: _pickImage,
             child: Row(

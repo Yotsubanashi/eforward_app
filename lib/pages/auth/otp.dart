@@ -264,7 +264,7 @@ class _OtpScreenState extends State<OtpScreen> {
           onPressed: () => Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (_) => const LoginScreen()),
-            ),
+          ),
         ),
         title: const Text(
           "SECURITY",

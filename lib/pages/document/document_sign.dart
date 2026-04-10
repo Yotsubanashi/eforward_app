@@ -5,7 +5,6 @@ import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-import '../dashboard/dashboard.dart';
 
 class DocumentSignScreen extends StatefulWidget {
   final Map<String, dynamic> document;
@@ -174,7 +173,7 @@ class _DocumentSignScreenState extends State<DocumentSignScreen> {
             color: Color(0xFF1A1A1A),
             size: 20,
           ),
-             onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           "DOCUMENT SIGNING",
