@@ -222,7 +222,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         throw Exception('Missing token or approval ID');
 
       final response = await http.post(
-        Uri.parse('$_baseUrl/approvals/$id/request-revision'),
+        Uri.parse('$_baseUrl/approvals/$id/revision'),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
