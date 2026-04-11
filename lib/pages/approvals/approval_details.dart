@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // APPROVAL DETAIL PAGE
@@ -1063,9 +1064,61 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     });
   }
 
+  Future<File?> _generateSignedPdf() async {
+    try {
+      // Load existing PDF
+      final pdfBytes = await File(widget.pdfPath).readAsBytes();
+      final document = PdfDocument(inputBytes: pdfBytes);
+
+      // Get the target page (0-indexed)
+      final page = document.pages[_currentPage];
+      final pageSize = page.size;
+
+      // Convert screen coordinates to PDF coordinates
+      // Syncfusion: origin is top-left (unlike standard PDF bottom-left)
+      final pdfX = (_signaturePosition.dx / _containerWidth) * pageSize.width;
+      final pdfY = (_signaturePosition.dy / _containerHeight) * pageSize.height;
+      final pdfW = (_signatureWidth / _containerWidth) * pageSize.width;
+      final pdfH = (_signatureHeight / _containerHeight) * pageSize.height;
+
+      // Draw signature image on the page
+      final signatureImage = PdfBitmap(_signatureBytes!);
+      page.graphics.drawImage(
+        signatureImage,
+        Rect.fromLTWH(pdfX, pdfY, pdfW, pdfH),
+      );
+
+      // Save to temp file
+      final dir = await getTemporaryDirectory();
+      final signedFile = File(
+        '${dir.path}/signed_${DateTime.now().millisecondsSinceEpoch}.pdf',
+      );
+      await signedFile.writeAsBytes(await document.save());
+      document.dispose();
+
+      return signedFile;
+    } catch (e) {
+      debugPrint('PDF signing error: $e');
+      return null;
+    }
+  }
+
   Future<void> _submitApproval() async {
     setState(() => _isSubmitting = true);
     try {
+      // Generate signed PDF first
+      final signedPdfFile = await _generateSignedPdf();
+      if (signedPdfFile == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to generate signed PDF.'),
+            backgroundColor: Color(0xFFCC0000),
+          ),
+        );
+        setState(() => _isSubmitting = false);
+        return;
+      }
+
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token') ?? '';
       final id =
@@ -1088,11 +1141,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       final pdfY = _toPdfY(_signaturePosition.dy);
       final pdfW = _toPdfWidth(_signatureWidth);
       final pdfH = _toPdfHeight(_signatureHeight);
-      final signaturePage = _currentPage + 1; // convert to 1-indexed
-
-      debugPrint(
-        'Approving — page: $signaturePage, x:$pdfX y:$pdfY w:$pdfW h:$pdfH',
-      );
+      final signaturePage = _currentPage + 1;
 
       final uri = Uri.parse(
         'https://eforward-api.ardentnetworks.com.ph/api/approvals/$id/approve',
@@ -1114,12 +1163,23 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           'page': signaturePage,
         });
 
+      // signatureImage
       request.files.add(
         http.MultipartFile.fromBytes(
           'signatureImage',
           _signatureBytes!,
           filename: 'signature.png',
           contentType: MediaType('image', 'png'),
+        ),
+      );
+
+      // signedPdf — yung PDF na naka-embed na ang signature
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'signedPdf',
+          signedPdfFile.path,
+          filename: 'signed_document.pdf',
+          contentType: MediaType('application', 'pdf'),
         ),
       );
 
