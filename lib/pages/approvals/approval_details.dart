@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -888,6 +889,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   bool _isSubmitting = false;
   bool _isLoadingSignature = true;
   DateTime? _signedAt;
+  Uint8List? _watermarkBytes;
 
   final GlobalKey _signatureKey = GlobalKey();
 
@@ -929,6 +931,22 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     super.initState();
     _loadSignatureFromApi();
     _loadUserInfo();
+    _loadWatermark(); // ← palitan ng ganito
+  }
+
+  Future<void> _loadWatermark() async {
+    try {
+      final byteData = await rootBundle.load(
+        'assets/images/eforward_watermark.png',
+      );
+      if (mounted) {
+        setState(() {
+          _watermarkBytes = byteData.buffer.asUint8List();
+        });
+      }
+    } catch (e) {
+      debugPrint('Watermark load error: $e');
+    }
   }
 
   Future<void> _loadUserInfo() async {
@@ -975,6 +993,38 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     }
   }
 
+  Future<Uint8List> _removeWhiteBackground(Uint8List imageBytes) async {
+    final codec = await ui.instantiateImageCodec(imageBytes);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    if (byteData == null) return imageBytes;
+
+    final pixels = byteData.buffer.asUint8List();
+    for (int i = 0; i < pixels.length; i += 4) {
+      final r = pixels[i];
+      final g = pixels[i + 1];
+      final b = pixels[i + 2];
+      if (r > 200 && g > 200 && b > 200) {
+        pixels[i + 3] = 0;
+      }
+    }
+
+    final completer = Completer<ui.Image>();
+    ui.decodeImageFromPixels(
+      pixels,
+      image.width,
+      image.height,
+      ui.PixelFormat.rgba8888,
+      completer.complete,
+    );
+    final processedImage = await completer.future;
+    final processedData = await processedImage.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
+    return processedData?.buffer.asUint8List() ?? imageBytes;
+  }
+
   Future<void> _loadSignatureFromApi() async {
     setState(() => _isLoadingSignature = true);
     try {
@@ -996,9 +1046,10 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         final contentType = response.headers['content-type'] ?? '';
         if (contentType.contains('image/') ||
             contentType.contains('octet-stream')) {
+          final processed = await _removeWhiteBackground(response.bodyBytes);
           if (mounted)
             setState(() {
-              _signatureBytes = response.bodyBytes;
+              _signatureBytes = processed;
               _isLoadingSignature = false;
             });
           return;
@@ -1012,9 +1063,12 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               final pure = base64Str.contains(',')
                   ? base64Str.split(',').last
                   : base64Str;
+              final processed = await _removeWhiteBackground(
+                base64Decode(pure),
+              );
               if (mounted)
                 setState(() {
-                  _signatureBytes = base64Decode(pure);
+                  _signatureBytes = processed;
                   _isLoadingSignature = false;
                 });
               return;
@@ -1084,6 +1138,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   //------> eto yung same format na lalabas sa next approver <---------//
   Future<Uint8List?> _captureSignatureWidget() async {
     try {
+      await Future.delayed(const Duration(milliseconds: 300));
       final boundary =
           _signatureKey.currentContext?.findRenderObject()
               as RenderRepaintBoundary?;
@@ -1099,7 +1154,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 
   Future<File?> _generateSignedPdf() async {
     try {
-      // Capture yung buong widget (signature + metadata layout)
+      // Capture yung buong widget as-is (with watermark, signature, metadata)
       final capturedBytes = await _captureSignatureWidget();
       if (capturedBytes == null) return null;
 
@@ -1113,7 +1168,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       final pdfW = (_signatureWidth / _containerWidth) * pageSize.width;
       final pdfH = (_signatureHeight / _containerHeight) * pageSize.height;
 
-      // Gamitin yung captured widget bytes, hindi _signatureBytes
+      // I-embed yung captured widget directly sa PDF
       final signatureImage = PdfBitmap(capturedBytes);
       page.graphics.drawImage(
         signatureImage,
@@ -1282,10 +1337,10 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     return Container(
       width: _signatureWidth,
       height: _signatureHeight,
-      color: Colors.white,
+      color: Colors.transparent,
       child: Row(
         children: [
-          // Left — signature (wag baguhin)
+          // Left — signature + watermark sa ibabaw
           Expanded(
             flex: 4,
             child: Padding(
@@ -1293,13 +1348,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  Opacity(
-                    opacity: 0.10,
-                    child: Image.asset(
-                      'assets/images/eforward_watermark.png',
-                      fit: BoxFit.contain,
-                    ),
-                  ),
+                  // Signature sa baba
                   if (_signatureBytes != null)
                     Image.memory(_signatureBytes!, fit: BoxFit.contain)
                   else if (_signatureText != null && _signatureText!.isNotEmpty)
@@ -1314,15 +1363,24 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                         ),
                       ),
                     ),
+                  // Watermark sa ibabaw
+                  if (_watermarkBytes != null)
+                    Opacity(
+                      opacity: 0.15,
+                      child: Image.memory(
+                        _watermarkBytes!,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
                 ],
               ),
             ),
           ),
-          // Right — box mag-a-expand depende sa content
+          // Right — border fits text only
           IntrinsicWidth(
             child: Container(
               decoration: BoxDecoration(
-                border: Border.all(color: const Color(0xFF1B5E20), width: 0.2),
+                border: Border.all(color: const Color(0xFF1B5E20), width: 0.5),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
               child: Column(
@@ -1353,10 +1411,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           height: 1.4,
         ),
         children: [
-          TextSpan(
-            text: '$label ',
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
+          TextSpan(text: '$label '),
           TextSpan(text: value),
         ],
       ),
