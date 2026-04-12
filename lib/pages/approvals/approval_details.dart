@@ -292,6 +292,10 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       );
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(response.body);
+        final data = decoded['data'];
+        debugPrint('ALL KEYS: ${data.keys.toList()}');
+        debugPrint('FILES: ${data['files']}');
+        debugPrint('EXTRACTED FILE ID: ${_extractFileId(decoded)}'); // ← added
         if (mounted) {
           setState(() {
             _detail = decoded is Map<String, dynamic> ? decoded : null;
@@ -360,6 +364,17 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     if (inner is Map) {
       final files = inner['files'];
       if (files is List && files.isNotEmpty) {
+        // Hanapin muna yung SIGNED file
+        final signedFile = files.firstWhere(
+          (f) => f is Map && f['file_type']?.toString() == 'SIGNED',
+          orElse: () => null,
+        );
+        if (signedFile != null && signedFile is Map) {
+          final id =
+              signedFile['file_id'] ?? signedFile['fileId'] ?? signedFile['id'];
+          if (id != null) return id.toString();
+        }
+        // Kung walang SIGNED, fallback sa first file
         final first = files.first;
         if (first is Map) {
           final id = first['file_id'] ?? first['fileId'] ?? first['id'];
