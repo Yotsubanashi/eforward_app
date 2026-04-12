@@ -872,6 +872,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   bool _isSigningMode = false;
   bool _isSubmitting = false;
   bool _isLoadingSignature = true;
+  DateTime? _signedAt;
 
   final GlobalKey _signatureKey = GlobalKey();
 
@@ -882,8 +883,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   String _signerEmployeeId = '';
 
   Offset _signaturePosition = const Offset(60, 300);
-  double _signatureWidth = 280;
-  double _signatureHeight = 80;
+  double _signatureWidth = 200;
+  double _signatureHeight = 55;
 
   double _containerWidth = 0;
   double _containerHeight = 0;
@@ -1056,6 +1057,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     }
     setState(() {
       _isSigningMode = true;
+      _signedAt = DateTime.now();
       // Place signature at bottom-center of current view
       _signaturePosition = Offset(
         _containerWidth > 0 ? (_containerWidth - _signatureWidth) / 2 : 60,
@@ -1064,31 +1066,45 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     });
   }
 
+  //------> eto yung same format na lalabas sa next approver <---------//
+  Future<Uint8List?> _captureSignatureWidget() async {
+    try {
+      final boundary =
+          _signatureKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
+      if (boundary == null) return null;
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } catch (e) {
+      debugPrint('Capture error: $e');
+      return null;
+    }
+  }
+
   Future<File?> _generateSignedPdf() async {
     try {
-      // Load existing PDF
+      // Capture yung buong widget (signature + metadata layout)
+      final capturedBytes = await _captureSignatureWidget();
+      if (capturedBytes == null) return null;
+
       final pdfBytes = await File(widget.pdfPath).readAsBytes();
       final document = PdfDocument(inputBytes: pdfBytes);
-
-      // Get the target page (0-indexed)
       final page = document.pages[_currentPage];
       final pageSize = page.size;
 
-      // Convert screen coordinates to PDF coordinates
-      // Syncfusion: origin is top-left (unlike standard PDF bottom-left)
       final pdfX = (_signaturePosition.dx / _containerWidth) * pageSize.width;
       final pdfY = (_signaturePosition.dy / _containerHeight) * pageSize.height;
       final pdfW = (_signatureWidth / _containerWidth) * pageSize.width;
       final pdfH = (_signatureHeight / _containerHeight) * pageSize.height;
 
-      // Draw signature image on the page
-      final signatureImage = PdfBitmap(_signatureBytes!);
+      // Gamitin yung captured widget bytes, hindi _signatureBytes
+      final signatureImage = PdfBitmap(capturedBytes);
       page.graphics.drawImage(
         signatureImage,
         Rect.fromLTWH(pdfX, pdfY, pdfW, pdfH),
       );
 
-      // Save to temp file
       final dir = await getTemporaryDirectory();
       final signedFile = File(
         '${dir.path}/signed_${DateTime.now().millisecondsSinceEpoch}.pdf',
@@ -1237,9 +1253,12 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         ),
       );
 
-    final now = DateTime.now().toLocal();
+    final now = (_signedAt ?? DateTime.now()).toUtc().add(
+      const Duration(hours: 8),
+    );
     final dateStr =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
     final refNo =
         widget.item['referenceNo']?.toString() ??
         widget.item['routing']?['reference_no']?.toString() ??
@@ -1248,49 +1267,51 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     return Container(
       width: _signatureWidth,
       height: _signatureHeight,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: const Color(0xFFCC0000), width: 1),
-      ),
+      color: Colors.white,
       child: Row(
         children: [
+          // Left — signature (wag baguhin)
           Expanded(
-            flex: 5,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Opacity(
-                  opacity: 0.10,
-                  child: Image.asset(
-                    'assets/images/eforward_watermark.png',
-                    fit: BoxFit.contain,
-                  ),
-                ),
-                if (_signatureBytes != null)
-                  Image.memory(_signatureBytes!, fit: BoxFit.contain)
-                else if (_signatureText != null && _signatureText!.isNotEmpty)
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      _signatureText!,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontStyle: FontStyle.italic,
-                        color: Color(0xFF1A1A1A),
-                      ),
+            flex: 4,
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Opacity(
+                    opacity: 0.10,
+                    child: Image.asset(
+                      'assets/images/eforward_watermark.png',
+                      fit: BoxFit.contain,
                     ),
                   ),
-              ],
+                  if (_signatureBytes != null)
+                    Image.memory(_signatureBytes!, fit: BoxFit.contain)
+                  else if (_signatureText != null && _signatureText!.isNotEmpty)
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        _signatureText!,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontStyle: FontStyle.italic,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
-          Container(width: 0.5, color: const Color(0xFFCC0000)),
-          Expanded(
-            flex: 6,
+          // Right — box mag-a-expand depende sa content
+          IntrinsicWidth(
             child: Container(
-              color: const Color(0xFFFAFAFA),
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+              decoration: BoxDecoration(
+                border: Border.all(color: const Color(0xFF1B5E20), width: 0.2),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _metaRow('Digitally signed by:', _signerName),
@@ -1307,24 +1328,22 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   }
 
   Widget _metaRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 1),
-      child: RichText(
-        text: TextSpan(
-          style: const TextStyle(
-            fontSize: 6.5,
-            color: Color(0xFF1A1A1A),
-            height: 1.3,
-          ),
-          children: [
-            TextSpan(
-              text: '$label ',
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-            TextSpan(text: value),
-          ],
+    return RichText(
+      softWrap: false,
+      overflow: TextOverflow.visible,
+      text: TextSpan(
+        style: const TextStyle(
+          fontSize: 5.5,
+          color: Color(0xFF1A1A1A),
+          height: 1.4,
         ),
-        overflow: TextOverflow.ellipsis,
+        children: [
+          TextSpan(
+            text: '$label ',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          TextSpan(text: value),
+        ],
       ),
     );
   }
