@@ -74,8 +74,9 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       final queryParams = <String, String>{'page': '1', 'limit': '50'};
       if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
-      final uri = Uri.parse('$_baseUrl/approvals/pending')
-          .replace(queryParameters: queryParams);
+      final uri = Uri.parse(
+        '$_baseUrl/approvals/pending',
+      ).replace(queryParameters: queryParams);
 
       debugPrint('Fetching pending approvals: $uri');
 
@@ -88,7 +89,9 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       );
 
       debugPrint('Pending status: ${response.statusCode}');
-      debugPrint('Pending body: ${response.body.length > 500 ? response.body.substring(0, 500) : response.body}');
+      debugPrint(
+        'Pending body: ${response.body.length > 500 ? response.body.substring(0, 500) : response.body}',
+      );
 
       if (!mounted) return;
 
@@ -96,8 +99,9 @@ class _ApprovalsPageState extends State<ApprovalsPage>
         final decoded = jsonDecode(response.body);
         final rawList = _extractList(decoded);
         setState(() {
-          _pendingApprovals =
-              rawList.map((e) => _normalizeItem(e as Map<String, dynamic>)).toList();
+          _pendingApprovals = rawList
+              .map((e) => _normalizeItem(e as Map<String, dynamic>))
+              .toList();
           _isLoadingPending = false;
         });
       } else {
@@ -140,8 +144,9 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       final queryParams = <String, String>{'page': '1', 'limit': '50'};
       if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
-      final uri = Uri.parse('$_baseUrl/approvals/history')
-          .replace(queryParameters: queryParams);
+      final uri = Uri.parse(
+        '$_baseUrl/approvals/history',
+      ).replace(queryParameters: queryParams);
 
       debugPrint('Fetching history: $uri');
 
@@ -161,8 +166,9 @@ class _ApprovalsPageState extends State<ApprovalsPage>
         final decoded = jsonDecode(response.body);
         final rawList = _extractList(decoded);
         setState(() {
-          _historyApprovals =
-              rawList.map((e) => _normalizeItem(e as Map<String, dynamic>)).toList();
+          _historyApprovals = rawList
+              .map((e) => _normalizeItem(e as Map<String, dynamic>))
+              .toList();
           _isLoadingHistory = false;
         });
       } else {
@@ -206,22 +212,38 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     final firstName = owner['fname']?.toString().trim() ?? '';
     final middleName = owner['mname']?.toString().trim() ?? '';
     final lastName = owner['lname']?.toString().trim() ?? '';
-    final requesterName = [firstName, middleName, lastName]
-        .where((p) => p.isNotEmpty)
-        .join(' ')
-        .trim();
+    final requesterName = [
+      firstName,
+      middleName,
+      lastName,
+    ].where((p) => p.isNotEmpty).join(' ').trim();
 
     // Format date from ISO to readable
     String dateSent = raw['date_sent'] ?? '';
     try {
       if (dateSent.isNotEmpty) {
         final dt = DateTime.parse(dateSent).toLocal();
-        final months = ['JAN','FEB','MAR','APR','MAY','JUN',
-                        'JUL','AUG','SEP','OCT','NOV','DEC'];
-        final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+        final months = [
+          'JAN',
+          'FEB',
+          'MAR',
+          'APR',
+          'MAY',
+          'JUN',
+          'JUL',
+          'AUG',
+          'SEP',
+          'OCT',
+          'NOV',
+          'DEC',
+        ];
+        final hour = dt.hour > 12
+            ? dt.hour - 12
+            : (dt.hour == 0 ? 12 : dt.hour);
         final ampm = dt.hour >= 12 ? 'PM' : 'AM';
-        dateSent = '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
-            '${hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')} $ampm';
+        dateSent =
+            '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
+            '${hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} $ampm';
       }
     } catch (_) {}
 
@@ -281,8 +303,11 @@ class _ApprovalsPageState extends State<ApprovalsPage>
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
-              color: Color(0xFF1A1A1A), size: 20),
+          icon: const Icon(
+            Icons.arrow_back,
+            color: Color(0xFF1A1A1A),
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
@@ -290,8 +315,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
             padding: const EdgeInsets.only(right: 18),
             child: Row(
               children: const [
-                Icon(Icons.shield_outlined,
-                    color: Color(0xFFCC0000), size: 16),
+                Icon(Icons.shield_outlined, color: Color(0xFFCC0000), size: 16),
                 SizedBox(width: 4),
                 Text(
                   "E-FORWARD",
@@ -311,7 +335,6 @@ class _ApprovalsPageState extends State<ApprovalsPage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
             // Header
             Container(
               color: Colors.white,
@@ -335,17 +358,23 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                       if (_pendingApprovals.isNotEmpty)
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFCC0000).withOpacity(0.1),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                                color: const Color(0xFFCC0000).withOpacity(0.3)),
+                              color: const Color(0xFFCC0000).withOpacity(0.3),
+                            ),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.pending_outlined,
-                                  size: 12, color: Color(0xFFCC0000)),
+                              const Icon(
+                                Icons.pending_outlined,
+                                size: 12,
+                                color: Color(0xFFCC0000),
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 '${_pendingApprovals.length} PENDING',
@@ -395,7 +424,9 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                               const SizedBox(width: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 1),
+                                  horizontal: 6,
+                                  vertical: 1,
+                                ),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFCC0000),
                                   borderRadius: BorderRadius.circular(10),
@@ -441,11 +472,15 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                         controller: _searchController,
                         onChanged: _onSearch,
                         style: const TextStyle(
-                            fontSize: 13, color: Color(0xFF1A1A1A)),
+                          fontSize: 13,
+                          color: Color(0xFF1A1A1A),
+                        ),
                         decoration: const InputDecoration(
                           hintText: "Search approvals...",
                           hintStyle: TextStyle(
-                              color: Colors.black26, fontSize: 13),
+                            color: Colors.black26,
+                            fontSize: 13,
+                          ),
                           border: InputBorder.none,
                           isDense: true,
                           contentPadding: EdgeInsets.symmetric(vertical: 0),
@@ -460,8 +495,11 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                         },
                         child: const Padding(
                           padding: EdgeInsets.only(right: 12),
-                          child: Icon(Icons.close,
-                              size: 16, color: Colors.black38),
+                          child: Icon(
+                            Icons.close,
+                            size: 16,
+                            color: Colors.black38,
+                          ),
                         ),
                       ),
                   ],
@@ -536,8 +574,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline,
-                size: 48, color: Color(0xFFCC0000)),
+            const Icon(Icons.error_outline, size: 48, color: Color(0xFFCC0000)),
             const SizedBox(height: 12),
             Text(
               error,
@@ -551,7 +588,8 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                 backgroundColor: const Color(0xFFCC0000),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4)),
+                  borderRadius: BorderRadius.circular(4),
+                ),
               ),
               child: const Text(
                 "RETRY",
@@ -580,8 +618,11 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.check_circle_outline,
-                        size: 48, color: Colors.black12),
+                    const Icon(
+                      Icons.check_circle_outline,
+                      size: 48,
+                      color: Colors.black12,
+                    ),
                     const SizedBox(height: 12),
                     Text(
                       isPending ? "All caught up!" : "No history yet.",
@@ -597,7 +638,9 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                           ? "You don't have any pending approvals"
                           : "Completed approvals will appear here.",
                       style: const TextStyle(
-                          fontSize: 12, color: Colors.black26),
+                        fontSize: 12,
+                        color: Colors.black26,
+                      ),
                     ),
                   ],
                 ),
@@ -626,8 +669,11 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.check_circle_outline,
-              size: 48, color: Colors.black12),
+          const Icon(
+            Icons.check_circle_outline,
+            size: 48,
+            color: Colors.black12,
+          ),
           const SizedBox(height: 12),
           Text(
             isPending ? "All caught up!" : "No history yet.",
@@ -649,8 +695,10 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     );
   }
 
-  Widget _buildApprovalCard(Map<String, dynamic> item,
-      {required bool isPending}) {
+  Widget _buildApprovalCard(
+    Map<String, dynamic> item, {
+    required bool isPending,
+  }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -660,7 +708,6 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-
           // Reference No + Status badge
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -677,8 +724,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: isPending
                       ? const Color(0xFFCC0000).withOpacity(0.1)
@@ -691,9 +737,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                     fontSize: 9,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1,
-                    color: isPending
-                        ? const Color(0xFFCC0000)
-                        : Colors.green,
+                    color: isPending ? const Color(0xFFCC0000) : Colors.green,
                   ),
                 ),
               ),
@@ -720,16 +764,16 @@ class _ApprovalsPageState extends State<ApprovalsPage>
           // Requester
           Row(
             children: [
-              const Icon(Icons.person_outline,
-                  size: 12, color: Colors.black38),
+              const Icon(Icons.person_outline, size: 12, color: Colors.black38),
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
                   "REQUESTER: ${item['requester'] ?? '—'}",
                   style: const TextStyle(
-                      fontSize: 10,
-                      color: Colors.black45,
-                      letterSpacing: 0.5),
+                    fontSize: 10,
+                    color: Colors.black45,
+                    letterSpacing: 0.5,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -741,17 +785,21 @@ class _ApprovalsPageState extends State<ApprovalsPage>
           // Date Sent
           Row(
             children: [
-              const Icon(Icons.calendar_today_outlined,
-                  size: 12, color: Colors.black38),
+              const Icon(
+                Icons.calendar_today_outlined,
+                size: 12,
+                color: Colors.black38,
+              ),
               const SizedBox(width: 4),
               Text(
                 item['dateSent']?.toString().isNotEmpty == true
                     ? item['dateSent'].toString()
                     : '—',
                 style: const TextStyle(
-                    fontSize: 10,
-                    color: Colors.black45,
-                    letterSpacing: 0.5),
+                  fontSize: 10,
+                  color: Colors.black45,
+                  letterSpacing: 0.5,
+                ),
               ),
             ],
           ),
@@ -761,12 +809,11 @@ class _ApprovalsPageState extends State<ApprovalsPage>
           const SizedBox(height: 12),
 
           // Action button
-          if (isPending)
-            SizedBox(
-              width: double.infinity,
-              height: 40,
-              child: ElevatedButton(
-                onPressed: () async {
+          SizedBox(
+            width: double.infinity,
+            height: 40,
+            child: ElevatedButton(
+              onPressed: () async {
                 await Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -774,52 +821,45 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                   ),
                 );
                 // Refresh list after returning (document may have been approved)
-                _fetchPending();
+                if (isPending) {
+                  _fetchPending();
+                } else {
+                  _fetchHistory();
+                }
               },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFCC0000),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(Icons.rate_review_outlined,
-                        color: Colors.white, size: 16),
-                    SizedBox(width: 8),
-                    Text(
-                      "REVIEW",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                  ],
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isPending
+                    ? const Color(0xFFCC0000)
+                    : Colors.green,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
                 ),
               ),
-            )
-          else
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: const [
-                Icon(Icons.check_circle_outline,
-                    size: 14, color: Colors.green),
-                SizedBox(width: 4),
-                Text(
-                  "COMPLETED",
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.green,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    isPending
+                        ? Icons.rate_review_outlined
+                        : Icons.visibility_outlined,
+                    color: Colors.white,
+                    size: 16,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  Text(
+                    isPending ? "REVIEW" : "VIEW DETAILS",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                ],
+              ),
             ),
+          ),
         ],
       ),
     );
