@@ -1344,7 +1344,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           Expanded(
             flex: 4,
             child: Padding(
-              padding: const EdgeInsets.all(6),
+              padding: EdgeInsets.zero,
               child: Stack(
                 alignment: Alignment.center,
                 children: [
@@ -1382,7 +1382,10 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               decoration: BoxDecoration(
                 border: Border.all(color: const Color(0xFF1B5E20), width: 0.5),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 0.5,
+                vertical: 0.5,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1408,7 +1411,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         style: const TextStyle(
           fontSize: 5.5,
           color: Color(0xFF1A1A1A),
-          height: 1.4,
+          height: 1,
         ),
         children: [
           TextSpan(text: '$label '),
