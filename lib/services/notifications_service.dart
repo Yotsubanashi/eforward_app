@@ -41,6 +41,12 @@ class NotificationsService {
     }
   }
 
+  /// Increment unread count (called when new notification arrives)
+  void incrementUnreadCount() {
+    unreadCountNotifier.value++;
+    debugPrint('📬 Unread count incremented to: ${unreadCountNotifier.value}');
+  }
+
   /// Mark a single notification as read and update unread count
   Future<bool> markAsRead(String notificationId) async {
     try {

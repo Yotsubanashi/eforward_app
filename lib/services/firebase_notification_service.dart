@@ -2,6 +2,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:eforward_app/services/notifications_service.dart';
+import 'package:eforward_app/pages/approvals/approval_details.dart';
 
 class FirebaseNotificationService {
   static final FirebaseNotificationService _instance =
@@ -85,7 +87,10 @@ class FirebaseNotificationService {
     debugPrint('Body: ${message.notification?.body}');
     debugPrint('Data: ${message.data}');
 
-    // Show local notification or dialog
+    // Increment unread count
+    NotificationsService().incrementUnreadCount();
+
+    // Show notification dialog with action
     _showNotificationDialog(
       title: message.notification?.title ?? 'Notification',
       body: message.notification?.body ?? '',
@@ -107,11 +112,43 @@ class FirebaseNotificationService {
     debugPrint('👆 Notification tapped');
     debugPrint('Data: ${message.data}');
 
-    // Navigate to appropriate page based on notification data
-    if (message.data.containsKey('link')) {
-      final link = message.data['link'];
-      debugPrint('Navigating to: $link');
-      // You can add navigation logic here
+    final navigatorContext = _navigatorKey?.currentContext;
+    if (navigatorContext == null) return;
+
+    // Extract notification type and data
+    final notificationType = message.data['type'] ?? 'general';
+    final routingId = message.data['routing_id'];
+    final approvalId = message.data['approval_id'];
+    final documentId = message.data['document_id'];
+
+    debugPrint('Navigation: type=$notificationType, routingId=$routingId');
+
+    // Navigate based on notification type
+    if (notificationType == 'pending_approval' && routingId != null) {
+      // Navigate to approval details with full item data
+      final approvalItem = {
+        'id': routingId,
+        'routing_id': routingId,
+        'status': 'PND',
+        'referenceNo': message.data['reference_no'] ?? '',
+        'particulars': message.data['particulars'] ?? '',
+        'requester': message.data['requester'] ?? '',
+        'dateSent': message.data['date_sent'] ?? '',
+        'routing': {
+          'reference_no': message.data['reference_no'] ?? '',
+          'particulars': message.data['particulars'] ?? '',
+        },
+      };
+
+      _navigatorKey?.currentState?.push(
+        MaterialPageRoute(
+          builder: (_) => ApprovalDetailPage(item: approvalItem),
+        ),
+      );
+    } else {
+      // Default: navigate to notifications page
+      // You can add more navigation logic here
+      debugPrint('Opening notifications...');
     }
   }
 
@@ -125,27 +162,56 @@ class FirebaseNotificationService {
     if (context != null && context.mounted) {
       showDialog(
         context: context,
+        barrierDismissible: false,
         builder: (context) => AlertDialog(
-          title: Text(title),
+          title: Row(
+            children: [
+              const Icon(
+                Icons.notifications_active,
+                size: 24,
+                color: Color(0xFFCC0000),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(body),
+                Text(body, style: const TextStyle(fontSize: 14, height: 1.5)),
                 if (data.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   const Text(
-                    'Additional Info:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                    'Details:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                   ),
                   const SizedBox(height: 8),
-                  ...data.entries.map(
-                    (e) => Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text('${e.key}: ${e.value}'),
-                    ),
-                  ),
+                  ...data.entries
+                      .where(
+                        (e) =>
+                            e.key != 'type' &&
+                            e.key != 'routing_id' &&
+                            e.key != 'approval_id',
+                      )
+                      .map(
+                        (e) => Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            '• ${e.key}: ${e.value}',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                        ),
+                      ),
                 ],
               ],
             ),
@@ -153,8 +219,40 @@ class FirebaseNotificationService {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
+              child: const Text(
+                'DISMISS',
+                style: TextStyle(
+                  color: Colors.black45,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
+            if (data['type'] == 'pending_approval')
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _handleNotificationTap(
+                    RemoteMessage(
+                      notification: RemoteNotification(
+                        title: title,
+                        body: body,
+                      ),
+                      data: data,
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFCC0000),
+                  elevation: 0,
+                ),
+                child: const Text(
+                  'VIEW',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
           ],
         ),
       );
