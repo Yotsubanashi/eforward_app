@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_api.dart';
+import '../../services/fcm_token_service.dart';
 import '../dashboard/dashboard.dart';
 
 class OtpScreen extends StatefulWidget {
@@ -162,6 +163,12 @@ class _OtpScreenState extends State<OtpScreen> {
         if (userResult.data != null) {
           await prefs.setString('user_data', jsonEncode(userResult.data));
         }
+
+        // 👇 Save FCM token to backend for push notifications
+        await FCMTokenService.saveFCMTokenToBackend(
+          token: token,
+          accessToken: token,
+        );
 
         Navigator.pushReplacement(
           context,

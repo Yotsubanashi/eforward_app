@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/pages/auth/change_password.dart';
 import 'package:eforward_app/pages/auth/login.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
+import 'package:eforward_app/pages/notifications/notification_settings.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -526,6 +527,26 @@ class _SettingsPageState extends State<SettingsPage> {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
+              ),
+            ),
+
+            const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+            // Notifications
+            _buildMenuItem(
+              context,
+              icon: Icons.notifications_outlined,
+              iconColor: const Color(0xFFCC0000),
+              label: "PREFERENCES",
+              title: "NOTIFICATION SETTINGS",
+              trailing: const Icon(
+                Icons.chevron_right,
+                color: Color(0xFFAAAAAA),
+                size: 20,
+              ),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NotificationTestPage()),
               ),
             ),
 
