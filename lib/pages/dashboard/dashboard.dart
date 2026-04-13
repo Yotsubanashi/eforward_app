@@ -325,7 +325,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                 borderRadius: BorderRadius.circular(4)),
                           ),
                           child: const Text(
-                            "REVIEW\nNOW",
+                            "REVIEW NOW",
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.white,

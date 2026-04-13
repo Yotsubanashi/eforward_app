@@ -117,15 +117,118 @@ class AuthApi {
     }
   }
 
+  // ─── Update Profile ───────────────────────────────────────────────────────
+  // PUT /api/users/{employee_id}
+  Future<AuthLoginResult> updateProfile({
+    required String token,
+    required String employeeId,
+    required String fname,
+    required String mname,
+    required String lname,
+  }) async {
+    final uri = Uri.parse('$baseUrl/users/$employeeId');
+
+    try {
+      final response = await _client.put(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'fname': fname, 'mname': mname, 'lname': lname}),
+      );
+
+      final dynamic decodedBody = response.body.isNotEmpty
+          ? jsonDecode(response.body)
+          : null;
+
+      debugPrint('updateProfile status: ${response.statusCode}');
+      debugPrint('updateProfile response: ${response.body}');
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return AuthLoginResult(
+          isSuccess: true,
+          statusCode: response.statusCode,
+          message: _extractMessage(decodedBody) ?? 'Profile updated.',
+          data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+        );
+      }
+
+      return AuthLoginResult(
+        isSuccess: false,
+        statusCode: response.statusCode,
+        message: _extractMessage(decodedBody) ?? 'Profile update failed.',
+        data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+      );
+    } catch (error) {
+      return AuthLoginResult(
+        isSuccess: false,
+        statusCode: 0,
+        message: 'Network error: $error',
+      );
+    }
+  }
+
+  // ─── Change Password ──────────────────────────────────────────────────────
+  // POST /api/auth/changePassword
+  // Payload: { currentPassword, newPassword, confirmPassword }
+  Future<AuthLoginResult> changePassword({
+    required String token,
+    required String currentPassword,
+    required String newPassword,
+    required String confirmPassword,
+  }) async {
+    final uri = Uri.parse('$baseUrl/auth/changePassword');
+
+    try {
+      final response = await _client.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'currentPassword': currentPassword,
+          'newPassword': newPassword,
+          'confirmPassword': confirmPassword,
+        }),
+      );
+
+      final dynamic decodedBody = response.body.isNotEmpty
+          ? jsonDecode(response.body)
+          : null;
+
+      debugPrint('changePassword status: ${response.statusCode}');
+      debugPrint('changePassword response: ${response.body}');
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return AuthLoginResult(
+          isSuccess: true,
+          statusCode: response.statusCode,
+          message:
+              _extractMessage(decodedBody) ?? 'Password changed successfully.',
+          data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+        );
+      }
+
+      return AuthLoginResult(
+        isSuccess: false,
+        statusCode: response.statusCode,
+        message: _extractMessage(decodedBody) ?? 'Password change failed.',
+        data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+      );
+    } catch (error) {
+      return AuthLoginResult(
+        isSuccess: false,
+        statusCode: 0,
+        message: 'Network error: $error',
+      );
+    }
+  }
+
   // ─── Fetch signature ──────────────────────────────────────────────────────
-  // API response format:
-  // {
-  //   "data": {
-  //     "base64": "data:image/png;base64,iVBOR...",
-  //     "mime_type": "image/png",
-  //     "file_name": "signature_A0000939.png"
-  //   }
-  // }
   Future<SignatureResult> getSignature({required String token}) async {
     final uri = Uri.parse('$baseUrl/upload/signature/image');
 
@@ -148,7 +251,6 @@ class AuthApi {
           final dynamic decoded = jsonDecode(response.body);
 
           if (decoded is Map<String, dynamic>) {
-            // ── Extract base64 from data.base64 ──
             final dynamic dataField = decoded['data'];
             String? base64Str;
             String? rawDate;
@@ -161,7 +263,6 @@ class AuthApi {
                   dataField['updatedAt'] as String?;
             }
 
-            // Also check top-level keys as fallback
             base64Str ??= decoded['base64'] as String?;
             rawDate ??=
                 decoded['createdAt'] as String? ??
@@ -169,7 +270,6 @@ class AuthApi {
                 decoded['updatedAt'] as String?;
 
             if (base64Str != null && base64Str.isNotEmpty) {
-              // Strip the data URI prefix: "data:image/png;base64,"
               final String pureBase64 = base64Str.contains(',')
                   ? base64Str.split(',').last.trim()
                   : base64Str.trim();
@@ -192,7 +292,6 @@ class AuthApi {
               }
             }
 
-            // Fallback: check for a URL field
             final String? imageUrl = _extractImageUrl(decoded);
             return SignatureResult(
               isSuccess: true,
@@ -205,7 +304,6 @@ class AuthApi {
           }
         } catch (e) {
           debugPrint('JSON parse error: $e');
-          // If not JSON but has bytes, treat as raw image
           if (response.bodyBytes.isNotEmpty) {
             return SignatureResult(
               isSuccess: true,
@@ -247,10 +345,7 @@ class AuthApi {
         body['file_path'] as String?;
   }
 
-  // ─── Upload signature image to API ────────────────────────────────────────
-  // POST /api/upload/signature
-  // Field name: "signature"
-  // Response: { "message": "...", "data": { "file_path": "...", "file_name": "...", "mime_type": "..." } }
+  // ─── Upload signature ─────────────────────────────────────────────────────
   Future<AuthLoginResult> uploadSignature({
     required String token,
     required List<int> imageBytes,
@@ -264,13 +359,10 @@ class AuthApi {
         ..headers['Accept'] = 'application/json'
         ..files.add(
           http.MultipartFile.fromBytes(
-            'signature', // FormData field name confirmed by API
+            'signature',
             imageBytes,
             filename: fileName,
-            contentType: MediaType(
-              'image',
-              'png',
-            ), // 👈 CRITICAL: Specify content type
+            contentType: MediaType('image', 'png'),
           ),
         );
 

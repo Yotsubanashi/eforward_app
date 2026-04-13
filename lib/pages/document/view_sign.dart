@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
@@ -80,12 +81,14 @@ class _ViewSignPageState extends State<ViewSignPage>
   File? _uploadedImage;
 
   bool _isSaving = false;
+  Uint8List? _watermarkBytes;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadSignature();
+    _loadWatermark();
   }
 
   @override
@@ -93,6 +96,24 @@ class _ViewSignPageState extends State<ViewSignPage>
     _tabController.dispose();
     _authApi.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadWatermark() async {
+    try {
+      final byteData = await rootBundle.load(
+        'assets/images/eforward_watermark.png',
+      );
+      if (mounted) {
+        setState(() {
+          _watermarkBytes = byteData.buffer.asUint8List();
+        });
+        debugPrint(
+          'Watermark loaded: ${_watermarkBytes?.length} bytes',
+        ); // ← dagdag
+      }
+    } catch (e) {
+      debugPrint('Watermark load error: $e'); // ← tignan kung may error
+    }
   }
 
   Future<void> _loadSignature() async {
@@ -376,16 +397,19 @@ class _ViewSignPageState extends State<ViewSignPage>
     return Stack(
       alignment: Alignment.center,
       children: [
-        Opacity(
-          opacity: 0.08,
-          child: Image.asset(
-            'assets/images/eforward_watermark.png',
-            fit: BoxFit.contain,
-            width: 180,
-            height: 180,
-          ),
-        ),
+        // Signature muna sa baba
         signatureWidget,
+        // Watermark sa ibabaw
+        if (_watermarkBytes != null)
+          Opacity(
+            opacity: 0.12,
+            child: Image.memory(
+              _watermarkBytes!,
+              fit: BoxFit.contain,
+              width: 180,
+              height: 180,
+            ),
+          ),
       ],
     );
   }
@@ -549,7 +573,7 @@ class _ViewSignPageState extends State<ViewSignPage>
                 ),
               ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
 
             // Action Button
             SizedBox(
@@ -605,7 +629,7 @@ class _ViewSignPageState extends State<ViewSignPage>
               ),
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 190),
 
             // Legal Validity Notice
             Container(
