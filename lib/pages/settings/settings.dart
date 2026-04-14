@@ -613,25 +613,25 @@ class _SettingsPageState extends State<SettingsPage> {
 
             const Divider(height: 1, color: Color(0xFFEEEEEE)),
 
-            // Notifications
-            _buildMenuItem(
-              context,
-              icon: Icons.notifications_outlined,
-              iconColor: const Color(0xFFCC0000),
-              label: "PREFERENCES",
-              title: "NOTIFICATION SETTINGS",
-              trailing: const Icon(
-                Icons.chevron_right,
-                color: Color(0xFFAAAAAA),
-                size: 20,
-              ),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const NotificationTestPage()),
-              ),
-            ),
+            // // Notifications
+            // _buildMenuItem(
+            //   context,
+            //   icon: Icons.notifications_outlined,
+            //   iconColor: const Color(0xFFCC0000),
+            //   label: "PREFERENCES",
+            //   title: "NOTIFICATION SETTINGS",
+            //   trailing: const Icon(
+            //     Icons.chevron_right,
+            //     color: Color(0xFFAAAAAA),
+            //     size: 20,
+            //   ),
+            //   onTap: () => Navigator.push(
+            //     context,
+            //     MaterialPageRoute(builder: (_) => const NotificationTestPage()),
+            //   ),
+            // ),
 
-            const Divider(height: 1, color: Color(0xFFEEEEEE)),
+            // const Divider(height: 1, color: Color(0xFFEEEEEE)),
 
             // Logout
             _buildMenuItem(
