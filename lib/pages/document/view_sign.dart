@@ -632,24 +632,22 @@ class _ViewSignPageState extends State<ViewSignPage>
       appBar: AppBar(
         backgroundColor: const Color(0xFFF4F5F7),
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back,
-            color: Color(0xFF1A1A1A),
-            size: 20,
-          ),
-          onPressed: () {
-            if (_isEditMode) {
-              setState(() {
-                _isEditMode = false;
-                _strokes.clear();
-                _uploadedImage = null;
-              });
-            } else {
-              Navigator.pop(context);
-            }
-          },
-        ),
+        leading: _isEditMode
+            ? IconButton(
+                icon: const Icon(
+                  Icons.arrow_back,
+                  color: Color(0xFF1A1A1A),
+                  size: 20,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _isEditMode = false;
+                    _strokes.clear();
+                    _uploadedImage = null;
+                  });
+                },
+              )
+            : null,
         title: const Text(
           "SIGNATURE",
           style: TextStyle(
