@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:eforward_app/pages/dashboard/dashboard.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -21,27 +22,41 @@ class _ApprovalsPageState extends State<ApprovalsPage>
 
   static const String _baseUrl =
       'https://eforward-api.ardentnetworks.com.ph/api';
+  static const int _pageLimit = 10;
 
-  // API data
+  // ── Pending pagination ──────────────────────────────────────────────────
   List<Map<String, dynamic>> _pendingApprovals = [];
-  List<Map<String, dynamic>> _historyApprovals = [];
   bool _isLoadingPending = false;
-  bool _isLoadingHistory = false;
+  bool _isLoadingMorePending = false;
+  int _pendingPage = 1;
+  bool _pendingHasMore = true;
   String? _pendingError;
+  final ScrollController _pendingScrollController = ScrollController();
+
+  // ── History pagination ──────────────────────────────────────────────────
+  List<Map<String, dynamic>> _historyApprovals = [];
+  bool _isLoadingHistory = false;
+  bool _isLoadingMoreHistory = false;
+  int _historyPage = 1;
+  bool _historyHasMore = true;
   String? _historyError;
+  final ScrollController _historyScrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
-      // Load history only when that tab is opened
       if (_tabController.index == 1 &&
           _historyApprovals.isEmpty &&
           !_isLoadingHistory) {
         _fetchHistory();
       }
     });
+
+    _pendingScrollController.addListener(_onPendingScroll);
+    _historyScrollController.addListener(_onHistoryScroll);
+
     _fetchPending();
   }
 
@@ -49,20 +64,42 @@ class _ApprovalsPageState extends State<ApprovalsPage>
   void dispose() {
     _tabController.dispose();
     _searchController.dispose();
+    _pendingScrollController.dispose();
+    _historyScrollController.dispose();
     super.dispose();
   }
 
-  // ─── GET /approvals/pending ───────────────────────────────────────────────
+  void _onPendingScroll() {
+    if (_pendingScrollController.position.pixels >=
+            _pendingScrollController.position.maxScrollExtent - 200 &&
+        !_isLoadingMorePending &&
+        _pendingHasMore) {
+      _fetchMorePending();
+    }
+  }
+
+  void _onHistoryScroll() {
+    if (_historyScrollController.position.pixels >=
+            _historyScrollController.position.maxScrollExtent - 200 &&
+        !_isLoadingMoreHistory &&
+        _historyHasMore) {
+      _fetchMoreHistory();
+    }
+  }
+
+  // ─── GET /approvals/pending (initial / refresh) ───────────────────────────
   Future<void> _fetchPending({String? search}) async {
     setState(() {
       _isLoadingPending = true;
       _pendingError = null;
+      _pendingPage = 1;
+      _pendingHasMore = true;
+      _pendingApprovals = [];
     });
 
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token') ?? '';
-
       if (token.isEmpty) {
         setState(() {
           _isLoadingPending = false;
@@ -71,14 +108,15 @@ class _ApprovalsPageState extends State<ApprovalsPage>
         return;
       }
 
-      final queryParams = <String, String>{'page': '1', 'limit': '50'};
+      final queryParams = <String, String>{
+        'page': '1',
+        'limit': '$_pageLimit',
+      };
       if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
       final uri = Uri.parse(
         '$_baseUrl/approvals/pending',
       ).replace(queryParameters: queryParams);
-
-      debugPrint('Fetching pending approvals: $uri');
 
       final response = await http.get(
         uri,
@@ -86,11 +124,6 @@ class _ApprovalsPageState extends State<ApprovalsPage>
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
         },
-      );
-
-      debugPrint('Pending status: ${response.statusCode}');
-      debugPrint(
-        'Pending body: ${response.body.length > 500 ? response.body.substring(0, 500) : response.body}',
       );
 
       if (!mounted) return;
@@ -102,6 +135,8 @@ class _ApprovalsPageState extends State<ApprovalsPage>
           _pendingApprovals = rawList
               .map((e) => _normalizeItem(e as Map<String, dynamic>))
               .toList();
+          _pendingHasMore = rawList.length >= _pageLimit;
+          _pendingPage = 2;
           _isLoadingPending = false;
         });
       } else {
@@ -122,33 +157,28 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     }
   }
 
-  // ─── GET /approvals/history ───────────────────────────────────────────────
-  Future<void> _fetchHistory({String? search}) async {
-    setState(() {
-      _isLoadingHistory = true;
-      _historyError = null;
-    });
+  // ─── GET /approvals/pending (load more) ───────────────────────────────────
+  Future<void> _fetchMorePending() async {
+    if (_isLoadingMorePending || !_pendingHasMore) return;
+    setState(() => _isLoadingMorePending = true);
 
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token') ?? '';
-
       if (token.isEmpty) {
-        setState(() {
-          _isLoadingHistory = false;
-          _historyError = 'Session expired.';
-        });
+        setState(() => _isLoadingMorePending = false);
         return;
       }
 
-      final queryParams = <String, String>{'page': '1', 'limit': '50'};
-      if (search != null && search.isNotEmpty) queryParams['search'] = search;
+      final queryParams = <String, String>{
+        'page': '$_pendingPage',
+        'limit': '$_pageLimit',
+      };
+      if (_searchQuery.isNotEmpty) queryParams['search'] = _searchQuery;
 
       final uri = Uri.parse(
-        '$_baseUrl/approvals/history',
+        '$_baseUrl/approvals/pending',
       ).replace(queryParameters: queryParams);
-
-      debugPrint('Fetching history: $uri');
 
       final response = await http.get(
         uri,
@@ -158,7 +188,67 @@ class _ApprovalsPageState extends State<ApprovalsPage>
         },
       );
 
-      debugPrint('History status: ${response.statusCode}');
+      if (!mounted) return;
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+        final rawList = _extractList(decoded);
+        final normalized = rawList
+            .map((e) => _normalizeItem(e as Map<String, dynamic>))
+            .toList();
+        setState(() {
+          _pendingApprovals.addAll(normalized);
+          _pendingHasMore = rawList.length >= _pageLimit;
+          _pendingPage++;
+          _isLoadingMorePending = false;
+        });
+      } else {
+        setState(() => _isLoadingMorePending = false);
+      }
+    } catch (e) {
+      debugPrint('Fetch more pending error: $e');
+      if (mounted) setState(() => _isLoadingMorePending = false);
+    }
+  }
+
+  // ─── GET /approvals/history (initial / refresh) ───────────────────────────
+  Future<void> _fetchHistory({String? search}) async {
+    setState(() {
+      _isLoadingHistory = true;
+      _historyError = null;
+      _historyPage = 1;
+      _historyHasMore = true;
+      _historyApprovals = [];
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token') ?? '';
+      if (token.isEmpty) {
+        setState(() {
+          _isLoadingHistory = false;
+          _historyError = 'Session expired.';
+        });
+        return;
+      }
+
+      final queryParams = <String, String>{
+        'page': '1',
+        'limit': '$_pageLimit',
+      };
+      if (search != null && search.isNotEmpty) queryParams['search'] = search;
+
+      final uri = Uri.parse(
+        '$_baseUrl/approvals/history',
+      ).replace(queryParameters: queryParams);
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
 
       if (!mounted) return;
 
@@ -169,6 +259,8 @@ class _ApprovalsPageState extends State<ApprovalsPage>
           _historyApprovals = rawList
               .map((e) => _normalizeItem(e as Map<String, dynamic>))
               .toList();
+          _historyHasMore = rawList.length >= _pageLimit;
+          _historyPage = 2;
           _isLoadingHistory = false;
         });
       } else {
@@ -188,6 +280,60 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     }
   }
 
+  // ─── GET /approvals/history (load more) ───────────────────────────────────
+  Future<void> _fetchMoreHistory() async {
+    if (_isLoadingMoreHistory || !_historyHasMore) return;
+    setState(() => _isLoadingMoreHistory = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token') ?? '';
+      if (token.isEmpty) {
+        setState(() => _isLoadingMoreHistory = false);
+        return;
+      }
+
+      final queryParams = <String, String>{
+        'page': '$_historyPage',
+        'limit': '$_pageLimit',
+      };
+      if (_searchQuery.isNotEmpty) queryParams['search'] = _searchQuery;
+
+      final uri = Uri.parse(
+        '$_baseUrl/approvals/history',
+      ).replace(queryParameters: queryParams);
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+        final rawList = _extractList(decoded);
+        final normalized = rawList
+            .map((e) => _normalizeItem(e as Map<String, dynamic>))
+            .toList();
+        setState(() {
+          _historyApprovals.addAll(normalized);
+          _historyHasMore = rawList.length >= _pageLimit;
+          _historyPage++;
+          _isLoadingMoreHistory = false;
+        });
+      } else {
+        setState(() => _isLoadingMoreHistory = false);
+      }
+    } catch (e) {
+      debugPrint('Fetch more history error: $e');
+      if (mounted) setState(() => _isLoadingMoreHistory = false);
+    }
+  }
+
   // ─── Extract list from various API response structures ────────────────────
   List<dynamic> _extractList(dynamic decoded) {
     if (decoded is List) return decoded;
@@ -204,9 +350,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
 
   // ─── Normalize API fields to consistent keys ──────────────────────────────
   Map<String, dynamic> _normalizeItem(Map<String, dynamic> raw) {
-    // All document data is nested inside raw['routing']
     final routing = raw['routing'] as Map<String, dynamic>? ?? {};
-    // Requester is inside routing['owner']
     final owner = routing['owner'] as Map<String, dynamic>? ?? {};
 
     final firstName = owner['fname']?.toString().trim() ?? '';
@@ -218,24 +362,13 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       lastName,
     ].where((p) => p.isNotEmpty).join(' ').trim();
 
-    // Format date from ISO to readable
     String dateSent = raw['date_sent'] ?? '';
     try {
       if (dateSent.isNotEmpty) {
         final dt = DateTime.parse(dateSent).toLocal();
         final months = [
-          'JAN',
-          'FEB',
-          'MAR',
-          'APR',
-          'MAY',
-          'JUN',
-          'JUL',
-          'AUG',
-          'SEP',
-          'OCT',
-          'NOV',
-          'DEC',
+          'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+          'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
         ];
         final hour = dt.hour > 12
             ? dt.hour - 12
@@ -255,15 +388,9 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       'requester': requesterName.isNotEmpty ? requesterName : '—',
       'dateSent': dateSent,
       'status': raw['status'] ?? 'PND',
-      // Keep routing object for detail page
       'routing': routing,
       'owner': owner,
     };
-  }
-
-  // ─── Extract requester (kept for compatibility) ────────────────────────────
-  String _extractRequester(Map<String, dynamic> raw) {
-    return raw['requester']?.toString() ?? '—';
   }
 
   void _onSearch(String val) {
@@ -354,7 +481,6 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                           color: Color(0xFF1A1A1A),
                         ),
                       ),
-                      // Pending badge
                       if (_pendingApprovals.isNotEmpty)
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -377,7 +503,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                '${_pendingApprovals.length} PENDING',
+                                '${_pendingApprovals.length}${_pendingHasMore ? '+' : ''} PENDING',
                                 style: const TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w800,
@@ -432,7 +558,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Text(
-                                  '${_pendingApprovals.length}',
+                                  '${_pendingApprovals.length}${_pendingHasMore ? '+' : ''}',
                                   style: const TextStyle(
                                     fontSize: 9,
                                     color: Colors.white,
@@ -516,15 +642,21 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                     _filteredPending,
                     isPending: true,
                     isLoading: _isLoadingPending,
+                    isLoadingMore: _isLoadingMorePending,
+                    hasMore: _pendingHasMore,
                     error: _pendingError,
                     onRefresh: _fetchPending,
+                    scrollController: _pendingScrollController,
                   ),
                   _buildCardList(
                     _filteredHistory,
                     isPending: false,
                     isLoading: _isLoadingHistory,
+                    isLoadingMore: _isLoadingMoreHistory,
+                    hasMore: _historyHasMore,
                     error: _historyError,
                     onRefresh: _fetchHistory,
+                    scrollController: _historyScrollController,
                   ),
                 ],
               ),
@@ -532,10 +664,18 @@ class _ApprovalsPageState extends State<ApprovalsPage>
           ],
         ),
       ),
-      bottomNavigationBar: BottomNavigator(
-        selectedIndex: _selectedIndex,
-        onTap: (_) {},
-      ),
+       bottomNavigationBar: BottomNavigator(
+  selectedIndex: _selectedIndex,
+  onTap: (index) {
+    if (index == 0) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const DashboardPage()),
+        (route) => false,
+      );
+    }
+  },
+),
     );
   }
 
@@ -543,10 +683,12 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     List<Map<String, dynamic>> items, {
     required bool isPending,
     required bool isLoading,
+    required bool isLoadingMore,
+    required bool hasMore,
     required String? error,
     required VoidCallback onRefresh,
+    required ScrollController scrollController,
   }) {
-    // Loading
     if (isLoading) {
       return const Center(
         child: Column(
@@ -568,7 +710,6 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       );
     }
 
-    // Error
     if (error != null) {
       return Center(
         child: Column(
@@ -605,7 +746,6 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       );
     }
 
-    // Empty
     if (items.isEmpty) {
       return RefreshIndicator(
         onRefresh: () async => onRefresh(),
@@ -655,42 +795,48 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       onRefresh: () async => onRefresh(),
       color: const Color(0xFFCC0000),
       child: ListView.separated(
+        controller: scrollController,
         padding: const EdgeInsets.all(16),
-        itemCount: items.length,
+        // +1 para sa loading footer o end-of-list indicator
+        itemCount: items.length + 1,
         separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (context, index) =>
-            _buildApprovalCard(items[index], isPending: isPending),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState({required bool isPending}) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(
-            Icons.check_circle_outline,
-            size: 48,
-            color: Colors.black12,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            isPending ? "All caught up!" : "No history yet.",
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: Colors.black38,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            isPending
-                ? "You don't have any pending approvals"
-                : "Completed approvals will appear here.",
-            style: const TextStyle(fontSize: 12, color: Colors.black26),
-          ),
-        ],
+        itemBuilder: (context, index) {
+          // Footer
+          if (index == items.length) {
+            if (isLoadingMore) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFFCC0000),
+                    ),
+                  ),
+                ),
+              );
+            }
+            if (!hasMore) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                  child: Text(
+                    "— End of list —",
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.black26,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ),
+              );
+            }
+            return const SizedBox.shrink();
+          }
+          return _buildApprovalCard(items[index], isPending: isPending);
+        },
       ),
     );
   }
@@ -820,7 +966,6 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                     builder: (_) => ApprovalDetailPage(item: item),
                   ),
                 );
-                // Refresh list after returning (document may have been approved)
                 if (isPending) {
                   _fetchPending();
                 } else {
