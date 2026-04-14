@@ -1,292 +1,353 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:eforward_app/services/notifications_service.dart';
+import 'package:eforward_app/services/fcm_token_service.dart';
 import 'package:eforward_app/pages/approvals/approval_details.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Module-level plugin + channel so the background isolate can reach them.
+// ─────────────────────────────────────────────────────────────────────────────
+const AndroidNotificationChannel kApprovalChannel = AndroidNotificationChannel(
+  'eforward_approvals', // ← must match AndroidManifest meta-data value
+  'E-Forward Approvals',
+  description: 'Approval and document routing notifications',
+  importance: Importance.max,
+  playSound: true,
+  enableVibration: true,
+);
+
+final FlutterLocalNotificationsPlugin flutterLocalNotifications =
+    FlutterLocalNotificationsPlugin();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ TOP-LEVEL background handler — MUST be outside any class.
+// Firebase invokes this in a separate Dart isolate when the app is killed.
+// ─────────────────────────────────────────────────────────────────────────────
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  debugPrint('🔔 [BG] ${message.notification?.title} | data=${message.data}');
+  await FirebaseNotificationService.showLocalNotification(message);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 class FirebaseNotificationService {
   static final FirebaseNotificationService _instance =
       FirebaseNotificationService._internal();
-  static GlobalKey<NavigatorState>? _navigatorKey;
 
   FirebaseNotificationService._internal();
+  factory FirebaseNotificationService() => _instance;
 
-  factory FirebaseNotificationService() {
-    return _instance;
-  }
+  static GlobalKey<NavigatorState>? _navigatorKey;
 
-  final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
+  static void setNavigatorKey(GlobalKey<NavigatorState> key) =>
+      _navigatorKey = key;
 
-  /// Set navigator key for showing dialogs
-  static void setNavigatorKey(GlobalKey<NavigatorState> key) {
-    _navigatorKey = key;
-  }
-
-  /// Initialize Firebase and request notification permissions
+  // ── Public entry point ────────────────────────────────────────────────────
   Future<void> initialize() async {
     try {
-      debugPrint(' Initializing Firebase Notifications...');
+      debugPrint('🚀 Initialising Firebase Notifications...');
 
-      // Initialize Firebase
-      await Firebase.initializeApp();
+      // Firebase already initialised in main() — guard against double-init
+      if (Firebase.apps.isEmpty) await Firebase.initializeApp();
 
-      // Request notification permission (especially for iOS and Android 13+)
-      await _requestNotificationPermission();
+      // 1. OS permissions
+      await _requestPermissions();
 
-      // Get FCM token for backend
-      final token = await _firebaseMessaging.getToken();
-      debugPrint('📱 FCM Token: $token');
+      // 2. Android notification channel
+      await _createAndroidChannel();
 
-      // Handle foreground notifications
-      FirebaseMessaging.onMessage.listen(_handleForegroundNotification);
+      // 3. flutter_local_notifications
+      await _initLocalNotifications();
 
-      // Handle notification when app is opened from terminated state
-      FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
+      // 4. ✅ Register the TOP-LEVEL background handler
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-      // Handle background messages
-      FirebaseMessaging.onBackgroundMessage(_handleBackgroundNotification);
+      // 5. Foreground messages
+      FirebaseMessaging.onMessage.listen(_onForegroundMessage);
 
-      debugPrint(' Firebase Notifications initialized successfully');
+      // 6. Tap while app is backgrounded (resumed)
+      FirebaseMessaging.onMessageOpenedApp.listen(_onNotificationTap);
+
+      // 7. Tap while app was TERMINATED
+      final initial = await FirebaseMessaging.instance.getInitialMessage();
+      if (initial != null) {
+        debugPrint('📬 Launched from terminated state via notification');
+        await Future.delayed(const Duration(milliseconds: 800));
+        await _onNotificationTap(initial);
+      }
+
+      // 8. ✅ Auto-save token whenever Firebase silently rotates it
+      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+        debugPrint('🔄 FCM token rotated — syncing to backend...');
+        final prefs = await SharedPreferences.getInstance();
+        final accessToken = prefs.getString('access_token') ?? '';
+        if (accessToken.isNotEmpty) {
+          await FCMTokenService.saveFCMTokenToBackend(accessToken: accessToken);
+        }
+      });
+
+      final token = await FirebaseMessaging.instance.getToken();
+      debugPrint('📱 FCM token: $token');
+      debugPrint('✅ Firebase Notifications ready');
     } catch (e) {
-      debugPrint(' Firebase initialization error: $e');
+      debugPrint('❌ Firebase init error: $e');
     }
   }
 
-  /// Request notification permission from user
-  Future<void> _requestNotificationPermission() async {
-    try {
-      // iOS specific request
-      final permission = await _firebaseMessaging.requestPermission(
-        alert: true,
-        announcement: false,
-        badge: true,
-        carPlay: false,
-        criticalAlert: false,
-        provisional: false,
-        sound: true,
-      );
+  // ── OS permissions ────────────────────────────────────────────────────────
+  Future<void> _requestPermissions() async {
+    final settings = await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+    debugPrint('🔔 FCM permission status: ${settings.authorizationStatus}');
 
-      debugPrint('iOS Permission status: ${permission.authorizationStatus}');
+    if (Platform.isAndroid) {
+      final status = await Permission.notification.request();
+      debugPrint('🤖 Android notification permission: $status');
+    }
 
-      // Android specific request (API 33+)
-      await Permission.notification.request();
-
-      debugPrint('✅ Notification permissions requested');
-    } catch (e) {
-      debugPrint('❌ Permission request error: $e');
+    if (Platform.isIOS) {
+      await FirebaseMessaging.instance
+          .setForegroundNotificationPresentationOptions(
+            alert: true,
+            badge: true,
+            sound: true,
+          );
     }
   }
 
-  /// Handle notifications when app is in foreground
-  static Future<void> _handleForegroundNotification(
-    RemoteMessage message,
-  ) async {
-    debugPrint('📨 Foreground notification received');
-    debugPrint('Title: ${message.notification?.title}');
-    debugPrint('Body: ${message.notification?.body}');
-    debugPrint('Data: ${message.data}');
-
-    // Increment unread count
-    NotificationsService().incrementUnreadCount();
-
-    // Show notification dialog with action
-    _showNotificationDialog(
-      title: message.notification?.title ?? 'Notification',
-      body: message.notification?.body ?? '',
-      data: message.data,
+  // ── Android channel ───────────────────────────────────────────────────────
+  Future<void> _createAndroidChannel() async {
+    if (!Platform.isAndroid) return;
+    await flutterLocalNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.createNotificationChannel(kApprovalChannel);
+    debugPrint(
+      '📢 Android notification channel created: ${kApprovalChannel.id}',
     );
   }
 
-  /// Handle background notifications
-  static Future<void> _handleBackgroundNotification(
-    RemoteMessage message,
-  ) async {
-    debugPrint('🔔 Background notification received');
-    debugPrint('Title: ${message.notification?.title}');
-    debugPrint('Body: ${message.notification?.body}');
+  // ── flutter_local_notifications ───────────────────────────────────────────
+  Future<void> _initLocalNotifications() async {
+    await flutterLocalNotifications.initialize(
+      const InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        iOS: DarwinInitializationSettings(
+          requestAlertPermission: false,
+          requestBadgePermission: false,
+          requestSoundPermission: false,
+        ),
+      ),
+      onDidReceiveNotificationResponse: (response) {
+        debugPrint('👆 Local notif tapped — payload: ${response.payload}');
+        _handlePayloadTap(response.payload);
+      },
+    );
   }
 
-  /// Handle notification when user taps it
-  static Future<void> _handleNotificationTap(RemoteMessage message) async {
-    debugPrint('👆 Notification tapped');
-    debugPrint('Data: ${message.data}');
+  // ── Show system-tray notification ─────────────────────────────────────────
+  /// Static so the top-level background handler can call it without an instance.
+  static Future<void> showLocalNotification(RemoteMessage message) async {
+    final title =
+        message.notification?.title ?? message.data['title'] ?? 'E-Forward';
+    final body =
+        message.notification?.body ??
+        message.data['body'] ??
+        'You have a new notification';
+    final payload = jsonEncode(message.data);
 
-    final navigatorContext = _navigatorKey?.currentContext;
-    if (navigatorContext == null) return;
-
-    // Extract notification type and data
-    final notificationType = message.data['type'] ?? 'general';
-    final routingId = message.data['routing_id'];
-    final approvalId = message.data['approval_id'];
-    final documentId = message.data['document_id'];
-
-    debugPrint('Navigation: type=$notificationType, routingId=$routingId');
-
-    // Navigate based on notification type
-    if (notificationType == 'pending_approval' && routingId != null) {
-      // Navigate to approval details with full item data
-      final approvalItem = {
-        'id': routingId,
-        'routing_id': routingId,
-        'status': 'PND',
-        'referenceNo': message.data['reference_no'] ?? '',
-        'particulars': message.data['particulars'] ?? '',
-        'requester': message.data['requester'] ?? '',
-        'dateSent': message.data['date_sent'] ?? '',
-        'routing': {
-          'reference_no': message.data['reference_no'] ?? '',
-          'particulars': message.data['particulars'] ?? '',
-        },
-      };
-
-      _navigatorKey?.currentState?.push(
-        MaterialPageRoute(
-          builder: (_) => ApprovalDetailPage(item: approvalItem),
+    await flutterLocalNotifications.show(
+      message.hashCode,
+      title,
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          kApprovalChannel.id,
+          kApprovalChannel.name,
+          channelDescription: kApprovalChannel.description,
+          importance: Importance.max,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+          styleInformation: BigTextStyleInformation(body),
+          playSound: true,
+          enableVibration: true,
         ),
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      ),
+      payload: payload,
+    );
+  }
+
+  // ── Foreground message ────────────────────────────────────────────────────
+  static Future<void> _onForegroundMessage(RemoteMessage message) async {
+    debugPrint('📨 [FG] ${message.notification?.title}');
+
+    // Show system heads-up notification (FCM does NOT do this automatically
+    // when the app is open on Android)
+    await showLocalNotification(message);
+
+    // Update badge counter
+    NotificationsService().incrementUnreadCount();
+
+    // Extra: in-app dialog for approval type
+    if (message.data['type'] == 'pending_approval') {
+      _showInAppDialog(
+        title: message.notification?.title ?? 'New Approval',
+        body: message.notification?.body ?? '',
+        data: message.data,
       );
-    } else {
-      // Default: navigate to notifications page
-      // You can add more navigation logic here
-      debugPrint('Opening notifications...');
     }
   }
 
-  /// Show notification dialog when app is in foreground
-  static void _showNotificationDialog({
+  // ── Navigation ────────────────────────────────────────────────────────────
+  static Future<void> _onNotificationTap(RemoteMessage message) async {
+    debugPrint('👆 Notification tapped. data=${message.data}');
+    _navigate(message.data);
+  }
+
+  static void _handlePayloadTap(String? payload) {
+    if (payload == null || payload.isEmpty) return;
+    try {
+      _navigate(jsonDecode(payload) as Map<String, dynamic>);
+    } catch (_) {}
+  }
+
+  static void _navigate(Map<String, dynamic> data) {
+    final type = data['type'] ?? '';
+    final routingId = data['routing_id'];
+
+    if (type == 'pending_approval' && routingId != null) {
+      _navigatorKey?.currentState?.push(
+        MaterialPageRoute(
+          builder: (_) => ApprovalDetailPage(
+            item: {
+              'id': routingId,
+              'routing_id': routingId,
+              'status': 'PND',
+              'referenceNo': data['reference_no'] ?? '',
+              'particulars': data['particulars'] ?? '',
+              'requester': data['requester'] ?? '',
+              'dateSent': data['date_sent'] ?? '',
+              'routing': {
+                'reference_no': data['reference_no'] ?? '',
+                'particulars': data['particulars'] ?? '',
+              },
+            },
+          ),
+        ),
+      );
+    }
+  }
+
+  // ── In-app dialog (foreground only) ──────────────────────────────────────
+  static void _showInAppDialog({
     required String title,
     required String body,
     required Map<String, dynamic> data,
   }) {
     final context = _navigatorKey?.currentContext;
-    if (context != null && context.mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: Row(
-            children: [
-              const Icon(
-                Icons.notifications_active,
-                size: 24,
-                color: Color(0xFFCC0000),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(body, style: const TextStyle(fontSize: 14, height: 1.5)),
-                if (data.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Details:',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
-                  const SizedBox(height: 8),
-                  ...data.entries
-                      .where(
-                        (e) =>
-                            e.key != 'type' &&
-                            e.key != 'routing_id' &&
-                            e.key != 'approval_id',
-                      )
-                      .map(
-                        (e) => Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            '• ${e.key}: ${e.value}',
-                            style: const TextStyle(fontSize: 11),
-                          ),
-                        ),
-                      ),
-                ],
-              ],
+    if (context == null || !context.mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        title: Row(
+          children: [
+            const Icon(
+              Icons.notifications_active,
+              size: 22,
+              color: Color(0xFFCC0000),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text(
-                'DISMISS',
-                style: TextStyle(
-                  color: Colors.black45,
-                  fontWeight: FontWeight.w700,
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
                 ),
               ),
             ),
-            if (data['type'] == 'pending_approval')
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _handleNotificationTap(
-                    RemoteMessage(
-                      notification: RemoteNotification(
-                        title: title,
-                        body: body,
-                      ),
-                      data: data,
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFCC0000),
-                  elevation: 0,
-                ),
-                child: const Text(
-                  'VIEW',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
           ],
         ),
-      );
-    }
+        content: Text(body, style: const TextStyle(fontSize: 13, height: 1.5)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'DISMISS',
+              style: TextStyle(
+                color: Colors.black45,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _navigate(data);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFCC0000),
+              elevation: 0,
+            ),
+            child: const Text(
+              'VIEW',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  /// Get current FCM token
+  // ── Misc helpers ──────────────────────────────────────────────────────────
   Future<String?> getFCMToken() async {
     try {
-      final token = await _firebaseMessaging.getToken();
-      return token;
+      return await FirebaseMessaging.instance.getToken();
     } catch (e) {
       debugPrint('Error getting FCM token: $e');
       return null;
     }
   }
 
-  /// Subscribe to notification topics
   Future<void> subscribeToTopic(String topic) async {
     try {
-      await _firebaseMessaging.subscribeToTopic(topic);
-      debugPrint('✅ Subscribed to topic: $topic');
+      await FirebaseMessaging.instance.subscribeToTopic(topic);
+      debugPrint('✅ Subscribed: $topic');
     } catch (e) {
-      debugPrint('❌ Error subscribing to topic: $e');
+      debugPrint('❌ Subscribe error: $e');
     }
   }
 
-  /// Unsubscribe from notification topics
   Future<void> unsubscribeFromTopic(String topic) async {
     try {
-      await _firebaseMessaging.unsubscribeFromTopic(topic);
-      debugPrint('✅ Unsubscribed from topic: $topic');
+      await FirebaseMessaging.instance.unsubscribeFromTopic(topic);
+      debugPrint('✅ Unsubscribed: $topic');
     } catch (e) {
-      debugPrint('❌ Error unsubscribing from topic: $e');
+      debugPrint('❌ Unsubscribe error: $e');
     }
   }
 }

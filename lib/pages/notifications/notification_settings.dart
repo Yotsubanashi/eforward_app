@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/services/firebase_notification_service.dart';
+import 'package:eforward_app/services/fcm_token_service.dart';
 
 class NotificationTestPage extends StatefulWidget {
   const NotificationTestPage({super.key});
@@ -11,6 +13,7 @@ class NotificationTestPage extends StatefulWidget {
 class _NotificationTestPageState extends State<NotificationTestPage> {
   String? _fcmToken;
   bool _isLoading = true;
+  bool _isSavingToken = false;
 
   @override
   void initState() {
@@ -139,6 +142,41 @@ class _NotificationTestPageState extends State<NotificationTestPage> {
                               ),
                             ),
                           ],
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: _isSavingToken
+                                ? null
+                                : _saveTokenToBackend,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFCC0000),
+                              disabledBackgroundColor: Colors.grey[400],
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            icon: _isSavingToken
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : const Icon(Icons.cloud_upload),
+                            label: Text(
+                              _isSavingToken
+                                  ? 'Saving to Backend...'
+                                  : 'Save Token to Backend',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     )
@@ -298,6 +336,77 @@ class _NotificationTestPageState extends State<NotificationTestPage> {
         ),
       ),
     );
+  }
+
+  /// Save FCM token to backend
+  Future<void> _saveTokenToBackend() async {
+    if (_fcmToken == null || _fcmToken!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ No FCM token available'),
+          backgroundColor: Color(0xFFCC0000),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSavingToken = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token') ?? '';
+
+      if (accessToken.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ No access token found. Please login first.'),
+            backgroundColor: Color(0xFFCC0000),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        setState(() => _isSavingToken = false);
+        return;
+      }
+
+      final success = await FCMTokenService.saveFCMTokenToBackend(
+        accessToken: accessToken,
+      );
+
+      if (!mounted) return;
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ FCM token saved to backend successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Failed to save token. Check logs for details.'),
+            backgroundColor: Color(0xFFCC0000),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error: $e'),
+            backgroundColor: const Color(0xFFCC0000),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingToken = false);
+      }
+    }
   }
 
   Widget _buildInstructionStep(

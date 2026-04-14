@@ -165,10 +165,7 @@ class _OtpScreenState extends State<OtpScreen> {
         }
 
         // 👇 Save FCM token to backend for push notifications
-        await FCMTokenService.saveFCMTokenToBackend(
-          token: token,
-          accessToken: token,
-        );
+        await FCMTokenService.saveFCMTokenToBackend(accessToken: token);
 
         Navigator.pushReplacement(
           context,

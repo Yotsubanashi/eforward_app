@@ -46,6 +46,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   syncfusion_flutter_pdf: ^33.1.47
   http_parser: ^4.0.2
+  flutter_local_notifications: ^18.0.1
+
 
 
   

@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
 import 'package:eforward_app/pages/approvals/approvals.dart';
 import 'package:eforward_app/pages/approvals/approval_details.dart';
+import 'package:eforward_app/services/fcm_token_service.dart';
+import 'package:eforward_app/services/notifications_service.dart';
 
 class DashboardPage extends StatefulWidget {
   final Map<String, dynamic>? userData;
@@ -42,7 +44,21 @@ class _DashboardPageState extends State<DashboardPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadUserData();
       _fetchPendingApprovals();
+      _syncFCMToken();
+      NotificationsService().fetchUnreadCount();
     });
+  }
+
+  Future<void> _syncFCMToken() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token') ?? '';
+      if (accessToken.isNotEmpty) {
+        await FCMTokenService.syncTokenIfNeeded(accessToken: accessToken);
+      }
+    } catch (e) {
+      debugPrint('Error syncing FCM token: $e');
+    }
   }
 
   Future<void> _loadUserData() async {
@@ -70,12 +86,15 @@ class _DashboardPageState extends State<DashboardPage> {
 
   void _applyUserData(Map<String, dynamic> fullData) {
     // Try nested 'data' key first, then flat
-    final userData = fullData['data'] as Map<String, dynamic>?
-        ?? fullData['user'] as Map<String, dynamic>?
-        ?? fullData;
+    final userData =
+        fullData['data'] as Map<String, dynamic>? ??
+        fullData['user'] as Map<String, dynamic>? ??
+        fullData;
 
     debugPrint('userData keys: ${userData.keys.toList()}');
-    debugPrint('fname: ${userData['fname']} | lname: ${userData['lname']} | email_add: ${userData['email_add']}');
+    debugPrint(
+      'fname: ${userData['fname']} | lname: ${userData['lname']} | email_add: ${userData['email_add']}',
+    );
 
     final firstName = userData['fname']?.toString().trim() ?? '';
     final lastName = userData['lname']?.toString().trim() ?? '';
@@ -83,10 +102,11 @@ class _DashboardPageState extends State<DashboardPage> {
     setState(() {
       _userName = '$firstName $lastName'.trim();
       if (_userName.isEmpty) _userName = 'User';
-      _userEmail = userData['email_add']
-          ?? userData['email']
-          ?? userData['emailAdd']
-          ?? 'N/A';
+      _userEmail =
+          userData['email_add'] ??
+          userData['email'] ??
+          userData['emailAdd'] ??
+          'N/A';
       _userRole = userData['role'] ?? 'USER';
 
       final modulesList = userData['modules'] as List?;
@@ -99,7 +119,9 @@ class _DashboardPageState extends State<DashboardPage> {
           }
         }
       }
-      debugPrint('Applied → name: $_userName | email: $_userEmail | role: $_userRole | modules: ${_userModules.length}');
+      debugPrint(
+        'Applied → name: $_userName | email: $_userEmail | role: $_userRole | modules: ${_userModules.length}',
+      );
     });
   }
 
@@ -159,21 +181,37 @@ class _DashboardPageState extends State<DashboardPage> {
     final firstName = owner['fname']?.toString().trim() ?? '';
     final middleName = owner['mname']?.toString().trim() ?? '';
     final lastName = owner['lname']?.toString().trim() ?? '';
-    final requesterName = [firstName, middleName, lastName]
-        .where((p) => p.isNotEmpty)
-        .join(' ')
-        .trim();
+    final requesterName = [
+      firstName,
+      middleName,
+      lastName,
+    ].where((p) => p.isNotEmpty).join(' ').trim();
 
     String dateSent = raw['date_sent'] ?? '';
     try {
       if (dateSent.isNotEmpty) {
         final dt = DateTime.parse(dateSent).toLocal();
-        final months = ['JAN','FEB','MAR','APR','MAY','JUN',
-                        'JUL','AUG','SEP','OCT','NOV','DEC'];
-        final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+        final months = [
+          'JAN',
+          'FEB',
+          'MAR',
+          'APR',
+          'MAY',
+          'JUN',
+          'JUL',
+          'AUG',
+          'SEP',
+          'OCT',
+          'NOV',
+          'DEC',
+        ];
+        final hour = dt.hour > 12
+            ? dt.hour - 12
+            : (dt.hour == 0 ? 12 : dt.hour);
         final ampm = dt.hour >= 12 ? 'PM' : 'AM';
-        dateSent = '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
-            '${hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')} $ampm';
+        dateSent =
+            '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
+            '${hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} $ampm';
       }
     } catch (_) {}
 
@@ -203,11 +241,14 @@ class _DashboardPageState extends State<DashboardPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-
                 // Brand Header
                 Row(
                   children: const [
-                    Icon(Icons.shield_outlined, color: Color(0xFFCC0000), size: 16),
+                    Icon(
+                      Icons.shield_outlined,
+                      color: Color(0xFFCC0000),
+                      size: 16,
+                    ),
                     SizedBox(width: 10),
                     Text(
                       "E-FORWARD",
@@ -283,8 +324,9 @@ class _DashboardPageState extends State<DashboardPage> {
                                       width: 24,
                                       height: 24,
                                       child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Color(0xFFCC0000)),
+                                        strokeWidth: 2,
+                                        color: Color(0xFFCC0000),
+                                      ),
                                     )
                                   : Text(
                                       '${_pendingApprovals.length}',
@@ -314,15 +356,19 @@ class _DashboardPageState extends State<DashboardPage> {
                           onPressed: () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (_) => const ApprovalsPage()),
+                              builder: (_) => const ApprovalsPage(),
+                            ),
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFCC0000),
                             elevation: 0,
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 12),
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(4)),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
                           ),
                           child: const Text(
                             "REVIEW NOW",
@@ -363,11 +409,11 @@ class _DashboardPageState extends State<DashboardPage> {
                         physics: const NeverScrollableScrollPhysics(),
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          childAspectRatio: 1,
-                        ),
+                              crossAxisCount: 3,
+                              crossAxisSpacing: 12,
+                              mainAxisSpacing: 12,
+                              childAspectRatio: 1,
+                            ),
                         itemCount: _userModules.length,
                         itemBuilder: (context, index) {
                           final module = _userModules[index];
@@ -375,15 +421,19 @@ class _DashboardPageState extends State<DashboardPage> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               border: Border.all(
-                                  color: const Color(0xFFE8E8E8)),
+                                color: const Color(0xFFE8E8E8),
+                              ),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Center(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.dashboard,
-                                      color: Color(0xFFCC0000), size: 28),
+                                  const Icon(
+                                    Icons.dashboard,
+                                    color: Color(0xFFCC0000),
+                                    size: 28,
+                                  ),
                                   const SizedBox(height: 8),
                                   Padding(
                                     padding: const EdgeInsets.all(4),
@@ -425,7 +475,8 @@ class _DashboardPageState extends State<DashboardPage> {
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                            builder: (_) => const ApprovalsPage()),
+                          builder: (_) => const ApprovalsPage(),
+                        ),
                       ),
                       child: const Text(
                         "VIEW ALL LOGS →",
@@ -448,7 +499,8 @@ class _DashboardPageState extends State<DashboardPage> {
                     child: Padding(
                       padding: EdgeInsets.symmetric(vertical: 24),
                       child: CircularProgressIndicator(
-                          color: Color(0xFFCC0000)),
+                        color: Color(0xFFCC0000),
+                      ),
                     ),
                   )
                 else if (_pendingApprovals.isEmpty)
@@ -461,13 +513,15 @@ class _DashboardPageState extends State<DashboardPage> {
                     ),
                     child: const Column(
                       children: [
-                        Icon(Icons.check_circle_outline,
-                            size: 32, color: Colors.black12),
+                        Icon(
+                          Icons.check_circle_outline,
+                          size: 32,
+                          color: Colors.black12,
+                        ),
                         SizedBox(height: 8),
                         Text(
                           "No pending approvals",
-                          style: TextStyle(
-                              fontSize: 12, color: Colors.black38),
+                          style: TextStyle(fontSize: 12, color: Colors.black38),
                         ),
                       ],
                     ),
@@ -501,9 +555,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return InkWell(
       onTap: () => Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => ApprovalDetailPage(item: item),
-        ),
+        MaterialPageRoute(builder: (_) => ApprovalDetailPage(item: item)),
       ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -515,11 +567,7 @@ class _DashboardPageState extends State<DashboardPage> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // Red accent line
-            Container(
-              width: 3,
-              height: 44,
-              color: const Color(0xFFCC0000),
-            ),
+            Container(width: 3, height: 44, color: const Color(0xFFCC0000)),
             const SizedBox(width: 12),
 
             // Reference no + PENDING badge
@@ -544,16 +592,15 @@ class _DashboardPageState extends State<DashboardPage> {
                     item['particulars']?.toString().isNotEmpty == true
                         ? item['particulars'].toString()
                         : '—',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Colors.black45,
-                    ),
+                    style: const TextStyle(fontSize: 11, color: Colors.black45),
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 7, vertical: 2),
+                      horizontal: 7,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFCC0000).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(3),
@@ -588,8 +635,11 @@ class _DashboardPageState extends State<DashboardPage> {
                   textAlign: TextAlign.right,
                 ),
                 const SizedBox(height: 6),
-                const Icon(Icons.chevron_right,
-                    color: Colors.black26, size: 18),
+                const Icon(
+                  Icons.chevron_right,
+                  color: Colors.black26,
+                  size: 18,
+                ),
               ],
             ),
           ],

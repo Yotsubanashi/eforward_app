@@ -8,6 +8,8 @@ import 'package:eforward_app/pages/auth/login.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
 import 'package:eforward_app/pages/notifications/notification_settings.dart';
 import 'package:eforward_app/services/auth_api.dart';
+import 'package:eforward_app/services/fcm_token_service.dart';
+import 'package:eforward_app/services/notifications_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -396,6 +398,38 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _logout() async {
+    try {
+      // Clear FCM token from local cache
+      await FCMTokenService.clearSavedToken();
+
+      // Clear access token and user data
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('access_token');
+      await prefs.remove('user_data');
+
+      // Reset notifications
+      NotificationsService().reset();
+
+      debugPrint('✅ Logout successful - FCM token cleared');
+
+      // Navigate to login
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Logout error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Logout error: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -611,10 +645,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 color: Color(0xFFAAAAAA),
                 size: 18,
               ),
-              onTap: () => Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              ),
+              onTap: _logout,
             ),
 
             const Divider(height: 1, color: Color(0xFFEEEEEE)),

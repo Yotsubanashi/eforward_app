@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/auth_api.dart';
+import '../../services/fcm_token_service.dart';
 import '../dashboard/dashboard.dart';
 import 'forgot_password.dart';
 import 'otp.dart';
@@ -107,6 +108,11 @@ class _LoginScreenState extends State<LoginScreen> {
           if (result.data != null) {
             await prefs.setString('user_data', jsonEncode(result.data));
           }
+
+          // 👇 Save FCM token to backend for push notifications
+          await FCMTokenService.saveFCMTokenToBackend(
+            accessToken: token.toString(),
+          );
         }
 
         Navigator.pushReplacement(

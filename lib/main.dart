@@ -2,34 +2,36 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'pages/auth/login.dart';
 import 'services/firebase_notification_service.dart';
-import 'firebase_options.dart'; // ← We'll create this file
+import 'firebase_options.dart';
+
+// ✅ FIX: navigatorKey must be a global — NOT declared inside main()
+// If it's inside main(), the notification service loses the reference
+// when the app rebuilds.
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase
+  // 1. Init Firebase first
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Create navigator key for dialogs
-  final navigatorKey = GlobalKey<NavigatorState>();
-
-  // Initialize Firebase Notifications with navigator key
+  // 2. Set navigator key BEFORE initialize() so background-tap navigation works
   FirebaseNotificationService.setNavigatorKey(navigatorKey);
+
+  // 3. Init notifications (permissions, channel, listeners, background handler)
   await FirebaseNotificationService().initialize();
 
-  runApp(MyApp(navigatorKey: navigatorKey));
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  final GlobalKey<NavigatorState> navigatorKey;
-
-  const MyApp({super.key, required this.navigatorKey});
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      navigatorKey: navigatorKey,
+      navigatorKey: navigatorKey, // ✅ uses the global key
       home: const LoginScreen(),
     );
   }
