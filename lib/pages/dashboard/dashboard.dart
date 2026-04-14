@@ -277,16 +277,15 @@ class _DashboardPageState extends State<DashboardPage> {
 
                 const SizedBox(height: 12),
 
-                Text(
-                  'Email: $_userEmail | Role: $_userRole',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.black54,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-
-                const SizedBox(height: 24),
+                // Text(
+                //   'Email: $_userEmail | Role: $_userRole',
+                //   style: const TextStyle(
+                //     fontSize: 12,
+                //     color: Colors.black54,
+                //     letterSpacing: 0.5,
+                //   ),
+                // ),
+                // const SizedBox(height: 24),
 
                 // ─── PENDING APPROVALS CARD ───────────────────────────────
                 Container(
