@@ -1,12 +1,9 @@
-import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/pages/auth/change_password.dart';
 import 'package:eforward_app/pages/auth/login.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
-import 'package:eforward_app/pages/notifications/notification_settings.dart';
 import 'package:eforward_app/services/auth_api.dart';
 import 'package:eforward_app/services/fcm_token_service.dart';
 import 'package:eforward_app/services/notifications_service.dart';
@@ -20,7 +17,6 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   final int _selectedIndex = 3;
-  File? _profileImage;
 
   String _firstName = '';
   String _middleName = '';
@@ -33,6 +29,12 @@ class _SettingsPageState extends State<SettingsPage> {
   String get _displayName =>
       '$_firstName${_middleName.isNotEmpty ? ' $_middleName' : ''} $_lastName'
           .trim();
+
+  String get _initials {
+    final f = _firstName.isNotEmpty ? _firstName[0].toUpperCase() : '';
+    final l = _lastName.isNotEmpty ? _lastName[0].toUpperCase() : '';
+    return '$f$l';
+  }
 
   @override
   void initState() {
@@ -48,7 +50,6 @@ class _SettingsPageState extends State<SettingsPage> {
       try {
         final Map<String, dynamic> full = jsonDecode(userDataStr);
 
-        // ✅ API response uses 'user' key
         final userData = (full['user'] is Map<String, dynamic>)
             ? full['user'] as Map<String, dynamic>
             : full;
@@ -89,16 +90,11 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _pickImage() async {
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (picked != null) setState(() => _profileImage = File(picked.path));
-  }
-
   void _showEditProfileSheet() {
     final firstNameController = TextEditingController(text: _firstName);
     final middleNameController = TextEditingController(text: _middleName);
     final lastNameController = TextEditingController(text: _lastName);
-    bool _isSaving = false;
+    bool isSaving = false;
 
     showModalBottomSheet(
       context: context,
@@ -145,54 +141,20 @@ class _SettingsPageState extends State<SettingsPage> {
 
               const SizedBox(height: 24),
 
-              // Avatar picker
+              // Initials Avatar
               Center(
-                child: Stack(
-                  children: [
-                    GestureDetector(
-                      onTap: () async {
-                        final picked = await ImagePicker().pickImage(
-                          source: ImageSource.gallery,
-                        );
-                        if (picked != null) {
-                          setSheetState(() {});
-                          setState(() => _profileImage = File(picked.path));
-                        }
-                      },
-                      child: Container(
-                        width: 90,
-                        height: 90,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF0F0F0),
-                          border: Border.all(
-                            color: const Color(0xFFDDDDDD),
-                            width: 1.5,
-                          ),
-                        ),
-                        child: _profileImage != null
-                            ? Image.file(_profileImage!, fit: BoxFit.cover)
-                            : const Icon(
-                                Icons.person,
-                                size: 40,
-                                color: Color(0xFF999999),
-                              ),
-                      ),
+                child: CircleAvatar(
+                  radius: 45,
+                  backgroundColor: Colors.black,
+                  child: Text(
+                    _initials.isNotEmpty ? _initials : '?',
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: 2,
                     ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: Container(
-                        width: 26,
-                        height: 26,
-                        color: const Color(0xFFCC0000),
-                        child: const Icon(
-                          Icons.camera_alt,
-                          size: 13,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
 
@@ -206,7 +168,7 @@ class _SettingsPageState extends State<SettingsPage> {
               _buildSheetField("LAST NAME", lastNameController),
               const SizedBox(height: 16),
 
-              // Read-only fields from API
+              // Read-only fields
               _buildReadOnlyField("EMAIL ADDRESS", _email),
               const SizedBox(height: 16),
               _buildReadOnlyField("EMPLOYEE ID", _employeeId),
@@ -219,19 +181,18 @@ class _SettingsPageState extends State<SettingsPage> {
                 width: double.infinity,
                 height: 48,
                 child: ElevatedButton(
-                  onPressed: _isSaving
+                  onPressed: isSaving
                       ? null
                       : () async {
                           final newFirst = firstNameController.text.trim();
                           final newMiddle = middleNameController.text.trim();
                           final newLast = lastNameController.text.trim();
 
-                          setSheetState(() => _isSaving = true);
+                          setSheetState(() => isSaving = true);
 
                           final prefs = await SharedPreferences.getInstance();
                           final token = prefs.getString('access_token') ?? '';
 
-                          // ✅ Call API to save to database
                           final api = AuthApi();
                           final result = await api.updateProfile(
                             token: token,
@@ -243,15 +204,13 @@ class _SettingsPageState extends State<SettingsPage> {
                             lname: newLast.isNotEmpty ? newLast : _lastName,
                           );
 
-                          setSheetState(() => _isSaving = false);
+                          setSheetState(() => isSaving = false);
 
                           if (result.isSuccess) {
-                            // Update local variables
                             if (newFirst.isNotEmpty) _firstName = newFirst;
                             if (newMiddle.isNotEmpty) _middleName = newMiddle;
                             if (newLast.isNotEmpty) _lastName = newLast;
 
-                            // ✅ Update SharedPreferences cache
                             final userDataStr = prefs.getString('user_data');
                             if (userDataStr != null) {
                               try {
@@ -298,7 +257,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
-                  child: _isSaving
+                  child: isSaving
                       ? const SizedBox(
                           width: 18,
                           height: 18,
@@ -400,20 +359,16 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _logout() async {
     try {
-      // Clear FCM token from local cache
       await FCMTokenService.clearSavedToken();
 
-      // Clear access token and user data
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('access_token');
       await prefs.remove('user_data');
 
-      // Reset notifications
       NotificationsService().reset();
 
       debugPrint('✅ Logout successful - FCM token cleared');
 
-      // Navigate to login
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -475,24 +430,19 @@ class _SettingsPageState extends State<SettingsPage> {
                   ? const CircularProgressIndicator(color: Color(0xFFCC0000))
                   : Column(
                       children: [
-                        // Avatar
-                        Container(
-                          width: 120,
-                          height: 120,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF0F0F0),
-                            border: Border.all(
-                              color: const Color(0xFFDDDDDD),
-                              width: 1.5,
+                        // Initials Avatar
+                        CircleAvatar(
+                          radius: 60,
+                          backgroundColor: Colors.black,
+                          child: Text(
+                            _initials.isNotEmpty ? _initials : '?',
+                            style: const TextStyle(
+                              fontSize: 36,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              letterSpacing: 3,
                             ),
                           ),
-                          child: _profileImage != null
-                              ? Image.file(_profileImage!, fit: BoxFit.cover)
-                              : const Icon(
-                                  Icons.person,
-                                  size: 50,
-                                  color: Color(0xFF999999),
-                                ),
                         ),
 
                         const SizedBox(height: 16),
@@ -510,19 +460,6 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
 
                         const SizedBox(height: 4),
-
-                        // Role
-                        // if (_role.isNotEmpty)
-                        //   Text(
-                        //     _role,
-                        //     style: const TextStyle(
-                        //       fontSize: 14,
-                        //       color: Color(0xFF555555),
-                        //       letterSpacing: 0.5,
-                        //       fontWeight: FontWeight.w500,
-                        //     ),
-                        //   ),
-                        //const SizedBox(height: 10),
 
                         // Email
                         if (_email.isNotEmpty)
@@ -612,26 +549,6 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
 
             const Divider(height: 1, color: Color(0xFFEEEEEE)),
-
-            // // Notifications
-            // _buildMenuItem(
-            //   context,
-            //   icon: Icons.notifications_outlined,
-            //   iconColor: const Color(0xFFCC0000),
-            //   label: "PREFERENCES",
-            //   title: "NOTIFICATION SETTINGS",
-            //   trailing: const Icon(
-            //     Icons.chevron_right,
-            //     color: Color(0xFFAAAAAA),
-            //     size: 20,
-            //   ),
-            //   onTap: () => Navigator.push(
-            //     context,
-            //     MaterialPageRoute(builder: (_) => const NotificationTestPage()),
-            //   ),
-            // ),
-
-            // const Divider(height: 1, color: Color(0xFFEEEEEE)),
 
             // Logout
             _buildMenuItem(
