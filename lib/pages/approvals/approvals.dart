@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:eforward_app/pages/dashboard/dashboard.dart';
 import 'package:flutter/material.dart';
@@ -14,7 +15,7 @@ class ApprovalsPage extends StatefulWidget {
 }
 
 class _ApprovalsPageState extends State<ApprovalsPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final int _selectedIndex = 0;
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
@@ -42,9 +43,14 @@ class _ApprovalsPageState extends State<ApprovalsPage>
   String? _historyError;
   final ScrollController _historyScrollController = ScrollController();
 
+  DateTime? _lastUpdatedPending;
+  DateTime? _lastUpdatedHistory;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       if (_tabController.index == 1 &&
@@ -61,7 +67,19 @@ class _ApprovalsPageState extends State<ApprovalsPage>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('[Approvals] App resumed — refreshing data...');
+      _fetchPending();
+      if (_tabController.index == 1) {
+        _fetchHistory();
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     _searchController.dispose();
     _pendingScrollController.dispose();
@@ -138,6 +156,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
           _pendingHasMore = rawList.length >= _pageLimit;
           _pendingPage = 2;
           _isLoadingPending = false;
+          _lastUpdatedPending = DateTime.now();
         });
       } else {
         final decoded = jsonDecode(response.body);
@@ -262,6 +281,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
           _historyHasMore = rawList.length >= _pageLimit;
           _historyPage = 2;
           _isLoadingHistory = false;
+          _lastUpdatedHistory = DateTime.now();
         });
       } else {
         setState(() {
@@ -366,7 +386,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     try {
       if (dateSent.isNotEmpty) {
         final dt = DateTime.parse(dateSent).toLocal();
-        final months = [
+        const months = [
           'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
           'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
         ];
@@ -420,6 +440,22 @@ class _ApprovalsPageState extends State<ApprovalsPage>
           (item['requester'] ?? '').toLowerCase().contains(q) ||
           (item['particulars'] ?? '').toLowerCase().contains(q);
     }).toList();
+  }
+
+  String _getLastUpdatedText(DateTime? lastUpdated) {
+    if (lastUpdated == null) return 'Loading...';
+    final now = DateTime.now();
+    final diff = now.difference(lastUpdated);
+
+    if (diff.inSeconds < 60) {
+      return 'Just now';
+    } else if (diff.inMinutes < 60) {
+      return '${diff.inMinutes}m ago';
+    } else if (diff.inHours < 24) {
+      return '${diff.inHours}h ago';
+    } else {
+      return '${diff.inDays}d ago';
+    }
   }
 
   @override
@@ -664,18 +700,18 @@ class _ApprovalsPageState extends State<ApprovalsPage>
           ],
         ),
       ),
-       bottomNavigationBar: BottomNavigator(
-  selectedIndex: _selectedIndex,
-  onTap: (index) {
-    if (index == 0) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const DashboardPage()),
-        (route) => false,
-      );
-    }
-  },
-),
+      bottomNavigationBar: BottomNavigator(
+        selectedIndex: _selectedIndex,
+        onTap: (index) {
+          if (index == 0) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => const DashboardPage()),
+              (route) => false,
+            );
+          }
+        },
+      ),
     );
   }
 
@@ -690,19 +726,28 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     required ScrollController scrollController,
   }) {
     if (isLoading) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircularProgressIndicator(color: Color(0xFFCC0000)),
-            SizedBox(height: 12),
-            Text(
+            const CircularProgressIndicator(color: Color(0xFFCC0000)),
+            const SizedBox(height: 12),
+            const Text(
               "LOADING...",
               style: TextStyle(
                 fontSize: 10,
                 letterSpacing: 1.5,
                 color: Colors.black38,
                 fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Last: ${_getLastUpdatedText(isPending ? _lastUpdatedPending : _lastUpdatedHistory)}',
+              style: const TextStyle(
+                fontSize: 9,
+                color: Colors.black26,
+                letterSpacing: 0.3,
               ),
             ),
           ],
@@ -791,15 +836,18 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       );
     }
 
+    // +1 for the footer row (load-more spinner / end-of-list / last-updated)
     return RefreshIndicator(
       onRefresh: () async => onRefresh(),
       color: const Color(0xFFCC0000),
       child: ListView.separated(
         controller: scrollController,
         padding: const EdgeInsets.all(16),
-        // +1 para sa loading footer o end-of-list indicator
         itemCount: items.length + 1,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        separatorBuilder: (_, i) =>
+            i == items.length - 1
+                ? const SizedBox(height: 16)
+                : const SizedBox(height: 12),
         itemBuilder: (context, index) {
           // Footer
           if (index == items.length) {
@@ -818,22 +866,33 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                 ),
               );
             }
-            if (!hasMore) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Center(
-                  child: Text(
-                    "— End of list —",
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.black26,
-                      letterSpacing: 1,
+            return Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 8),
+              child: Center(
+                child: Column(
+                  children: [
+                    if (!hasMore)
+                      const Text(
+                        "— End of list —",
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.black26,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Last updated: ${_getLastUpdatedText(isPending ? _lastUpdatedPending : _lastUpdatedHistory)}',
+                      style: const TextStyle(
+                        fontSize: 9,
+                        color: Colors.black38,
+                        letterSpacing: 0.3,
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              );
-            }
-            return const SizedBox.shrink();
+              ),
+            );
           }
           return _buildApprovalCard(items[index], isPending: isPending);
         },
@@ -966,6 +1025,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                     builder: (_) => ApprovalDetailPage(item: item),
                   ),
                 );
+                await Future.delayed(const Duration(milliseconds: 800));
                 if (isPending) {
                   _fetchPending();
                 } else {

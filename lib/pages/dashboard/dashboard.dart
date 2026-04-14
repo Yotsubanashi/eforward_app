@@ -1,7 +1,12 @@
+import 'dart:convert';
+import 'package:eforward_app/pages/approvals/approval_details.dart';
+import 'package:eforward_app/services/fcm_token_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:eforward_app/pages/approvals/approvals.dart';
 import 'package:flutter/material.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
-import 'package:eforward_app/pages/document/document_sign.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class DashboardPage extends StatefulWidget {
   final Map<String, dynamic>? userData;
@@ -13,80 +18,217 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  static const String _baseUrl =
+      'https://eforward-api.ardentnetworks.com.ph/api';
   final int _selectedIndex = 0;
 
-  late String _userName;
-  late String _userEmail;
-  late String _userRole;
-  late List<Map<String, dynamic>> _userModules;
+  String _userName = 'User';
+  String _userEmail = 'N/A';
+  String _userRole = 'USER';
+  List<Map<String, dynamic>> _userModules = [];
+
+  List<Map<String, dynamic>> _pendingApprovals = [];
+  bool _isLoadingPending = false;
 
   @override
   void initState() {
     super.initState();
-    _userName = 'User';
-    _userEmail = 'N/A';
-    _userRole = 'USER';
-    _userModules = [];
-    _loadUserData();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _loadUserData();
+      _fetchPendingApprovals();
+      _syncFCMToken();
+      _setupFCMListener();
+    });
   }
 
-  void _loadUserData() {
-    if (widget.userData != null) {
-      debugPrint('Full userData: ${widget.userData}');
-      
-      // Extract user info from userData['user']
-      final user = widget.userData!['user'] as Map<String, dynamic>?;
-      if (user != null) {
-        _userName = '${user['fname'] ?? ''} ${user['lname'] ?? ''}';
-        _userEmail = user['email_add'] ?? 'N/A';
-        _userRole = user['role'] ?? 'USER';
-      }
+  @override
+  void dispose() {
+    super.dispose();
+  }
 
-      // Extract modules from userData['permissions']['modules']
-      final permissions = widget.userData!['permissions'] as Map<String, dynamic>?;
-      if (permissions != null) {
-        final modulesList = permissions['modules'] as List?;
-        _userModules = [];
-        if (modulesList != null) {
-          for (var module in modulesList) {
-            if (module is Map<String, dynamic>) {
-              _userModules.add(module);
-            }
-          }
+  void _setupFCMListener() {
+    try {
+      FirebaseMessaging.onMessage.listen((remoteMessage) {
+        debugPrint(
+          '[Dashboard] Received foreground message: ${remoteMessage.notification?.title}',
+        );
+        final title = remoteMessage.notification?.title ?? '';
+        if (title.toLowerCase().contains('approval') ||
+            title.toLowerCase().contains('forwarded') ||
+            title.toLowerCase().contains('pending')) {
+          debugPrint(
+            '[Dashboard] Approval-related message detected, refreshing...',
+          );
+          _fetchPendingApprovals();
         }
-      }
-
-      debugPrint('User: $_userName, Email: $_userEmail, Role: $_userRole');
-      debugPrint('Modules: ${_userModules.length} loaded');
+      });
+    } catch (e) {
+      debugPrint('[Dashboard] Error setting up FCM listener: $e');
     }
   }
 
-  final List<Map<String, dynamic>> _recentActivity = [
-    {
-      'id': '#J098479',
-      'title': 'QUARTERLY AUDIT REPORT',
-      'createdBy': 'RAMON NAPA JR',
-      'dateTime': 'OCT 24, 2023 | 09:15 AM',
-      'label': 'COMPLIANCE REVIEW',
-      'progress': 0.0,
-    },
-    {
-      'id': '#X822704',
-      'title': 'OPERATIONAL RISK MEMO',
-      'createdBy': 'MARK ANTHONY CANAL',
-      'dateTime': 'OCT 23, 2023 | 02:43 PM',
-      'label': 'LEGAL VERIFICATION',
-      'progress': 0.0,
-    },
-    {
-      'id': '#B441522',
-      'title': 'FY24 BUDGET PROPOSAL',
-      'createdBy': 'DHARIEL SULAT',
-      'dateTime': 'OCT 22, 2023 | 11:00 AM',
-      'label': 'FINAL REVIEW',
-      'progress': 0.0,
-    },
-  ];
+  Future<void> _syncFCMToken() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token') ?? '';
+      if (accessToken.isNotEmpty) {
+        await FCMTokenService.syncTokenIfNeeded(accessToken: accessToken);
+      }
+    } catch (e) {
+      debugPrint('Error syncing FCM token: $e');
+    }
+  }
+
+  Future<void> _loadUserData() async {
+    if (widget.userData != null) {
+      _applyUserData(widget.userData!);
+      return;
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userDataStr = prefs.getString('user_data');
+      debugPrint('user_data from prefs: $userDataStr');
+      if (userDataStr != null && userDataStr.isNotEmpty) {
+        final decoded = jsonDecode(userDataStr) as Map<String, dynamic>;
+        debugPrint('Decoded keys: ${decoded.keys.toList()}');
+        if (mounted) _applyUserData(decoded);
+      }
+    } catch (e) {
+      debugPrint('Error loading user_data: $e');
+    }
+  }
+
+  void _applyUserData(Map<String, dynamic> fullData) {
+    final userData =
+        fullData['data'] as Map<String, dynamic>? ??
+        fullData['user'] as Map<String, dynamic>? ??
+        fullData;
+
+    debugPrint('userData keys: ${userData.keys.toList()}');
+    debugPrint(
+      'fname: ${userData['fname']} | lname: ${userData['lname']} | email_add: ${userData['email_add']}',
+    );
+
+    final firstName = userData['fname']?.toString().trim() ?? '';
+    final lastName = userData['lname']?.toString().trim() ?? '';
+
+    setState(() {
+      _userName = '$firstName $lastName'.trim();
+      if (_userName.isEmpty) _userName = 'User';
+      _userEmail =
+          userData['email_add'] ??
+          userData['email'] ??
+          userData['emailAdd'] ??
+          'N/A';
+      _userRole = userData['role'] ?? 'USER';
+
+      final modulesList = userData['modules'] as List?;
+      _userModules = [];
+      if (modulesList != null) {
+        for (var item in modulesList) {
+          if (item is Map<String, dynamic>) {
+            final module = item['module'] as Map<String, dynamic>?;
+            if (module != null) _userModules.add(module);
+          }
+        }
+      }
+      debugPrint(
+        'Applied → name: $_userName | email: $_userEmail | role: $_userRole | modules: ${_userModules.length}',
+      );
+    });
+  }
+
+  // ─── GET /approvals/pending ───────────────────────────────────────────────
+  Future<void> _fetchPendingApprovals() async {
+    setState(() => _isLoadingPending = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token') ?? '';
+      if (token.isEmpty) {
+        setState(() => _isLoadingPending = false);
+        return;
+      }
+
+      final response = await http.get(
+        Uri.parse('$_baseUrl/approvals/pending?page=1&limit=50'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+        final rawList = _extractList(decoded);
+        setState(() {
+          _pendingApprovals = rawList
+              .map((e) => _normalizeItem(e as Map<String, dynamic>))
+              .toList();
+          _isLoadingPending = false;
+        });
+      } else {
+        setState(() => _isLoadingPending = false);
+      }
+    } catch (e) {
+      debugPrint('Dashboard pending fetch error: $e');
+      if (mounted) setState(() => _isLoadingPending = false);
+    }
+  }
+
+  List<dynamic> _extractList(dynamic decoded) {
+    if (decoded is List) return decoded;
+    if (decoded is Map) {
+      for (final key in ['data', 'approvals', 'items', 'results', 'list']) {
+        if (decoded[key] is List) return decoded[key] as List;
+      }
+    }
+    return [];
+  }
+
+  Map<String, dynamic> _normalizeItem(Map<String, dynamic> raw) {
+    final routing = raw['routing'] as Map<String, dynamic>? ?? {};
+    final owner = routing['owner'] as Map<String, dynamic>? ?? {};
+
+    final firstName = owner['fname']?.toString().trim() ?? '';
+    final middleName = owner['mname']?.toString().trim() ?? '';
+    final lastName = owner['lname']?.toString().trim() ?? '';
+    final requesterName = [
+      firstName,
+      middleName,
+      lastName,
+    ].where((p) => p.isNotEmpty).join(' ').trim();
+
+    String dateSent = raw['date_sent'] ?? '';
+    try {
+      if (dateSent.isNotEmpty) {
+        final dt = DateTime.parse(dateSent).toLocal();
+        const months = [
+          'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+          'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+        ];
+        final hour = dt.hour > 12
+            ? dt.hour - 12
+            : (dt.hour == 0 ? 12 : dt.hour);
+        final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+        dateSent =
+            '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
+            '${hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} $ampm';
+      }
+    } catch (_) {}
+
+    return {
+      ...raw,
+      'id': raw['routing_id']?.toString() ?? '',
+      'referenceNo': routing['reference_no'] ?? '',
+      'particulars': routing['particulars'] ?? '',
+      'requester': requesterName.isNotEmpty ? requesterName : '—',
+      'dateSent': dateSent,
+      'routing': routing,
+      'owner': owner,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -98,7 +240,6 @@ class _DashboardPageState extends State<DashboardPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
               // Brand Header
               Row(
                 children: const [
@@ -119,7 +260,7 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(height: 28),
 
               Text(
-                "WELCOME BACK,\n${_userName.isNotEmpty ? _userName.split(' ').first.toUpperCase() : 'User'}",
+                "WELCOME BACK,\n${_userName.isNotEmpty ? _userName.split(' ').first.toUpperCase() : 'USER'}",
                 style: const TextStyle(
                   fontSize: 30,
                   fontWeight: FontWeight.w900,
@@ -142,7 +283,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
               const SizedBox(height: 24),
 
-              // Stats Row
+              // ─── PENDING APPROVALS CARD ───────────────────────────────────
               Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -158,12 +299,11 @@ class _DashboardPageState extends State<DashboardPage> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Left — info
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text(
+                          children: [
+                            const Text(
                               "PENDING APPROVALS",
                               style: TextStyle(
                                 fontSize: 9,
@@ -172,43 +312,56 @@ class _DashboardPageState extends State<DashboardPage> {
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
-                            SizedBox(height: 6),
-                            Text(
-                              "14",
-                              style: TextStyle(
-                                fontSize: 38,
-                                fontWeight: FontWeight.w900,
-                                color: Color(0xFF1A1A1A),
-                                height: 1,
-                              ),
-                            ),
-                            SizedBox(height: 6),
-                            Text(
+                            const SizedBox(height: 6),
+                            _isLoadingPending
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Color(0xFFCC0000),
+                                    ),
+                                  )
+                                : Text(
+                                    '${_pendingApprovals.length}',
+                                    style: const TextStyle(
+                                      fontSize: 38,
+                                      fontWeight: FontWeight.w900,
+                                      color: Color(0xFF1A1A1A),
+                                      height: 1,
+                                    ),
+                                  ),
+                            const SizedBox(height: 6),
+                            const Text(
                               "High-priority authorizations requiring immediate executive review.",
                               style: TextStyle(
                                 fontSize: 10,
                                 color: Colors.black45,
                                 letterSpacing: 0.3,
                                 height: 1.5,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
                         ),
                       ),
-
                       const SizedBox(width: 16),
-
-                      // Right — REVIEW NOW button
                       ElevatedButton(
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const ApprovalsPage()),
-                        ),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ApprovalsPage(),
+                            ),
+                          );
+                        },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFCC0000),
                           elevation: 0,
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(4),
                           ),
@@ -232,9 +385,70 @@ class _DashboardPageState extends State<DashboardPage> {
 
               const SizedBox(height: 32),
 
-   
+              // ─── ACCESSIBLE MODULES ───────────────────────────────────────
+              if (_userModules.isNotEmpty) ...[
+                const Text(
+                  "ACCESSIBLE MODULES",
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: 1,
+                      ),
+                  itemCount: _userModules.length,
+                  itemBuilder: (context, index) {
+                    final module = _userModules[index];
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: const Color(0xFFE8E8E8)),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.dashboard,
+                              color: Color(0xFFCC0000),
+                              size: 28,
+                            ),
+                            const SizedBox(height: 8),
+                            Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Text(
+                                module['module_name'] ?? 'Module',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.5,
+                                  color: Color(0xFF1A1A1A),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 32),
+              ],
 
-              // Section Header with View All
+              // ─── RECENT ACTIVITY ──────────────────────────────────────────
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -249,7 +463,12 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                   GestureDetector(
                     onTap: () {
-                      // TODO: navigate to full logs/approvals page
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ApprovalsPage(),
+                        ),
+                      );
                     },
                     child: const Text(
                       "VIEW ALL LOGS →",
@@ -266,14 +485,50 @@ class _DashboardPageState extends State<DashboardPage> {
 
               const SizedBox(height: 16),
 
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _recentActivity.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemBuilder: (context, index) =>
-                    _buildActivityCard(_recentActivity[index]),
-              ),
+              // Pending approvals list
+              if (_isLoadingPending)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: CircularProgressIndicator(
+                      color: Color(0xFFCC0000),
+                    ),
+                  ),
+                )
+              else if (_pendingApprovals.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: const Color(0xFFE8E8E8)),
+                  ),
+                  child: const Column(
+                    children: [
+                      Icon(
+                        Icons.check_circle_outline,
+                        size: 32,
+                        color: Colors.black12,
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        "No pending approvals",
+                        style: TextStyle(fontSize: 12, color: Colors.black38),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _pendingApprovals.length > 5
+                      ? 5
+                      : _pendingApprovals.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) =>
+                      _buildActivityCard(_pendingApprovals[index]),
+                ),
 
               const SizedBox(height: 24),
             ],
@@ -292,7 +547,7 @@ class _DashboardPageState extends State<DashboardPage> {
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => DocumentSignScreen(document: item),
+          builder: (_) => ApprovalDetailPage(item: item),
         ),
       ),
       child: Container(
@@ -304,7 +559,6 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-
             // Left — red accent line
             Container(
               width: 3,
@@ -313,13 +567,15 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
             const SizedBox(width: 12),
 
-            // Middle — reference no + status
+            // Middle — reference no + particulars + status
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    item['id'],
+                    item['referenceNo']?.toString().isNotEmpty == true
+                        ? item['referenceNo'].toString()
+                        : item['id']?.toString() ?? '—',
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
@@ -328,9 +584,19 @@ class _DashboardPageState extends State<DashboardPage> {
                     ),
                   ),
                   const SizedBox(height: 4),
+                  Text(
+                    item['particulars']?.toString().isNotEmpty == true
+                        ? item['particulars'].toString()
+                        : '—',
+                    style: const TextStyle(fontSize: 11, color: Colors.black45),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 7, vertical: 2),
+                      horizontal: 7,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFCC0000).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(3),
@@ -349,12 +615,14 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             ),
 
-            // Right — time + chevron
+            // Right — date + chevron
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  item['dateTime'],
+                  item['dateSent']?.toString().isNotEmpty == true
+                      ? item['dateSent'].toString()
+                      : '—',
                   style: const TextStyle(
                     fontSize: 10,
                     color: Colors.black38,
@@ -362,8 +630,11 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                 ),
                 const SizedBox(height: 6),
-                const Icon(Icons.chevron_right,
-                    color: Colors.black26, size: 18),
+                const Icon(
+                  Icons.chevron_right,
+                  color: Colors.black26,
+                  size: 18,
+                ),
               ],
             ),
           ],
