@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -13,7 +14,8 @@ class NotificationsPage extends StatefulWidget {
   State<NotificationsPage> createState() => _NotificationsPageState();
 }
 
-class _NotificationsPageState extends State<NotificationsPage> {
+class _NotificationsPageState extends State<NotificationsPage>
+    with WidgetsBindingObserver {
   final int _selectedIndex = 2; // Notifications index
   static const String _baseUrl =
       'https://eforward-api.ardentnetworks.com.ph/api';
@@ -23,12 +25,49 @@ class _NotificationsPageState extends State<NotificationsPage> {
   bool _isLoading = false;
   int _currentPage = 1;
   int _totalPages = 1;
+  DateTime? _lastUpdated;
+
+  // Real-time auto-refresh
+  late Timer _autoRefreshTimer;
+  static const int _autoRefreshInterval = 30; // seconds
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
     _notificationsService = NotificationsService();
     _fetchNotifications();
+    _startAutoRefresh();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Immediately refresh when page comes back into focus
+      debugPrint('[Notifications] App resumed — refreshing data...');
+      _fetchNotifications(page: _currentPage);
+    }
+  }
+
+  /// Auto-refresh notifications every 30 seconds
+  void _startAutoRefresh() {
+    _autoRefreshTimer = Timer.periodic(
+      const Duration(seconds: _autoRefreshInterval),
+      (_) {
+        if (mounted) {
+          debugPrint('[Notifications] Auto-refreshing...');
+          _fetchNotifications(page: _currentPage);
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autoRefreshTimer.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchNotifications({int page = 1}) async {
@@ -66,6 +105,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           _currentPage = page;
           _totalPages = pagination['totalPages'] as int? ?? 1;
           _isLoading = false;
+          _lastUpdated = DateTime.now();
         });
       } else {
         setState(() => _isLoading = false);
@@ -105,6 +145,22 @@ class _NotificationsPageState extends State<NotificationsPage> {
     }
   }
 
+  String _getLastUpdatedText() {
+    if (_lastUpdated == null) return 'Loading...';
+    final now = DateTime.now();
+    final diff = now.difference(_lastUpdated!);
+
+    if (diff.inSeconds < 60) {
+      return 'Just now';
+    } else if (diff.inMinutes < 60) {
+      return '${diff.inMinutes}m ago';
+    } else if (diff.inHours < 24) {
+      return '${diff.inHours}h ago';
+    } else {
+      return '${diff.inDays}d ago';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final unreadCount = _notifications.where((n) => !n['is_read']).length;
@@ -121,17 +177,33 @@ class _NotificationsPageState extends State<NotificationsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header
+                // Header with title
+                const Text(
+                  "NOTIFICATIONS",
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Unread count and Mark All Read button aligned horizontally
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      "NOTIFICATIONS",
+                    Text(
+                      unreadCount > 0
+                          ? '$unreadCount unread notification${unreadCount != 1 ? 's' : ''}'
+                          : 'All caught up!',
                       style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 2,
-                        color: Color(0xFF1A1A1A),
+                        fontSize: 12,
+                        color: unreadCount > 0
+                            ? const Color(0xFFCC0000)
+                            : Colors.black54,
+                        letterSpacing: 0.3,
                       ),
                     ),
                     if (unreadCount > 0)
@@ -158,20 +230,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         ),
                       ),
                   ],
-                ),
-
-                const SizedBox(height: 8),
-
-                // Unread count badge
-                Text(
-                  unreadCount > 0
-                      ? '$unreadCount unread notification${unreadCount != 1 ? 's' : ''}'
-                      : 'All caught up!',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: unreadCount > 0 ? Color(0xFFCC0000) : Colors.black54,
-                    letterSpacing: 0.3,
-                  ),
                 ),
 
                 const SizedBox(height: 20),
