@@ -27,9 +27,8 @@ class _NotificationsPageState extends State<NotificationsPage>
   int _totalPages = 1;
   DateTime? _lastUpdated;
 
-  // Real-time auto-refresh
-  late Timer _autoRefreshTimer;
-  static const int _autoRefreshInterval = 30; // seconds
+  // Real-time updates: FCM push notifications
+  // (auto-refresh removed — rely on push + manual refresh)
 
   @override
   void initState() {
@@ -38,7 +37,6 @@ class _NotificationsPageState extends State<NotificationsPage>
 
     _notificationsService = NotificationsService();
     _fetchNotifications();
-    _startAutoRefresh();
   }
 
   @override
@@ -50,23 +48,11 @@ class _NotificationsPageState extends State<NotificationsPage>
     }
   }
 
-  /// Auto-refresh notifications every 30 seconds
-  void _startAutoRefresh() {
-    _autoRefreshTimer = Timer.periodic(
-      const Duration(seconds: _autoRefreshInterval),
-      (_) {
-        if (mounted) {
-          debugPrint('[Notifications] Auto-refreshing...');
-          _fetchNotifications(page: _currentPage);
-        }
-      },
-    );
-  }
+  /// Manual refresh only — auto-refresh removed (rely on FCM push + manual pull-to-refresh)
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _autoRefreshTimer.cancel();
     super.dispose();
   }
 
@@ -142,22 +128,6 @@ class _NotificationsPageState extends State<NotificationsPage>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('All notifications marked as read')),
       );
-    }
-  }
-
-  String _getLastUpdatedText() {
-    if (_lastUpdated == null) return 'Loading...';
-    final now = DateTime.now();
-    final diff = now.difference(_lastUpdated!);
-
-    if (diff.inSeconds < 60) {
-      return 'Just now';
-    } else if (diff.inMinutes < 60) {
-      return '${diff.inMinutes}m ago';
-    } else if (diff.inHours < 24) {
-      return '${diff.inHours}h ago';
-    } else {
-      return '${diff.inDays}d ago';
     }
   }
 

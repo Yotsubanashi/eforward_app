@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -35,18 +37,47 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
+
     _userName = 'User';
     _userEmail = 'N/A';
     _userRole = 'USER';
     _userModules = [];
 
-    // Load user data then fetch pending
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadUserData();
       _fetchPendingApprovals();
       _syncFCMToken();
       NotificationsService().fetchUnreadCount();
+      _setupFCMListener();
     });
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
+  /// Listen for FCM messages and refresh on approval changes
+  void _setupFCMListener() {
+    try {
+      FirebaseMessaging.onMessage.listen((remoteMessage) {
+        debugPrint(
+          '[Dashboard] Received foreground message: ${remoteMessage.notification?.title}',
+        );
+
+        final title = remoteMessage.notification?.title ?? '';
+        if (title.toLowerCase().contains('approval') ||
+            title.toLowerCase().contains('forwarded') ||
+            title.toLowerCase().contains('pending')) {
+          debugPrint(
+            '[Dashboard] Approval-related message detected, refreshing...',
+          );
+          _fetchPendingApprovals();
+        }
+      });
+    } catch (e) {
+      debugPrint('[Dashboard] Error setting up FCM listener: $e');
+    }
   }
 
   Future<void> _syncFCMToken() async {
@@ -62,14 +93,12 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _loadUserData() async {
-    // Try widget.userData first (from OTP login)
     if (widget.userData != null) {
       debugPrint('Loading from widget.userData: ${widget.userData}');
       _applyUserData(widget.userData!);
       return;
     }
 
-    // Fallback — load from SharedPreferences (when navigating via BottomNavigator)
     try {
       final prefs = await SharedPreferences.getInstance();
       final userDataStr = prefs.getString('user_data');
@@ -85,7 +114,6 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _applyUserData(Map<String, dynamic> fullData) {
-    // Try nested 'data' key first, then flat
     final userData =
         fullData['data'] as Map<String, dynamic>? ??
         fullData['user'] as Map<String, dynamic>? ??
@@ -277,16 +305,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
                 const SizedBox(height: 12),
 
-                // Text(
-                //   'Email: $_userEmail | Role: $_userRole',
-                //   style: const TextStyle(
-                //     fontSize: 12,
-                //     color: Colors.black54,
-                //     letterSpacing: 0.5,
-                //   ),
-                // ),
-                // const SizedBox(height: 24),
-
                 // ─── PENDING APPROVALS CARD ───────────────────────────────
                 Container(
                   decoration: BoxDecoration(
@@ -317,7 +335,6 @@ class _DashboardPageState extends State<DashboardPage> {
                                 ),
                               ),
                               const SizedBox(height: 6),
-                              // 👇 Real count from API
                               _isLoadingPending
                                   ? const SizedBox(
                                       width: 24,
@@ -352,12 +369,14 @@ class _DashboardPageState extends State<DashboardPage> {
                         ),
                         const SizedBox(width: 16),
                         ElevatedButton(
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const ApprovalsPage(),
-                            ),
-                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const ApprovalsPage(),
+                              ),
+                            );
+                          },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFCC0000),
                             elevation: 0,
@@ -457,7 +476,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     ],
                   ),
 
-                // ─── RECENT ACTIVITY — from pending API ───────────────────
+                // ─── RECENT ACTIVITY ──────────────────────────────────────
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -471,12 +490,14 @@ class _DashboardPageState extends State<DashboardPage> {
                       ),
                     ),
                     GestureDetector(
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const ApprovalsPage(),
-                        ),
-                      ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ApprovalsPage(),
+                          ),
+                        );
+                      },
                       child: const Text(
                         "VIEW ALL LOGS →",
                         style: TextStyle(
@@ -492,7 +513,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
                 const SizedBox(height: 16),
 
-                // 👇 Show pending approvals from API
+                // Pending approvals list
                 if (_isLoadingPending)
                   const Center(
                     child: Padding(
@@ -531,7 +552,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: _pendingApprovals.length > 5
                         ? 5
-                        : _pendingApprovals.length, // show max 5
+                        : _pendingApprovals.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (context, index) =>
                         _buildActivityCard(_pendingApprovals[index]),
@@ -552,10 +573,12 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildActivityCard(Map<String, dynamic> item) {
     return InkWell(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => ApprovalDetailPage(item: item)),
-      ),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ApprovalDetailPage(item: item)),
+        );
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
@@ -586,7 +609,6 @@ class _DashboardPageState extends State<DashboardPage> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  // Particulars
                   Text(
                     item['particulars']?.toString().isNotEmpty == true
                         ? item['particulars'].toString()

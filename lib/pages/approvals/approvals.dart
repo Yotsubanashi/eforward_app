@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -13,7 +14,7 @@ class ApprovalsPage extends StatefulWidget {
 }
 
 class _ApprovalsPageState extends State<ApprovalsPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final int _selectedIndex = 0;
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
@@ -29,10 +30,17 @@ class _ApprovalsPageState extends State<ApprovalsPage>
   bool _isLoadingHistory = false;
   String? _pendingError;
   String? _historyError;
+  DateTime? _lastUpdatedPending;
+  DateTime? _lastUpdatedHistory;
+
+  // Real-time updates: FCM push notifications
+  // (auto-refresh removed — rely on push + manual refresh)
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       // Load history only when that tab is opened
@@ -46,7 +54,22 @@ class _ApprovalsPageState extends State<ApprovalsPage>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Immediately refresh when page comes back into focus
+      debugPrint('[Approvals] App resumed — refreshing data...');
+      _fetchPending();
+      if (_tabController.index == 1) {
+        _fetchHistory();
+      }
+    }
+  }
+
+  /// Auto-refresh removed — rely on FCM push notifications and manual refresh
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -103,6 +126,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
               .map((e) => _normalizeItem(e as Map<String, dynamic>))
               .toList();
           _isLoadingPending = false;
+          _lastUpdatedPending = DateTime.now();
         });
       } else {
         final decoded = jsonDecode(response.body);
@@ -170,6 +194,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
               .map((e) => _normalizeItem(e as Map<String, dynamic>))
               .toList();
           _isLoadingHistory = false;
+          _lastUpdatedHistory = DateTime.now();
         });
       } else {
         setState(() {
@@ -293,6 +318,22 @@ class _ApprovalsPageState extends State<ApprovalsPage>
           (item['requester'] ?? '').toLowerCase().contains(q) ||
           (item['particulars'] ?? '').toLowerCase().contains(q);
     }).toList();
+  }
+
+  String _getLastUpdatedText(DateTime? lastUpdated) {
+    if (lastUpdated == null) return 'Loading...';
+    final now = DateTime.now();
+    final diff = now.difference(lastUpdated);
+
+    if (diff.inSeconds < 60) {
+      return 'Just now';
+    } else if (diff.inMinutes < 60) {
+      return '${diff.inMinutes}m ago';
+    } else if (diff.inHours < 24) {
+      return '${diff.inHours}h ago';
+    } else {
+      return '${diff.inDays}d ago';
+    }
   }
 
   @override
@@ -548,19 +589,28 @@ class _ApprovalsPageState extends State<ApprovalsPage>
   }) {
     // Loading
     if (isLoading) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircularProgressIndicator(color: Color(0xFFCC0000)),
-            SizedBox(height: 12),
-            Text(
+            const CircularProgressIndicator(color: Color(0xFFCC0000)),
+            const SizedBox(height: 12),
+            const Text(
               "LOADING...",
               style: TextStyle(
                 fontSize: 10,
                 letterSpacing: 1.5,
                 color: Colors.black38,
                 fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Last: ${_getLastUpdatedText(isPending ? _lastUpdatedPending : _lastUpdatedHistory)}',
+              style: const TextStyle(
+                fontSize: 9,
+                color: Colors.black26,
+                letterSpacing: 0.3,
               ),
             ),
           ],
@@ -656,10 +706,29 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       color: const Color(0xFFCC0000),
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
-        itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (context, index) =>
-            _buildApprovalCard(items[index], isPending: isPending),
+        itemCount: items.length + 1,
+        separatorBuilder: (_, i) => i == items.length - 1
+            ? const SizedBox(height: 16)
+            : const SizedBox(height: 12),
+        itemBuilder: (context, index) {
+          if (index == items.length) {
+            // Last updated footer
+            return Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Center(
+                child: Text(
+                  'Last updated: ${_getLastUpdatedText(isPending ? _lastUpdatedPending : _lastUpdatedHistory)}',
+                  style: const TextStyle(
+                    fontSize: 9,
+                    color: Colors.black38,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ),
+            );
+          }
+          return _buildApprovalCard(items[index], isPending: isPending);
+        },
       ),
     );
   }
@@ -820,6 +889,8 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                     builder: (_) => ApprovalDetailPage(item: item),
                   ),
                 );
+                // Wait for backend to process then refresh
+                await Future.delayed(const Duration(milliseconds: 800));
                 // Refresh list after returning (document may have been approved)
                 if (isPending) {
                   _fetchPending();
