@@ -107,17 +107,13 @@ class _ViewSignPageState extends State<ViewSignPage>
         setState(() {
           _watermarkBytes = byteData.buffer.asUint8List();
         });
-        debugPrint(
-          'Watermark loaded: ${_watermarkBytes?.length} bytes',
-        ); // ← dagdag
       }
     } catch (e) {
-      debugPrint('Watermark load error: $e'); // ← tignan kung may error
+      debugPrint('Watermark load error: $e');
     }
   }
 
   Future<void> _loadSignature() async {
-    // ── CRITICAL: Clear image cache to ensure fresh signature ──
     imageCache.clear();
     imageCache.clearLiveImages();
 
@@ -150,7 +146,6 @@ class _ViewSignPageState extends State<ViewSignPage>
         setState(() => _isLoadingSignature = false);
       }
 
-      // Save timestamp if available
       if (result.rawDate != null && result.rawDate!.isNotEmpty) {
         try {
           final parsed = DateTime.parse(result.rawDate!).toLocal();
@@ -187,7 +182,6 @@ class _ViewSignPageState extends State<ViewSignPage>
     setState(() => _isEditMode = true);
   }
 
-  // ─── CRITICAL FIX: Capture canvas bytes BEFORE clearing any state ──────────
   Future<void> _saveSignature() async {
     final currentTab = _tabController.index;
 
@@ -212,12 +206,10 @@ class _ViewSignPageState extends State<ViewSignPage>
 
     setState(() => _isSaving = true);
 
-    // ── Step 1: Capture image bytes FIRST (before any state changes) ──
     List<int>? capturedBytes;
     String fileName = 'signature.png';
 
     if (currentTab == 0) {
-      // Draw tab — capture canvas NOW while _strokes is still intact
       try {
         final boundary =
             _canvasKey.currentContext?.findRenderObject()
@@ -236,7 +228,6 @@ class _ViewSignPageState extends State<ViewSignPage>
         debugPrint('Canvas capture error: $e');
       }
     } else if (currentTab == 1 && _uploadedImage != null) {
-      // Upload tab — read file bytes
       capturedBytes = await _uploadedImage!.readAsBytes();
       fileName = 'signature_upload.png';
     }
@@ -254,7 +245,6 @@ class _ViewSignPageState extends State<ViewSignPage>
       return;
     }
 
-    // ── Step 2: Save locally ──
     final prefs = await SharedPreferences.getInstance();
 
     if (currentTab == 0) {
@@ -276,7 +266,6 @@ class _ViewSignPageState extends State<ViewSignPage>
       }
     }
 
-    // Save timestamp
     final now = DateTime.now();
     final months = [
       'JAN',
@@ -296,7 +285,6 @@ class _ViewSignPageState extends State<ViewSignPage>
     await prefs.setString('signature_timestamp', timestamp);
     await prefs.setBool('has_signature', true);
 
-    // ── Step 3: Upload to API using already-captured bytes ──
     final token = prefs.getString('access_token') ?? '';
     if (token.isNotEmpty) {
       final result = await _authApi.uploadSignature(
@@ -314,10 +302,8 @@ class _ViewSignPageState extends State<ViewSignPage>
       }
     }
 
-    // ── Step 4: Small delay then re-fetch from API to show new signature ──
     await Future.delayed(const Duration(milliseconds: 600));
 
-    // Clear cached API data so fresh fetch is displayed
     setState(() {
       _apiSignatureBytes = null;
     });
@@ -325,11 +311,9 @@ class _ViewSignPageState extends State<ViewSignPage>
     imageCache.clear();
     imageCache.clearLiveImages();
 
-    // Fetch updated signature from server
     await _fetchSignatureFromApi(prefs);
 
     if (mounted) {
-      // Exit edit mode and reset edit state
       setState(() {
         _isSaving = false;
         _isEditMode = false;
@@ -397,9 +381,7 @@ class _ViewSignPageState extends State<ViewSignPage>
     return Stack(
       alignment: Alignment.center,
       children: [
-        // Signature muna sa baba
         signatureWidget,
-        // Watermark sa ibabaw
         if (_watermarkBytes != null)
           Opacity(
             opacity: 0.12,
@@ -432,6 +414,217 @@ class _ViewSignPageState extends State<ViewSignPage>
     );
   }
 
+  // ─── Header ────────────────────────────────────────────────────────────────
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "DIGITAL\nSIGNATURE",
+            style: TextStyle(
+              fontSize: 30,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.5,
+              height: 1.1,
+              color: Color(0xFF1A1A1A),
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.only(top: 8, bottom: 10),
+            width: 40,
+            height: 3,
+            color: const Color(0xFFCC0000),
+          ),
+          const Text(
+            "View your current signature below or tap the button to change it.",
+            style: TextStyle(fontSize: 12, color: Colors.black45, height: 1.6),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  // ─── Body (preview or edit) ────────────────────────────────────────────────
+
+  Widget _buildBody() {
+    // VIEW MODE: show saved signature preview
+    if (!_isEditMode) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Column(
+          children: [
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: const Color(0xFFE8E8E8)),
+                ),
+                child: _buildSavedSignaturePreview(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Legal notice shown only in view mode
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(
+                  left: BorderSide(color: Color(0xFFCC0000), width: 3),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Icon(Icons.info_outline, color: Color(0xFFCC0000), size: 16),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "LEGAL VALIDITY",
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.5,
+                            color: Color(0xFF1A1A1A),
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          "This signature will be cryptographically bound to your E-FORWARD identity. Ensure the signature is clear and legible for high-security verification protocols.",
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.black54,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      );
+    }
+
+    // EDIT MODE: tabs + canvas/upload, fills all available space
+    return Column(
+      children: [
+        // TabBar — fixed height
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Container(
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Color(0xFFE8E8E8))),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              labelColor: const Color(0xFFCC0000),
+              unselectedLabelColor: Colors.black38,
+              indicatorColor: const Color(0xFFCC0000),
+              indicatorWeight: 2,
+              labelStyle: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.5,
+              ),
+              tabs: const [
+                Tab(text: "DRAW"),
+                Tab(text: "UPLOAD"),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // TabBarView fills all remaining vertical space
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+            child: TabBarView(
+              controller: _tabController,
+              // Disable swipe so horizontal draw strokes don't switch tabs
+              physics: const NeverScrollableScrollPhysics(),
+              children: [_buildDrawTab(), _buildUploadTab()],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ─── Bottom action button ──────────────────────────────────────────────────
+
+  Widget _buildBottomActions() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      child: SizedBox(
+        width: double.infinity,
+        height: 50,
+        child: ElevatedButton(
+          onPressed: _isSaving
+              ? null
+              : _isEditMode
+              ? _saveSignature
+              : _enterEditMode,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFCC0000),
+            disabledBackgroundColor: const Color(0xFFCC0000).withOpacity(0.6),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(4),
+            ),
+            elevation: 0,
+          ),
+          child: _isSaving
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _isEditMode ? Icons.save_outlined : Icons.edit,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _isEditMode ? "SAVE SIGNATURE" : "REPLACE SIGNATURE",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+
+  // ─── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -450,6 +643,7 @@ class _ViewSignPageState extends State<ViewSignPage>
               setState(() {
                 _isEditMode = false;
                 _strokes.clear();
+                _uploadedImage = null;
               });
             } else {
               Navigator.pop(context);
@@ -486,198 +680,14 @@ class _ViewSignPageState extends State<ViewSignPage>
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "DIGITAL\nSIGNATURE",
-              style: TextStyle(
-                fontSize: 30,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.5,
-                height: 1.1,
-                color: Color(0xFF1A1A1A),
-              ),
-            ),
-            Container(
-              margin: const EdgeInsets.only(top: 8, bottom: 12),
-              width: 40,
-              height: 3,
-              color: const Color(0xFFCC0000),
-            ),
-            const Text(
-              "Institutional-grade verification for secure documentation. View your current signature below or click the button to change it.",
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.black45,
-                height: 1.6,
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Current signature preview (hidden in edit mode)
-            if (!_isEditMode)
-              Container(
-                width: double.infinity,
-                height: 180,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border.all(color: const Color(0xFFE8E8E8)),
-                ),
-                child: _buildSavedSignaturePreview(),
-              ),
-
-            if (!_isEditMode) const SizedBox(height: 24),
-
-            // Tab Bar (edit mode only)
-            if (_isEditMode)
-              Container(
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0xFFE8E8E8))),
-                ),
-                child: TabBar(
-                  controller: _tabController,
-                  labelColor: const Color(0xFFCC0000),
-                  unselectedLabelColor: Colors.black38,
-                  indicatorColor: const Color(0xFFCC0000),
-                  indicatorWeight: 2,
-                  labelStyle: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.5,
-                  ),
-                  unselectedLabelStyle: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.5,
-                  ),
-                  tabs: const [
-                    Tab(text: "DRAW"),
-                    Tab(text: "UPLOAD"),
-                  ],
-                ),
-              ),
-
-            const SizedBox(height: 20),
-
-            // Tab Content (edit mode only)
-            if (_isEditMode)
-              SizedBox(
-                height: 320,
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [_buildDrawTab(), _buildUploadTab()],
-                ),
-              ),
-
-            const SizedBox(height: 8),
-
-            // Action Button
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _isSaving
-                    ? null
-                    : _isEditMode
-                    ? _saveSignature
-                    : _enterEditMode,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFCC0000),
-                  disabledBackgroundColor: const Color(
-                    0xFFCC0000,
-                  ).withOpacity(0.6),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  elevation: 0,
-                ),
-                child: _isSaving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            _isEditMode ? Icons.save_outlined : Icons.edit,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _isEditMode
-                                ? "SAVE SIGNATURE"
-                                : "REPLACE SIGNATURE",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 2,
-                            ),
-                          ),
-                        ],
-                      ),
-              ),
-            ),
-
-            const SizedBox(height: 190),
-
-            // Legal Validity Notice
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  left: BorderSide(color: Color(0xFFCC0000), width: 3),
-                ),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Icon(Icons.info_outline, color: Color(0xFFCC0000), size: 18),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "LEGAL VALIDITY",
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.5,
-                            color: Color(0xFF1A1A1A),
-                          ),
-                        ),
-                        SizedBox(height: 6),
-                        Text(
-                          "This signature will be cryptographically bound to your E-FORWARD identity. Ensure the signature is clear and legible for high-security verification protocols.",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.black54,
-                            height: 1.6,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-          ],
-        ),
+      // ── Non-scrollable body: Column with fixed header, Expanded body, fixed footer
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildHeader(),
+          Expanded(child: _buildBody()),
+          _buildBottomActions(),
+        ],
       ),
       bottomNavigationBar: BottomNavigator(
         selectedIndex: _selectedIndex,
@@ -687,6 +697,7 @@ class _ViewSignPageState extends State<ViewSignPage>
   }
 
   // ─── DRAW TAB ──────────────────────────────────────────────────────────────
+
   Widget _buildDrawTab() {
     return Column(
       children: [
@@ -713,7 +724,7 @@ class _ViewSignPageState extends State<ViewSignPage>
                     ),
                   ),
                 ),
-                // Drawing layer — RepaintBoundary captures only strokes
+                // Drawing layer
                 GestureDetector(
                   onPanStart: _onPanStart,
                   onPanUpdate: _onPanUpdate,
@@ -757,7 +768,7 @@ class _ViewSignPageState extends State<ViewSignPage>
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         Row(
           children: [
             GestureDetector(
@@ -780,11 +791,13 @@ class _ViewSignPageState extends State<ViewSignPage>
             ),
           ],
         ),
+        const SizedBox(height: 4),
       ],
     );
   }
 
   // ─── UPLOAD TAB ────────────────────────────────────────────────────────────
+
   Widget _buildUploadTab() {
     return Column(
       children: [
@@ -827,7 +840,7 @@ class _ViewSignPageState extends State<ViewSignPage>
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         if (_uploadedImage != null)
           GestureDetector(
             onTap: _pickImage,
@@ -847,6 +860,7 @@ class _ViewSignPageState extends State<ViewSignPage>
               ],
             ),
           ),
+        const SizedBox(height: 4),
       ],
     );
   }
