@@ -362,6 +362,19 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     return [];
   }
 
+  // ─── Normalize any status string to a consistent abbreviation ─────────────
+  // Returns: 'PND' | 'APV' | 'REJ' | 'OPN' — mirrors _getStatus() in approval_details.dart
+  String _normalizeStatus(String? raw) {
+    final s = (raw ?? '').toUpperCase().trim();
+    if (s.isEmpty || s == 'NULL') return '';
+    if (s.startsWith('PEND') || s == 'PND') return 'PND';
+    if (s.startsWith('APP') || s == 'APV') return 'APV';
+    if (s.startsWith('REJ') || s == 'REJ') return 'REJ';
+    if (s == 'OPN' || s.startsWith('OPEN')) return 'OPN';
+    if (s.startsWith('CANCEL') || s == 'CNL') return 'CNL';
+    return s;
+  }
+
   // ─── Normalize API fields to consistent keys ──────────────────────────────
   Map<String, dynamic> _normalizeItem(Map<String, dynamic> raw) {
     final routing = raw['routing'] as Map<String, dynamic>? ?? {};
@@ -370,13 +383,12 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     final firstName = owner['fname']?.toString().trim() ?? '';
     final middleName = owner['mname']?.toString().trim() ?? '';
     final lastName = owner['lname']?.toString().trim() ?? '';
-    final requesterName = [
-      firstName,
-      middleName,
-      lastName,
-    ].where((p) => p.isNotEmpty).join(' ').trim();
+    final requesterName = [firstName, middleName, lastName]
+        .where((p) => p.isNotEmpty)
+        .join(' ')
+        .trim();
 
-    // Try multiple date field names: date_sent (pending), created_at (history action), date_updated (fallback)
+    // Try multiple date field names
     String dateSent =
         (raw['date_sent'] ?? raw['created_at'] ?? raw['date_updated'] ?? '')
             as String;
@@ -384,22 +396,11 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       if (dateSent.isNotEmpty) {
         final dt = DateTime.parse(dateSent).toLocal();
         const months = [
-          'JAN',
-          'FEB',
-          'MAR',
-          'APR',
-          'MAY',
-          'JUN',
-          'JUL',
-          'AUG',
-          'SEP',
-          'OCT',
-          'NOV',
-          'DEC',
+          'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+          'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
         ];
-        final hour = dt.hour > 12
-            ? dt.hour - 12
-            : (dt.hour == 0 ? 12 : dt.hour);
+        final hour =
+            dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
         final ampm = dt.hour >= 12 ? 'PM' : 'AM';
         dateSent =
             '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
@@ -407,23 +408,30 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       }
     } catch (_) {}
 
-    // Determine status: for history items use to_status, otherwise use status from raw or routing
-    String status =
-        raw['to_status']?.toString().toUpperCase().trim() ??
-        ''; // History endpoint
+    // ── STATUS RESOLUTION (priority order) ───────────────────────────────
+    // 1. to_status  — history endpoint action result  (e.g. "APV", "APPROVED")
+    // 2. status     — pending endpoint or flat status  (e.g. "PND", "PENDING")
+    // 3. routing.status — fallback from routing object
+    // 4. action     — some APIs use "action" field     (e.g. "approved")
+    // Log all candidate fields so we can debug easily
+    debugPrint(
+      '[normalizeItem] routing_id=${raw['routing_id']} '
+      'to_status=${raw['to_status']} '
+      'status=${raw['status']} '
+      'routing.status=${routing['status']} '
+      'action=${raw['action']}',
+    );
+
+    String status = _normalizeStatus(raw['to_status']?.toString());
+    if (status.isEmpty) status = _normalizeStatus(raw['status']?.toString());
+    if (status.isEmpty) status = _normalizeStatus(routing['status']?.toString());
+    // Some APIs express history action as a verb — map it to a status code
     if (status.isEmpty) {
-      status =
-          raw['status']?.toString().toUpperCase().trim() ??
-          ''; // Pending endpoint or other
+      final action = raw['action']?.toString().toUpperCase().trim() ?? '';
+      if (action == 'APPROVED' || action == 'APPROVE') status = 'APV';
+      if (action == 'REJECTED' || action == 'REJECT') status = 'REJ';
     }
-    if (status.isEmpty && routing.isNotEmpty) {
-      status =
-          routing['status']?.toString().toUpperCase().trim() ??
-          ''; // Fallback to routing status
-    }
-    if (status.isEmpty) {
-      status = 'PND'; // Final fallback
-    }
+    if (status.isEmpty) status = 'PND'; // absolute last resort
 
     return {
       ...raw,
@@ -432,7 +440,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       'particulars': routing['particulars'] ?? '',
       'requester': requesterName.isNotEmpty ? requesterName : '—',
       'dateSent': dateSent,
-      'status': status,
+      'status': status,   // always one of: PND | APV | REJ | OPN
       'routing': routing,
       'owner': owner,
     };
@@ -471,44 +479,45 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     if (lastUpdated == null) return 'Loading...';
     final now = DateTime.now();
     final diff = now.difference(lastUpdated);
-
-    if (diff.inSeconds < 60) {
-      return 'Just now';
-    } else if (diff.inMinutes < 60) {
-      return '${diff.inMinutes}m ago';
-    } else if (diff.inHours < 24) {
-      return '${diff.inHours}h ago';
-    } else {
-      return '${diff.inDays}d ago';
-    }
+    if (diff.inSeconds < 60) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
   }
 
+  // ── Status helpers — abbreviation-only input (PND/APV/REJ/OPN) ────────────
   Color _getStatusColor(String status) {
-    final normalized = status.toUpperCase().trim();
-    if (normalized.startsWith('PEND') || normalized == 'PND') {
-      return const Color(0xFFCC0000); // Red - Warning
-    } else if (normalized.startsWith('APP') || normalized == 'APV') {
-      return Colors.green; // Green - Approved
-    } else if (normalized == 'OPN' || normalized.startsWith('OPEN')) {
-      return Colors.grey; // Gray - Open
-    } else if (normalized.startsWith('REJ') || normalized == 'REJ') {
-      return Colors.orange; // Orange - Rejected
+    switch (status.toUpperCase().trim()) {
+      case 'PND':
+        return const Color(0xFFCC0000);
+      case 'APV':
+        return Colors.green;
+      case 'REJ':
+        return Colors.orange;
+      case 'OPN':
+        return Colors.grey;
+      case 'CNL':
+        return Colors.blueGrey;
+      default:
+        return Colors.grey;
     }
-    return Colors.grey;
   }
 
   String _getStatusLabel(String status) {
-    final normalized = status.toUpperCase().trim();
-    if (normalized.startsWith('PEND') || normalized == 'PND') {
-      return 'PENDING';
-    } else if (normalized.startsWith('APP') || normalized == 'APV') {
-      return 'APPROVED';
-    } else if (normalized == 'OPN' || normalized.startsWith('OPEN')) {
-      return 'OPEN';
-    } else if (normalized.startsWith('REJ') || normalized == 'REJ') {
-      return 'REJECTED';
+    switch (status.toUpperCase().trim()) {
+      case 'PND':
+        return 'PENDING';
+      case 'APV':
+        return 'APPROVED';
+      case 'REJ':
+        return 'REJECTED';
+      case 'OPN':
+        return 'OPEN';
+      case 'CNL':
+        return 'CANCELLED';
+      default:
+        return status;
     }
-    return normalized;
   }
 
   @override
@@ -889,7 +898,6 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       );
     }
 
-    // +1 for the footer row (load-more spinner / end-of-list / last-updated)
     return RefreshIndicator(
       onRefresh: () async => onRefresh(),
       color: const Color(0xFFCC0000),
@@ -956,23 +964,37 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     Map<String, dynamic> item, {
     required bool isPending,
   }) {
+    final status = item['status']?.toString() ?? 'PND';
+    final isCancelled = status == 'CNL';
     return GestureDetector(
-      onTap: () async {
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) =>
-                ApprovalDetailPage(item: item, isFromHistory: !isPending),
-          ),
-        );
-        await Future.delayed(const Duration(milliseconds: 800));
-        if (isPending) {
-          _fetchPending();
-        } else {
-          _fetchHistory();
-        }
-      },
-      child: Container(
+      onTap: isCancelled
+          ? () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('This document has been cancelled.'),
+                  backgroundColor: Colors.blueGrey,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          : () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      ApprovalDetailPage(item: item, isFromHistory: !isPending),
+                ),
+              );
+              await Future.delayed(const Duration(milliseconds: 800));
+              if (isPending) {
+                _fetchPending();
+              } else {
+                _fetchHistory();
+              }
+            },
+      child: Opacity(
+        opacity: isCancelled ? 0.55 : 1.0,
+        child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -1002,20 +1024,16 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: _getStatusColor(
-                      item['status']?.toString() ?? 'PND',
-                    ).withOpacity(0.15),
+                    color: _getStatusColor(status).withOpacity(0.15),
                     borderRadius: BorderRadius.circular(3),
                   ),
                   child: Text(
-                    _getStatusLabel(item['status']?.toString() ?? 'PND'),
+                    _getStatusLabel(status),
                     style: TextStyle(
                       fontSize: 8,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.8,
-                      color: _getStatusColor(
-                        item['status']?.toString() ?? 'PND',
-                      ),
+                      color: _getStatusColor(status),
                     ),
                   ),
                 ),
@@ -1088,6 +1106,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
           ],
         ),
       ),
+      ), // Opacity
     );
   }
 }
