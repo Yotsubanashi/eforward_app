@@ -421,8 +421,8 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
 
-            const Divider(height: 1, color: Color(0xFFEEEEEE)),
-            const SizedBox(height: 24),
+         
+            const SizedBox(height: 40),
 
             // Profile Section
             Center(

@@ -1,13 +1,12 @@
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 import '../../services/auth_api.dart';
 import '../../services/fcm_token_service.dart';
 import '../dashboard/dashboard.dart';
 import 'forgot_password.dart';
-import 'otp.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -73,7 +72,6 @@ class _LoginScreenState extends State<LoginScreen> {
       _saveRememberMe(email);
       debugPrint('Login success: ${result.data}');
 
-      // Save token and go to Dashboard
       final token =
           result.data?['accessToken'] ??
           result.data?['access_token'] ??
@@ -86,7 +84,6 @@ class _LoginScreenState extends State<LoginScreen> {
           await prefs.setString('user_data', jsonEncode(result.data));
         }
 
-        // 👇 Save FCM token to backend for push notifications
         await FCMTokenService.saveFCMTokenToBackend(
           accessToken: token.toString(),
         );
@@ -125,7 +122,6 @@ class _LoginScreenState extends State<LoginScreen> {
       backgroundColor: Colors.white,
       body: SafeArea(
         child: SingleChildScrollView(
-          //  fixes overflow when keyboard opens
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
@@ -133,52 +129,52 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Logo + Brand
-                Row(
-                  children: const [
-                    Icon(
-                      Icons.shield_outlined,
-                      color: Color(0xFFCC0000),
-                      size: 20,
+                
+                const SizedBox(height: 102),
+
+                // ✅ Fixed: SVG logo + subtitle properly wrapped
+              Center(
+                child: Column(
+                  children: [
+                    Image.network(
+                      'https://ardentnetworks.com.ph/wp-content/uploads/2023/07/ardent-logo-with-powering-innovation-8.png',
+                      width: 240,
+                      fit: BoxFit.contain,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const SizedBox(
+                          width: 220,
+                          height: 66,
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFFCC0000),
+                            ),
+                          ),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(
+                          Icons.shield_outlined,
+                          color: Color(0xFFCC0000),
+                          size: 40,
+                        );
+                      },
                     ),
-                    SizedBox(width: 6),
-                    Text(
+                    const SizedBox(height: 15),
+                    const Text(
                       "E-FORWARD",
+                      textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: Color(0xFFCC0000),
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 2,
+                        fontSize: 17,
+                        color: Colors.black,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.2,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 102),
-
-                // Title
-                Center(
-                  child: Column(
-                    children: const [
-                      Text(
-                        "SECURE ACCESS",
-                        style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        "INSTITUTIONAL-GRADE APPROVAL WORKFLOW\nAND DOCUMENT GOVERNANCE.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.black54,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              ),
                 const SizedBox(height: 40),
 
                 // Email Field
@@ -277,7 +273,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 20),
 
                 // Login Button
