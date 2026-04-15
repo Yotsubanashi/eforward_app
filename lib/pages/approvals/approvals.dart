@@ -376,7 +376,10 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       lastName,
     ].where((p) => p.isNotEmpty).join(' ').trim();
 
-    String dateSent = raw['date_sent'] ?? '';
+    // Try multiple date field names: date_sent (pending), created_at (history action), date_updated (fallback)
+    String dateSent =
+        (raw['date_sent'] ?? raw['created_at'] ?? raw['date_updated'] ?? '')
+            as String;
     try {
       if (dateSent.isNotEmpty) {
         final dt = DateTime.parse(dateSent).toLocal();
