@@ -347,13 +347,16 @@ class _DashboardPageState extends State<DashboardPage> {
                       ),
                       const SizedBox(width: 16),
                       ElevatedButton(
+                        // ✅ Auto-refresh pagbalik mula sa ApprovalsPage
                         onPressed: () {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (_) => const ApprovalsPage(),
                             ),
-                          );
+                          ).then((_) {
+                            if (mounted) _fetchPendingApprovals();
+                          });
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFCC0000),
@@ -462,13 +465,16 @@ class _DashboardPageState extends State<DashboardPage> {
                     ),
                   ),
                   GestureDetector(
+                    // ✅ Auto-refresh pagbalik mula sa ApprovalsPage
                     onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => const ApprovalsPage(),
                         ),
-                      );
+                      ).then((_) {
+                        if (mounted) _fetchPendingApprovals();
+                      });
                     },
                     child: const Text(
                       "VIEW ALL LOGS →",
@@ -544,12 +550,15 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildActivityCard(Map<String, dynamic> item) {
     return InkWell(
+      // ✅ Auto-refresh pagbalik mula sa ApprovalDetailPage
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => ApprovalDetailPage(item: item),
         ),
-      ),
+      ).then((_) {
+        if (mounted) _fetchPendingApprovals();
+      }),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
