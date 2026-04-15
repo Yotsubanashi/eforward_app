@@ -16,48 +16,68 @@ class NotificationsPage extends StatefulWidget {
 
 class _NotificationsPageState extends State<NotificationsPage>
     with WidgetsBindingObserver {
-  final int _selectedIndex = 2; // Notifications index
+  final int _selectedIndex = 2;
   static const String _baseUrl =
       'https://eforward-api.ardentnetworks.com.ph/api';
 
   late NotificationsService _notificationsService;
+  final ScrollController _scrollController = ScrollController();
+
   List<Map<String, dynamic>> _notifications = [];
   bool _isLoading = false;
+  bool _isFetchingMore = false;
+  bool _hasMore = true;
   int _currentPage = 1;
   int _totalPages = 1;
   DateTime? _lastUpdated;
-
-  // Real-time updates: FCM push notifications
-  // (auto-refresh removed — rely on push + manual refresh)
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-
     _notificationsService = NotificationsService();
+    _scrollController.addListener(_onScroll);
     _fetchNotifications();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Immediately refresh when page comes back into focus
       debugPrint('[Notifications] App resumed — refreshing data...');
-      _fetchNotifications(page: _currentPage);
+      setState(() {
+        _notifications = [];
+        _currentPage = 1;
+        _hasMore = true;
+      });
+      _fetchNotifications();
     }
   }
 
-  /// Manual refresh only — auto-refresh removed (rely on FCM push + manual pull-to-refresh)
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 200 &&
+        !_isFetchingMore &&
+        _hasMore) {
+      _fetchMore();
+    }
+  }
+
+  Future<void> _fetchMore() async {
+    if (_currentPage >= _totalPages) return;
+    setState(() => _isFetchingMore = true);
+    await _fetchNotifications(page: _currentPage + 1, append: true);
+    setState(() => _isFetchingMore = false);
+  }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _scrollController.dispose();
     super.dispose();
   }
 
-  Future<void> _fetchNotifications({int page = 1}) async {
-    setState(() => _isLoading = true);
+  Future<void> _fetchNotifications({int page = 1, bool append = false}) async {
+    if (!append) setState(() => _isLoading = true);
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token') ?? '';
@@ -67,7 +87,7 @@ class _NotificationsPageState extends State<NotificationsPage>
       }
 
       final response = await http.get(
-        Uri.parse('$_baseUrl/notifications?page=$page&limit=20'),
+        Uri.parse('$_baseUrl/notifications?page=$page&limit=10'),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
@@ -85,11 +105,17 @@ class _NotificationsPageState extends State<NotificationsPage>
             [];
 
         final pagination = decoded['pagination'] as Map<String, dynamic>? ?? {};
+        final totalPages = pagination['totalPages'] as int? ?? 1;
 
         setState(() {
-          _notifications = notificationsList;
+          if (append) {
+            _notifications.addAll(notificationsList);
+          } else {
+            _notifications = notificationsList;
+          }
           _currentPage = page;
-          _totalPages = pagination['totalPages'] as int? ?? 1;
+          _totalPages = totalPages;
+          _hasMore = page < totalPages;
           _isLoading = false;
           _lastUpdated = DateTime.now();
         });
@@ -105,7 +131,6 @@ class _NotificationsPageState extends State<NotificationsPage>
   Future<void> _markAsRead(String notificationId) async {
     final success = await _notificationsService.markAsRead(notificationId);
     if (success) {
-      // Update local state to mark as read
       setState(() {
         final index = _notifications.indexWhere(
           (n) => n['notification_id'] == notificationId,
@@ -139,15 +164,23 @@ class _NotificationsPageState extends State<NotificationsPage>
       backgroundColor: const Color(0xFFF4F5F7),
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: () => _fetchNotifications(page: _currentPage),
+          onRefresh: () async {
+            setState(() {
+              _notifications = [];
+              _currentPage = 1;
+              _hasMore = true;
+            });
+            await _fetchNotifications();
+          },
           color: const Color(0xFFCC0000),
           child: SingleChildScrollView(
+            controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header with title
+                // Header
                 const Text(
                   "NOTIFICATIONS",
                   style: TextStyle(
@@ -160,7 +193,7 @@ class _NotificationsPageState extends State<NotificationsPage>
 
                 const SizedBox(height: 12),
 
-                // Unread count and Mark All Read button aligned horizontally
+                // Unread count + Mark All Read
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -251,79 +284,29 @@ class _NotificationsPageState extends State<NotificationsPage>
                         _buildNotificationCard(_notifications[index]),
                   ),
 
-                const SizedBox(height: 24),
-
-                // Pagination
-                if (_totalPages > 1)
-                  Center(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (_currentPage > 1)
-                          GestureDetector(
-                            onTap: () =>
-                                _fetchNotifications(page: _currentPage - 1),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                border: Border.all(
-                                  color: const Color(0xFFE8E8E8),
-                                ),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text(
-                                "← PREVIOUS",
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1,
-                                  color: Color(0xFFCC0000),
-                                ),
-                              ),
-                            ),
-                          ),
-                        const SizedBox(width: 16),
-                        Text(
-                          'Page $_currentPage of $_totalPages',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black54,
-                          ),
+                // Bottom loader / end message
+                if (_isFetchingMore)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFFCC0000),
+                        strokeWidth: 2,
+                      ),
+                    ),
+                  )
+                else if (!_hasMore && _notifications.isNotEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(
+                      child: Text(
+                        "— You're all caught up —",
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.black38,
+                          letterSpacing: 0.5,
                         ),
-                        const SizedBox(width: 16),
-                        if (_currentPage < _totalPages)
-                          GestureDetector(
-                            onTap: () =>
-                                _fetchNotifications(page: _currentPage + 1),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                border: Border.all(
-                                  color: const Color(0xFFE8E8E8),
-                                ),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text(
-                                "NEXT →",
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1,
-                                  color: Color(0xFFCC0000),
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
+                      ),
                     ),
                   ),
               ],
@@ -347,18 +330,13 @@ class _NotificationsPageState extends State<NotificationsPage>
 
     return InkWell(
       onTap: () {
-        // Mark as read
         if (!isRead) {
           _markAsRead(notificationId);
         }
 
-        // Navigate to approval details if link exists
         if (link.isNotEmpty) {
-          // Extract approval ID from link (e.g., "user/approvals/31/review")
           final parts = link.split('/');
           if (parts.length >= 3 && parts[1] == 'approvals') {
-            // Navigate to approval detail page
-            // You can create a temporary item object or fetch full details
             final tempItem = {
               'routing_id': parts[2],
               'header': header,
