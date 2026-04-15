@@ -632,6 +632,7 @@ class _ViewSignPageState extends State<ViewSignPage>
       appBar: AppBar(
         backgroundColor: const Color(0xFFF4F5F7),
         elevation: 0,
+        automaticallyImplyLeading: false, // ← ADD THIS LINE
         leading: _isEditMode
             ? IconButton(
                 icon: const Icon(
