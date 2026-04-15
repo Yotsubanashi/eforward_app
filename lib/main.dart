@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:app_links/app_links.dart';
 import 'pages/auth/login.dart';
-import 'pages/auth/reset_password.dart';
+import 'pages/auth/reset-password.dart';
 import 'services/firebase_notification_service.dart';
 import 'firebase_options.dart';
 
@@ -25,65 +26,66 @@ void main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final _appLinks = AppLinks();
+
+  @override
+  void initState() {
+    super.initState();
+    _initDeepLinks();
+  }
+
+  void _initDeepLinks() {
+    // Handle deep link when app is already running
+    _appLinks.uriLinkStream.listen(
+      (uri) => _handleDeepLink(uri),
+      onError: (err) => debugPrint('Deep link error: $err'),
+    );
+
+    // Handle deep link that launched the app from terminated state
+    _appLinks
+        .getInitialLink()
+        .then((uri) {
+          if (uri != null) {
+            debugPrint('App launched with deep link: $uri');
+            _handleDeepLink(uri);
+          }
+        })
+        .catchError((err) => debugPrint('Error getting initial link: $err'));
+  }
+
+  void _handleDeepLink(Uri uri) {
+    debugPrint('Handling deep link: $uri');
+    debugPrint('Path: ${uri.path}');
+    debugPrint('Query params: ${uri.queryParameters}');
+
+    // Matches: https://eforward.ardentnetworks.com.ph/auth/reset-password?token=xxx
+    if (uri.path == '/auth/reset-password') {
+      final token = uri.queryParameters['token'];
+      debugPrint('Found token: $token');
+
+      if (token != null && token.isNotEmpty) {
+        navigatorKey.currentState?.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => ResetPasswordScreen(token: token)),
+          (route) => route.isFirst, // Keep the first route (LoginScreen)
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      navigatorKey: navigatorKey, // ✅ uses the global key
+      navigatorKey: navigatorKey,
       home: const LoginScreen(),
-      onGenerateRoute: _generateRoute,
-      onGenerateInitialRoutes: _generateInitialRoutes,
     );
-  }
-
-  /// Generate initial routes for deep linking support
-  static List<Route<dynamic>> _generateInitialRoutes(String initialRouteName) {
-    final routes = [MaterialPageRoute(builder: (_) => const LoginScreen())];
-
-    // Check if we're opening from a deep link
-    if (initialRouteName.contains('/auth/reset-password')) {
-      final uri = Uri.parse(initialRouteName);
-      final token = uri.queryParameters['token'];
-      routes.add(
-        MaterialPageRoute(builder: (_) => ResetPasswordScreen(token: token)),
-      );
-    }
-
-    return routes;
-  }
-
-  /// Handle named routes and query parameters
-  static Route<dynamic>? _generateRoute(RouteSettings settings) {
-    switch (settings.name) {
-      case '/auth/reset-password':
-        // settings.arguments might contain the full URL or query string
-        final token = _extractTokenFromArgs(settings.arguments);
-        return MaterialPageRoute(
-          builder: (_) => ResetPasswordScreen(token: token),
-          settings: settings,
-        );
-      default:
-        return null;
-    }
-  }
-
-  /// Extract token from various argument formats
-  static String? _extractTokenFromArgs(dynamic args) {
-    if (args is String) {
-      // Try parsing as URL
-      try {
-        final uri = Uri.parse(args.contains('?') ? args : '/?$args');
-        return uri.queryParameters['token'];
-      } catch (_) {
-        return args;
-      }
-    }
-    if (args is Map) {
-      return args['token'] as String?;
-    }
-    return null;
   }
 }
