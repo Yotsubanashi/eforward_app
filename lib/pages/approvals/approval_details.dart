@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'package:eforward_app/pages/approvals/approvals.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -365,7 +364,17 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     if (inner is Map) {
       final files = inner['files'];
       if (files is List && files.isNotEmpty) {
-        // Hanapin muna yung SIGNED file
+        // Priority: HEAD (document to sign) > SIGNED > DOC > first file
+        final headFile = files.firstWhere(
+          (f) => f is Map && f['file_type']?.toString() == 'HEAD',
+          orElse: () => null,
+        );
+        if (headFile != null && headFile is Map) {
+          final id =
+              headFile['file_id'] ?? headFile['fileId'] ?? headFile['id'];
+          if (id != null) return id.toString();
+        }
+
         final signedFile = files.firstWhere(
           (f) => f is Map && f['file_type']?.toString() == 'SIGNED',
           orElse: () => null,
@@ -375,7 +384,17 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
               signedFile['file_id'] ?? signedFile['fileId'] ?? signedFile['id'];
           if (id != null) return id.toString();
         }
-        // Kung walang SIGNED, fallback sa first file
+
+        final docFile = files.firstWhere(
+          (f) => f is Map && f['file_type']?.toString() == 'DOC',
+          orElse: () => null,
+        );
+        if (docFile != null && docFile is Map) {
+          final id = docFile['file_id'] ?? docFile['fileId'] ?? docFile['id'];
+          if (id != null) return id.toString();
+        }
+
+        // Fallback to first file
         final first = files.first;
         if (first is Map) {
           final id = first['file_id'] ?? first['fileId'] ?? first['id'];
@@ -400,6 +419,35 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       for (final item in data) {
         final found = _extractFileId(item);
         if (found != null) return found;
+      }
+    }
+    return null;
+  }
+
+  List<Map<String, dynamic>> _getAttachmentFiles() {
+    final data = _detail?['data'] ?? _detail;
+    if (data is Map) {
+      final files = data['files'];
+      if (files is List) {
+        return files
+            .whereType<Map<String, dynamic>>()
+            .where((f) => f['file_type']?.toString() == 'DOC')
+            .toList();
+      }
+    }
+    return [];
+  }
+
+  Map<String, dynamic>? _getHeadFile() {
+    final data = _detail?['data'] ?? _detail;
+    if (data is Map) {
+      final files = data['files'];
+      if (files is List) {
+        return files.firstWhere(
+              (f) => f is Map && f['file_type']?.toString() == 'HEAD',
+              orElse: () => null,
+            )
+            as Map<String, dynamic>?;
       }
     }
     return null;
@@ -473,21 +521,14 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   }
 
   String _getFileName() {
-    final data = _detail?['data'] ?? _detail;
-    if (data is Map) {
-      final files = data['files'];
-      if (files is List && files.isNotEmpty) {
-        final first = files.first;
-        if (first is Map) {
-          final name =
-              first['original_name'] ??
-              first['originalName'] ??
-              first['file_name'] ??
-              first['fileName'];
-          if (name != null && name.toString().isNotEmpty)
-            return name.toString();
-        }
-      }
+    final headFile = _getHeadFile();
+    if (headFile != null) {
+      final name =
+          headFile['original_name'] ??
+          headFile['originalName'] ??
+          headFile['file_name'] ??
+          headFile['fileName'];
+      if (name != null && name.toString().isNotEmpty) return name.toString();
     }
     return widget.item['original_name']?.toString() ??
         '${widget.item['particulars'] ?? 'Document'}.pdf';
@@ -658,7 +699,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    "ATTACHED DOCUMENT",
+                    "DOCUMENT TO SIGN",
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
@@ -717,112 +758,385 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                 color: Color(0xFFCC0000),
                               ),
                             )
-                          : GestureDetector(
-                              onTap: _localPdfPath != null
-                                  ? () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => PdfSignerPage(
-                                          pdfPath: _localPdfPath!,
-                                          item: widget.item,
-                                        ),
-                                      ),
-                                    )
-                                  : null,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _localPdfPath != null
-                                      ? const Color(0xFFCC0000)
-                                      : Colors.black12,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: const [
-                                    Icon(
+                          : Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                GestureDetector(
+                                  onTap: _localPdfPath != null
+                                      ? () => Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => PdfSignerPage(
+                                              pdfPath: _localPdfPath!,
+                                              item: widget.item,
+                                              enableSigning: false,
+                                            ),
+                                          ),
+                                        )
+                                      : null,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: _localPdfPath != null
+                                          ? const Color(0xFFCC0000)
+                                          : Colors.black12,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Icon(
                                       Icons.visibility_outlined,
                                       color: Colors.white,
-                                      size: 14,
+                                      size: 16,
                                     ),
-                                    SizedBox(width: 6),
-                                    Text(
-                                      "VIEW FILE",
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: 1,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFCC0000),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Icon(
+                                    Icons.download_outlined,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ),
+                              ],
                             ),
                     ],
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _showRequestRevisionDialog,
-                      icon: const Icon(
-                        Icons.edit_outlined,
-                        color: Colors.black,
-                        size: 16,
-                      ),
-                      label: const Text(
-                        "REQUEST REVISION",
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.5,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  left: BorderSide(color: Color(0xFFCC0000), width: 3),
+            if (_getAttachmentFiles().isNotEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: const Color(0xFFE8E8E8)),
                 ),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Icon(Icons.info_outline, color: Color(0xFFCC0000), size: 16),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      "By signing this document, you confirm that you have reviewed all contents and authorize the action. This signature is legally binding.",
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "ATTACHMENTS",
                       style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.black54,
-                        height: 1.6,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.5,
+                        color: Colors.black45,
                       ),
                     ),
+                    const SizedBox(height: 14),
+                    ..._getAttachmentFiles().map((attachment) {
+                      final name =
+                          attachment['original_name'] ??
+                          attachment['file_name'] ??
+                          'Document';
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: const Color(
+                                  0xFFCC0000,
+                                ).withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Icon(
+                                Icons.picture_as_pdf_outlined,
+                                color: Color(0xFFCC0000),
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    name,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF1A1A1A),
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  const Text(
+                                    "PDF Attachment",
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.black38,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                GestureDetector(
+                                  onTap: () async {
+                                    final fileId =
+                                        attachment['file_id']?.toString() ?? '';
+                                    if (fileId.isEmpty) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Unable to load attachment',
+                                          ),
+                                          duration: Duration(seconds: 2),
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                    try {
+                                      final prefs =
+                                          await SharedPreferences.getInstance();
+                                      final token =
+                                          prefs.getString('access_token') ?? '';
+                                      if (token.isEmpty) {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Session expired'),
+                                              backgroundColor: Color(
+                                                0xFFCC0000,
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                        return;
+                                      }
+
+                                      final response = await http.get(
+                                        Uri.parse(
+                                          '$_baseUrl/upload/document/$fileId',
+                                        ),
+                                        headers: {
+                                          'Authorization': 'Bearer $token',
+                                          'Cache-Control': 'no-cache',
+                                        },
+                                      );
+
+                                      if (response.statusCode >= 200 &&
+                                          response.statusCode < 300 &&
+                                          response.bodyBytes.isNotEmpty) {
+                                        final dir =
+                                            await getTemporaryDirectory();
+                                        final file = File(
+                                          '${dir.path}/attachment_${fileId}_${DateTime.now().millisecondsSinceEpoch}.pdf',
+                                        );
+                                        await file.writeAsBytes(
+                                          response.bodyBytes,
+                                        );
+
+                                        if (mounted) {
+                                          await Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => PdfSignerPage(
+                                                pdfPath: file.path,
+                                                item: widget.item,
+                                                enableSigning: false,
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      } else {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                'Failed to load attachment',
+                                              ),
+                                              backgroundColor: Color(
+                                                0xFFCC0000,
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    } catch (e) {
+                                      debugPrint('Attachment view error: $e');
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Error opening attachment',
+                                            ),
+                                            backgroundColor: Color(0xFFCC0000),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFCC0000),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Icon(
+                                      Icons.visibility_outlined,
+                                      color: Colors.white,
+                                      size: 16,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFCC0000),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Icon(
+                                    Icons.download_outlined,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: const Color(0xFFE8E8E8)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "TAKE ACTION",
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.5,
+                      color: Colors.black45,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    "Review the document above and take appropriate action.",
+                    style: TextStyle(fontSize: 11, color: Colors.black54),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _isSubmittingRevision
+                              ? null
+                              : () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => PdfSignerPage(
+                                      pdfPath: _localPdfPath!,
+                                      item: widget.item,
+                                      enableSigning: true,
+                                    ),
+                                  ),
+                                ),
+                          icon: const Icon(
+                            Icons.check_circle_outlined,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                          label: _isSubmittingRevision
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : const Text(
+                                  "APPROVE",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.5,
+                                  ),
+                                ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF28A745),
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _isSubmittingRevision
+                              ? null
+                              : _showRequestRevisionDialog,
+                          icon: const Icon(
+                            Icons.refresh_outlined,
+                            color: Colors.black,
+                            size: 16,
+                          ),
+                          label: const Text(
+                            "REQUEST REVISION",
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -877,8 +1191,14 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
 class PdfSignerPage extends StatefulWidget {
   final String pdfPath;
   final Map<String, dynamic> item;
+  final bool enableSigning;
 
-  const PdfSignerPage({super.key, required this.pdfPath, required this.item});
+  const PdfSignerPage({
+    super.key,
+    required this.pdfPath,
+    required this.item,
+    this.enableSigning = false,
+  });
 
   @override
   State<PdfSignerPage> createState() => _PdfSignerPageState();
@@ -931,7 +1251,12 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     super.initState();
     _loadSignatureFromApi();
     _loadUserInfo();
-    _loadWatermark(); // ← palitan ng ganito
+    _loadWatermark();
+    if (widget.enableSigning) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _enterSigningMode();
+      });
+    }
   }
 
   Future<void> _loadWatermark() async {
@@ -1447,7 +1772,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           ),
         ),
         actions: [
-          if (!_isSigningMode)
+          if (!_isSigningMode && widget.enableSigning)
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: TextButton.icon(

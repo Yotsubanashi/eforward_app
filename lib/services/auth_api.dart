@@ -53,6 +53,59 @@ class AuthApi {
     );
   }
 
+  Future<AuthLoginResult> refresh({required String token}) async {
+    final uri = Uri.parse('$baseUrl/auth/refresh');
+
+    try {
+      final response = await _client.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({}),
+      );
+
+      final dynamic decodedBody = response.body.isNotEmpty
+          ? jsonDecode(response.body)
+          : null;
+
+      debugPrint('Refresh token status: ${response.statusCode}');
+      debugPrint('Refresh token response: ${response.body}');
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final Map<String, dynamic>? bodyMap =
+            decodedBody is Map<String, dynamic> ? decodedBody : null;
+        return AuthLoginResult(
+          isSuccess: true,
+          statusCode: response.statusCode,
+          message: _extractMessage(decodedBody) ?? 'Token refreshed successfully.',
+          data: bodyMap,
+          requiredOTP: false,
+        );
+      }
+
+      final Map<String, dynamic>? bodyMap = decodedBody is Map<String, dynamic>
+          ? decodedBody
+          : null;
+      return AuthLoginResult(
+        isSuccess: false,
+        statusCode: response.statusCode,
+        message: _extractMessage(decodedBody) ?? 'Token refresh failed.',
+        data: bodyMap,
+        requiredOTP: false,
+      );
+    } catch (error) {
+      return AuthLoginResult(
+        isSuccess: false,
+        statusCode: 0,
+        message: 'Network error: $error',
+        requiredOTP: false,
+      );
+    }
+  }
+
   Future<AuthLoginResult> resendOtp({required String email}) async {
     return _post(
       endpoint: '/auth/resend-otp',
