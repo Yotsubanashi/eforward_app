@@ -7,7 +7,6 @@ import '../../services/auth_api.dart';
 import '../../services/fcm_token_service.dart';
 import '../dashboard/dashboard.dart';
 import 'forgot_password.dart';
-import 'otp.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
