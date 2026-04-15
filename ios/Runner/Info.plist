@@ -45,5 +45,25 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	
+	<!-- 🔗 Deep Linking Configuration for Password Reset -->
+	<!-- URL Scheme for custom e-forward:// links -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>eforward</string>
+			</array>
+		</dict>
+	</array>
+	
+	<!-- Associated Domains for Universal Links (https links) -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:eforward-api.ardentnetworks.com.ph</string>
+	</array>
 </dict>
 </plist>

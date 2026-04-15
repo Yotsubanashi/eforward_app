@@ -44,18 +44,6 @@ class AuthApi {
     );
   }
 
-  Future<AuthLoginResult> resetPassword({
-    required String token,
-    required String newPassword,
-  }) async {
-    return _post(
-      endpoint: '/auth/resetPassword',
-      body: {'token': token, 'newPassword': newPassword},
-      successMessage: 'Password reset successfully.',
-      failureMessage: 'Password reset failed.',
-    );
-  }
-
   Future<AuthLoginResult> logout() async {
     return _post(
       endpoint: '/auth/logout',
@@ -71,6 +59,27 @@ class AuthApi {
       body: {'email': email},
       successMessage: 'OTP resent to your email.',
       failureMessage: 'Failed to resend OTP.',
+    );
+  }
+
+  Future<AuthLoginResult> verifyResetToken({required String token}) async {
+    return _post(
+      endpoint: '/auth/verifyToken',
+      body: {'token': token},
+      successMessage: 'Reset token is valid.',
+      failureMessage: 'Invalid or expired reset token.',
+    );
+  }
+
+  Future<AuthLoginResult> resetPasswordWithToken({
+    required String token,
+    required String newPassword,
+  }) async {
+    return _post(
+      endpoint: '/auth/resetPassword',
+      body: {'token': token, 'newPassword': newPassword},
+      successMessage: 'Password reset successfully.',
+      failureMessage: 'Password reset failed.',
     );
   }
 

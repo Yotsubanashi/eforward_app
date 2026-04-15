@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import '../../services/auth_api.dart';
 import 'login.dart'; // 👈 import your login screen
 
 class ResetPasswordScreen extends StatefulWidget {
-  const ResetPasswordScreen({super.key});
+  final String? token;
+
+  const ResetPasswordScreen({super.key, this.token});
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
@@ -12,9 +15,13 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
+  final AuthApi _authApi = AuthApi();
   bool _obscureNew = true;
   bool _obscureConfirm = true;
   bool _isLoading = false;
+  bool _isVerifying = true;
+  bool _isTokenValid = false;
+  String _errorMessage = '';
 
   // Security requirements
   bool get _hasMinLength => _newPasswordController.text.length >= 8;
@@ -29,13 +36,44 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   void initState() {
     super.initState();
     _newPasswordController.addListener(() => setState(() {}));
+    _verifyResetToken();
   }
 
   @override
   void dispose() {
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
+    _authApi.dispose();
     super.dispose();
+  }
+
+  Future<void> _verifyResetToken() async {
+    if (widget.token == null || widget.token!.isEmpty) {
+      setState(() {
+        _isVerifying = false;
+        _isTokenValid = false;
+        _errorMessage =
+            'No reset token provided. Please use the link from your email.';
+      });
+      return;
+    }
+
+    final result = await _authApi.verifyResetToken(token: widget.token!);
+
+    if (!mounted) return;
+
+    if (result.isSuccess) {
+      setState(() {
+        _isVerifying = false;
+        _isTokenValid = true;
+      });
+    } else {
+      setState(() {
+        _isVerifying = false;
+        _isTokenValid = false;
+        _errorMessage = result.message;
+      });
+    }
   }
 
   Future<void> _resetPassword() async {
@@ -60,27 +98,147 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       return;
     }
 
+    if (!_hasMinLength || !_hasNumber || !_hasSpecialChar || !_hasMixedCase) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Password does not meet security requirements."),
+          backgroundColor: Color(0xFFCC0000),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 1500));
+
+    final result = await _authApi.resetPasswordWithToken(
+      token: widget.token!,
+      newPassword: _newPasswordController.text,
+    );
+
+    if (!mounted) return;
+
     setState(() => _isLoading = false);
 
-    if (mounted) {
+    if (result.isSuccess) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Password reset successful!"),
           backgroundColor: Colors.green,
         ),
       );
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (route) => false,
+      await Future.delayed(const Duration(milliseconds: 1500));
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          backgroundColor: const Color(0xFFCC0000),
+        ),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Show loading indicator while verifying token
+    if (_isVerifying) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8F8F8),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              CircularProgressIndicator(color: Color(0xFFCC0000)),
+              SizedBox(height: 16),
+              Text(
+                'Verifying reset link...',
+                style: TextStyle(fontSize: 14, color: Color(0xFF1A1A1A)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Show error if token is invalid
+    if (!_isTokenValid) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8F8F8),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  color: Color(0xFFCC0000),
+                  size: 48,
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'LINK EXPIRED OR INVALID',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1A1A1A),
+                    letterSpacing: 1,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _errorMessage,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Colors.black54,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      (route) => false,
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFCC0000),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'BACK TO LOGIN',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Normal reset password form
     return Scaffold(
       backgroundColor: const Color(0xFFF8F8F8),
       appBar: AppBar(
