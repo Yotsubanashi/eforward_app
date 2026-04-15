@@ -87,15 +87,15 @@ class NotificationsService {
       if (token.isEmpty) return false;
 
       final response = await http.patch(
-        Uri.parse('$_baseUrl/notifications/mark-all-read'),
+        Uri.parse('$_baseUrl/notifications/read-all'), // ✅ Fixed endpoint
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
+          'Content-Type': 'application/json',
         },
       );
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        // Set count to 0
         unreadCountNotifier.value = 0;
         return true;
       }

@@ -205,8 +205,18 @@ class _DashboardPageState extends State<DashboardPage> {
       if (dateSent.isNotEmpty) {
         final dt = DateTime.parse(dateSent).toLocal();
         const months = [
-          'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-          'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+          'JAN',
+          'FEB',
+          'MAR',
+          'APR',
+          'MAY',
+          'JUN',
+          'JUL',
+          'AUG',
+          'SEP',
+          'OCT',
+          'NOV',
+          'DEC',
         ];
         final hour = dt.hour > 12
             ? dt.hour - 12
@@ -243,7 +253,11 @@ class _DashboardPageState extends State<DashboardPage> {
               // Brand Header
               Row(
                 children: const [
-                  Icon(Icons.shield_outlined, color: Color(0xFFCC0000), size: 16),
+                  Icon(
+                    Icons.shield_outlined,
+                    color: Color(0xFFCC0000),
+                    size: 16,
+                  ),
                   SizedBox(width: 10),
                   Text(
                     "E-FORWARD",
@@ -271,17 +285,6 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
 
               const SizedBox(height: 12),
-
-              Text(
-                'Email: $_userEmail | Role: $_userRole',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Colors.black54,
-                  letterSpacing: 0.5,
-                ),
-              ),
-
-              const SizedBox(height: 24),
 
               // ─── PENDING APPROVALS CARD ───────────────────────────────────
               Container(
@@ -388,7 +391,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
               const SizedBox(height: 32),
 
-
               // ─── RECENT ACTIVITY ──────────────────────────────────────────
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -434,9 +436,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 const Center(
                   child: Padding(
                     padding: EdgeInsets.symmetric(vertical: 24),
-                    child: CircularProgressIndicator(
-                      color: Color(0xFFCC0000),
-                    ),
+                    child: CircularProgressIndicator(color: Color(0xFFCC0000)),
                   ),
                 )
               else if (_pendingApprovals.isEmpty)
@@ -489,14 +489,16 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildActivityCard(Map<String, dynamic> item) {
     return InkWell(
       // ✅ Auto-refresh pagbalik mula sa ApprovalDetailPage
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ApprovalDetailPage(item: item),
-        ),
-      ).then((_) {
-        if (mounted) _fetchPendingApprovals();
-      }),
+      onTap: () =>
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) =>
+                  ApprovalDetailPage(item: item, isFromHistory: false),
+            ),
+          ).then((_) {
+            if (mounted) _fetchPendingApprovals();
+          }),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
@@ -507,11 +509,7 @@ class _DashboardPageState extends State<DashboardPage> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // Left — red accent line
-            Container(
-              width: 3,
-              height: 40,
-              color: const Color(0xFFCC0000),
-            ),
+            Container(width: 3, height: 40, color: const Color(0xFFCC0000)),
             const SizedBox(width: 12),
 
             // Middle — reference no + particulars + status

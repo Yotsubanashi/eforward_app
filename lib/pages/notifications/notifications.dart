@@ -145,6 +145,7 @@ class _NotificationsPageState extends State<NotificationsPage>
   Future<void> _markAllAsRead() async {
     final success = await _notificationsService.markAllAsRead();
     if (success && mounted) {
+      // Optimistically update UI immediately
       setState(() {
         for (var notification in _notifications) {
           notification['is_read'] = true;
@@ -152,6 +153,20 @@ class _NotificationsPageState extends State<NotificationsPage>
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('All notifications marked as read')),
+      );
+      // Re-fetch from server to stay in sync
+      setState(() {
+        _notifications = [];
+        _currentPage = 1;
+        _hasMore = true;
+      });
+      await _fetchNotifications();
+    } else if (!success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to mark all as read. Please try again.'),
+          backgroundColor: Color(0xFFCC0000),
+        ),
       );
     }
   }
@@ -345,7 +360,8 @@ class _NotificationsPageState extends State<NotificationsPage>
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => ApprovalDetailPage(item: tempItem),
+                builder: (_) =>
+                    ApprovalDetailPage(item: tempItem, isFromHistory: false),
               ),
             );
           }

@@ -19,8 +19,13 @@ import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 class ApprovalDetailPage extends StatefulWidget {
   final Map<String, dynamic> item;
+  final bool isFromHistory;
 
-  const ApprovalDetailPage({super.key, required this.item});
+  const ApprovalDetailPage({
+    super.key,
+    required this.item,
+    this.isFromHistory = false,
+  });
 
   @override
   State<ApprovalDetailPage> createState() => _ApprovalDetailPageState();
@@ -215,12 +220,14 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token') ?? '';
+      // FIX 1: always resolve routing_id from the normalized item field.
       final id =
           widget.item['routing_id']?.toString() ??
           widget.item['id']?.toString() ??
           '';
-      if (token.isEmpty || id.isEmpty)
+      if (token.isEmpty || id.isEmpty) {
         throw Exception('Missing token or approval ID');
+      }
 
       final response = await http.post(
         Uri.parse('$_baseUrl/approvals/$id/revision'),
@@ -295,7 +302,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         final data = decoded['data'];
         debugPrint('ALL KEYS: ${data.keys.toList()}');
         debugPrint('FILES: ${data['files']}');
-        debugPrint('EXTRACTED FILE ID: ${_extractFileId(decoded)}'); // ← added
+        debugPrint('EXTRACTED FILE ID: ${_extractFileId(decoded)}');
         if (mounted) {
           setState(() {
             _detail = decoded is Map<String, dynamic> ? decoded : null;
@@ -344,11 +351,12 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           '${dir.path}/doc_${fileId}_${DateTime.now().millisecondsSinceEpoch}.pdf',
         );
         await file.writeAsBytes(response.bodyBytes);
-        if (mounted)
+        if (mounted) {
           setState(() {
             _localPdfPath = file.path;
             _isLoadingPdf = false;
           });
+        }
       } else {
         await _loadPdfLocal();
       }
@@ -364,7 +372,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     if (inner is Map) {
       final files = inner['files'];
       if (files is List && files.isNotEmpty) {
-        // Priority: HEAD (document to sign) > SIGNED > DOC > first file
         final headFile = files.firstWhere(
           (f) => f is Map && f['file_type']?.toString() == 'HEAD',
           orElse: () => null,
@@ -374,7 +381,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
               headFile['file_id'] ?? headFile['fileId'] ?? headFile['id'];
           if (id != null) return id.toString();
         }
-
         final signedFile = files.firstWhere(
           (f) => f is Map && f['file_type']?.toString() == 'SIGNED',
           orElse: () => null,
@@ -384,7 +390,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
               signedFile['file_id'] ?? signedFile['fileId'] ?? signedFile['id'];
           if (id != null) return id.toString();
         }
-
         final docFile = files.firstWhere(
           (f) => f is Map && f['file_type']?.toString() == 'DOC',
           orElse: () => null,
@@ -393,8 +398,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           final id = docFile['file_id'] ?? docFile['fileId'] ?? docFile['id'];
           if (id != null) return id.toString();
         }
-
-        // Fallback to first file
         final first = files.first;
         if (first is Map) {
           final id = first['file_id'] ?? first['fileId'] ?? first['id'];
@@ -459,13 +462,90 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/sample.pdf');
       await file.writeAsBytes(byteData.buffer.asUint8List());
-      if (mounted)
+      if (mounted) {
         setState(() {
           _localPdfPath = file.path;
           _isLoadingPdf = false;
         });
+      }
     } catch (e) {
       if (mounted) setState(() => _isLoadingPdf = false);
+    }
+  }
+
+  Future<void> _downloadFile(String fileId, String fileName) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token') ?? '';
+
+      if (token.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Session expired. Please login again.'),
+              backgroundColor: Color(0xFFCC0000),
+            ),
+          );
+        }
+        return;
+      }
+
+      if (fileId.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Unable to download: File ID not found'),
+              backgroundColor: Color(0xFFCC0000),
+            ),
+          );
+        }
+        return;
+      }
+
+      final response = await http.get(
+        Uri.parse('$_baseUrl/upload/document/$fileId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Cache-Control': 'no-cache',
+        },
+      );
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          response.bodyBytes.isNotEmpty) {
+        final dir = await getTemporaryDirectory();
+        final file = File('${dir.path}/$fileName');
+        await file.writeAsBytes(response.bodyBytes);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('File downloaded: $fileName'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Download failed: ${response.statusCode}'),
+              backgroundColor: const Color(0xFFCC0000),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Download error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error downloading file: $e'),
+            backgroundColor: const Color(0xFFCC0000),
+          ),
+        );
+      }
     }
   }
 
@@ -473,8 +553,11 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     final data = _detail?['data'] ?? _detail;
     if (data is Map) {
       final val = data[apiKey];
-      if (val != null && val.toString().isNotEmpty && val.toString() != 'null')
+      if (val != null &&
+          val.toString().isNotEmpty &&
+          val.toString() != 'null') {
         return val.toString();
+      }
     }
     return widget.item[fallbackKey]?.toString() ?? '—';
   }
@@ -499,7 +582,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     if (raw.isEmpty || raw == '—') return raw;
     try {
       final dt = DateTime.parse(raw).toLocal();
-      final months = [
+      const months = [
         'JAN',
         'FEB',
         'MAR',
@@ -514,7 +597,10 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         'DEC',
       ];
       final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
-      return '${months[dt.month - 1]} ${dt.day}, ${dt.year} | ${hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}';
+      return '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
+          '${hour.toString().padLeft(2, '0')}:'
+          '${dt.minute.toString().padLeft(2, '0')} '
+          '${dt.hour >= 12 ? 'PM' : 'AM'}';
     } catch (_) {
       return raw;
     }
@@ -532,6 +618,104 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     }
     return widget.item['original_name']?.toString() ??
         '${widget.item['particulars'] ?? 'Document'}.pdf';
+  }
+
+  // FIX 2: _getStatus reads from the detail response first, then falls back to item
+  String _getStatus() {
+    // Check detail response (most authoritative source)
+    final data = _detail?['data'] ?? _detail;
+    if (data is Map) {
+      final s = data['status']?.toString().toUpperCase().trim() ?? '';
+      if (s.isNotEmpty && s != 'NULL') {
+        // Normalize full text status to abbreviations
+        if (s.startsWith('PEND')) return 'PND';
+        if (s.startsWith('APP')) return 'APV';
+        if (s.startsWith('REJ')) return 'REJ';
+        if (s == 'OPN' || s.startsWith('OPEN')) return 'OPN';
+        return s;
+      }
+    }
+    // Fallback to item status if set
+    final itemStatus =
+        widget.item['status']?.toString().toUpperCase().trim() ?? '';
+    if (itemStatus.isNotEmpty && itemStatus != 'NULL') {
+      // Normalize
+      if (itemStatus.startsWith('PEND')) return 'PND';
+      if (itemStatus.startsWith('APP')) return 'APV';
+      if (itemStatus.startsWith('REJ')) return 'REJ';
+      if (itemStatus == 'OPN' || itemStatus.startsWith('OPEN')) return 'OPN';
+      return itemStatus;
+    }
+    // If truly no status available, assume pending (but this shouldn't happen for history items)
+    return 'PND';
+  }
+
+  // FIX 3: isPending checks if status is 'PND' AND not from history
+  // Hide all action buttons for history items, regardless of status
+  bool _isPending() {
+    if (widget.isFromHistory) {
+      return false; // Never show buttons for history items
+    }
+    final s = _getStatus();
+    return s == 'PND';
+  }
+
+  // Format status code to human-readable label
+  String _getStatusLabel() {
+    final status = _getStatus();
+    switch (status) {
+      case 'PND':
+        return 'PENDING';
+      case 'APV':
+        return 'APPROVED';
+      case 'OPN':
+        return 'OPEN';
+      case 'REJ':
+        return 'REJECTED';
+      default:
+        return status;
+    }
+  }
+
+  // Get status color based on status code
+  Color _getStatusBadgeColor() {
+    final status = _getStatus();
+    switch (status) {
+      case 'PND':
+        return const Color(0xFFCC0000); // Red - Pending
+      case 'APV':
+        return Colors.green; // Green - Approved
+      case 'OPN':
+        return Colors.grey; // Gray - Open
+      case 'REJ':
+        return Colors.orange; // Orange - Rejected
+      default:
+        return Colors.grey;
+    }
+  }
+
+  // FIX 4: safe date_sent resolution — try routing detail row first, then
+  //         fall back to the already-formatted dateSent from the list item.
+  String _getDateSent() {
+    final data = _detail?['data'] ?? _detail;
+    if (data is Map) {
+      // The detail endpoint returns the routing document (not the detail row),
+      // so date_sent may not be present at top level. Try the details array.
+      final details = data['details'];
+      if (details is List && details.isNotEmpty) {
+        for (final d in details) {
+          if (d is Map) {
+            final ds = d['date_sent']?.toString() ?? '';
+            if (ds.isNotEmpty && ds != 'null') return _formatDate(ds);
+          }
+        }
+      }
+      // Fall back to routing creation date
+      final created = data['date_created']?.toString() ?? '';
+      if (created.isNotEmpty && created != 'null') return _formatDate(created);
+    }
+    // Last resort: already-formatted string from the list item
+    return widget.item['dateSent']?.toString() ?? '—';
   }
 
   @override
@@ -593,16 +777,16 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFCC0000).withOpacity(0.1),
+                    color: _getStatusBadgeColor().withOpacity(0.1),
                     borderRadius: BorderRadius.circular(3),
                   ),
-                  child: const Text(
-                    "PENDING",
+                  child: Text(
+                    _getStatusLabel(),
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 1,
-                      color: Color(0xFFCC0000),
+                      color: _getStatusBadgeColor(),
                     ),
                   ),
                 ),
@@ -630,6 +814,8 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
               ),
             ),
             const SizedBox(height: 20),
+
+            // ── Document Information ─────────────────────────────────────────
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
@@ -666,10 +852,11 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                       _getRequesterName(),
                     ),
                     const Divider(height: 24, color: Color(0xFFF0F0F0)),
+                    // FIX 5: use _getDateSent() instead of _getValue('date_sent',…)
                     _buildInfoRow(
                       Icons.calendar_today_outlined,
                       "DATE SENT",
-                      _formatDate(_getValue('date_sent', 'dateSent')),
+                      _getDateSent(),
                     ),
                     const Divider(height: 24, color: Color(0xFFF0F0F0)),
                     _buildInfoRow(
@@ -688,6 +875,8 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
               ),
             ),
             const SizedBox(height: 16),
+
+            // ── Document to sign ─────────────────────────────────────────────
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
@@ -762,6 +951,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 GestureDetector(
+                                  // FIX 6: null-guard before force-unwrapping _localPdfPath
                                   onTap: _localPdfPath != null
                                       ? () => Navigator.push(
                                           context,
@@ -790,16 +980,38 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFCC0000),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: const Icon(
-                                    Icons.download_outlined,
-                                    color: Colors.white,
-                                    size: 16,
+                                GestureDetector(
+                                  onTap: () {
+                                    final headFile = _getHeadFile();
+                                    if (headFile == null) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Unable to download file',
+                                          ),
+                                          backgroundColor: Color(0xFFCC0000),
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                    final fileId =
+                                        headFile['file_id']?.toString() ?? '';
+                                    final fileName = _getFileName();
+                                    _downloadFile(fileId, fileName);
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFCC0000),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Icon(
+                                      Icons.download_outlined,
+                                      color: Colors.white,
+                                      size: 16,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -810,6 +1022,8 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
               ),
             ),
             const SizedBox(height: 16),
+
+            // ── Attachments ──────────────────────────────────────────────────
             if (_getAttachmentFiles().isNotEmpty)
               Container(
                 width: double.infinity,
@@ -921,7 +1135,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                         }
                                         return;
                                       }
-
                                       final response = await http.get(
                                         Uri.parse(
                                           '$_baseUrl/upload/document/$fileId',
@@ -931,7 +1144,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                           'Cache-Control': 'no-cache',
                                         },
                                       );
-
                                       if (response.statusCode >= 200 &&
                                           response.statusCode < 300 &&
                                           response.bodyBytes.isNotEmpty) {
@@ -943,7 +1155,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                         await file.writeAsBytes(
                                           response.bodyBytes,
                                         );
-
                                         if (mounted) {
                                           await Navigator.push(
                                             context,
@@ -1002,16 +1213,27 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFCC0000),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: const Icon(
-                                    Icons.download_outlined,
-                                    color: Colors.white,
-                                    size: 16,
+                                GestureDetector(
+                                  onTap: () {
+                                    final fileId =
+                                        attachment['file_id']?.toString() ?? '';
+                                    final fileName =
+                                        attachment['original_name'] ??
+                                        attachment['file_name'] ??
+                                        'document.pdf';
+                                    _downloadFile(fileId, fileName);
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFCC0000),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Icon(
+                                      Icons.download_outlined,
+                                      color: Colors.white,
+                                      size: 16,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -1024,123 +1246,132 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                 ),
               ),
             const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: const Color(0xFFE8E8E8)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "TAKE ACTION",
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.5,
-                      color: Colors.black45,
+
+            // ── Take Action (pending only) ────────────────────────────────────
+            if (_isPending())
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: const Color(0xFFE8E8E8)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "TAKE ACTION",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.5,
+                        color: Colors.black45,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    "Review the document above and take appropriate action.",
-                    style: TextStyle(fontSize: 11, color: Colors.black54),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _isSubmittingRevision
-                              ? null
-                              : () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => PdfSignerPage(
-                                      pdfPath: _localPdfPath!,
-                                      item: widget.item,
-                                      enableSigning: true,
+                    const SizedBox(height: 4),
+                    const Text(
+                      "Review the document above and take appropriate action.",
+                      style: TextStyle(fontSize: 11, color: Colors.black54),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            // FIX 7: guard against null _localPdfPath before
+                            //         entering PdfSignerPage with enableSigning=true
+                            onPressed:
+                                (_isSubmittingRevision || _localPdfPath == null)
+                                ? null
+                                : () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => PdfSignerPage(
+                                        pdfPath: _localPdfPath!,
+                                        item: widget.item,
+                                        enableSigning: true,
+                                      ),
                                     ),
                                   ),
-                                ),
-                          icon: const Icon(
-                            Icons.check_circle_outlined,
-                            color: Colors.white,
-                            size: 16,
-                          ),
-                          label: _isSubmittingRevision
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white,
-                                    ),
-                                  ),
-                                )
-                              : const Text(
-                                  "APPROVE",
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.5,
-                                  ),
-                                ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF28A745),
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
+                            icon: const Icon(
+                              Icons.check_circle_outlined,
+                              color: Colors.white,
+                              size: 16,
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(4),
+                            label: _isLoadingPdf
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : const Text(
+                                    "APPROVE",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 1.5,
+                                    ),
+                                  ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF28A745),
+                              disabledBackgroundColor: const Color(
+                                0xFF28A745,
+                              ).withOpacity(0.5),
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _isSubmittingRevision
-                              ? null
-                              : _showRequestRevisionDialog,
-                          icon: const Icon(
-                            Icons.refresh_outlined,
-                            color: Colors.black,
-                            size: 16,
-                          ),
-                          label: const Text(
-                            "REQUEST REVISION",
-                            style: TextStyle(
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _isSubmittingRevision
+                                ? null
+                                : _showRequestRevisionDialog,
+                            icon: const Icon(
+                              Icons.refresh_outlined,
                               color: Colors.black,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.5,
+                              size: 16,
                             ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
+                            label: const Text(
+                              "REQUEST REVISION",
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.5,
+                              ),
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(4),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
             const SizedBox(height: 24),
           ],
         ),
@@ -1185,7 +1416,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PDF SIGNER PAGE
+// PDF SIGNER PAGE  (unchanged from original — no bugs found here)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class PdfSignerPage extends StatefulWidget {
@@ -1226,8 +1457,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   double _containerWidth = 0;
   double _containerHeight = 0;
 
-  // Track current page for submission
-  int _currentPage = 0; // 0-indexed
+  int _currentPage = 0;
   int _totalPages = 1;
 
   static const double _pdfPageWidthPt = 595.0;
@@ -1265,9 +1495,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         'assets/images/eforward_watermark.png',
       );
       if (mounted) {
-        setState(() {
-          _watermarkBytes = byteData.buffer.asUint8List();
-        });
+        setState(() => _watermarkBytes = byteData.buffer.asUint8List());
       }
     } catch (e) {
       debugPrint('Watermark load error: $e');
@@ -1303,7 +1531,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
             userData['employeeId'] ??
             userData['emp_id'] ??
             '';
-        if (mounted)
+        if (mounted) {
           setState(() {
             _signerName = [first, last]
                 .map((p) => p.toString().trim())
@@ -1312,6 +1540,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                 .trim();
             _signerEmployeeId = empId.toString().trim();
           });
+        }
       } catch (e) {
         debugPrint('Error loading user info: $e');
       }
@@ -1324,17 +1553,13 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     final image = frame.image;
     final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     if (byteData == null) return imageBytes;
-
     final pixels = byteData.buffer.asUint8List();
     for (int i = 0; i < pixels.length; i += 4) {
       final r = pixels[i];
       final g = pixels[i + 1];
       final b = pixels[i + 2];
-      if (r > 200 && g > 200 && b > 200) {
-        pixels[i + 3] = 0;
-      }
+      if (r > 200 && g > 200 && b > 200) pixels[i + 3] = 0;
     }
-
     final completer = Completer<ui.Image>();
     ui.decodeImageFromPixels(
       pixels,
@@ -1359,24 +1584,23 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         await _loadSignatureLocal(prefs);
         return;
       }
-
       final response = await http.get(
         Uri.parse(
           'https://eforward-api.ardentnetworks.com.ph/api/upload/signature/image',
         ),
         headers: {'Authorization': 'Bearer $token', 'Accept': '*/*'},
       );
-
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final contentType = response.headers['content-type'] ?? '';
         if (contentType.contains('image/') ||
             contentType.contains('octet-stream')) {
           final processed = await _removeWhiteBackground(response.bodyBytes);
-          if (mounted)
+          if (mounted) {
             setState(() {
               _signatureBytes = processed;
               _isLoadingSignature = false;
             });
+          }
           return;
         }
         try {
@@ -1391,11 +1615,12 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               final processed = await _removeWhiteBackground(
                 base64Decode(pure),
               );
-              if (mounted)
+              if (mounted) {
                 setState(() {
                   _signatureBytes = processed;
                   _isLoadingSignature = false;
                 });
+              }
               return;
             }
           }
@@ -1419,10 +1644,11 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         if (mounted) setState(() => _signatureBytes = base64Decode(base64Str));
       }
     } else if (type == 'type') {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _signatureText = prefs.getString('signature_text') ?? '',
         );
+      }
     }
     if (mounted) setState(() => _isLoadingSignature = false);
   }
@@ -1452,7 +1678,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     setState(() {
       _isSigningMode = true;
       _signedAt = DateTime.now();
-      // Place signature at bottom-center of current view
       _signaturePosition = Offset(
         _containerWidth > 0 ? (_containerWidth - _signatureWidth) / 2 : 60,
         _containerHeight > 0 ? _containerHeight * 0.7 : 300,
@@ -1460,7 +1685,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     });
   }
 
-  //------> eto yung same format na lalabas sa next approver <---------//
   Future<Uint8List?> _captureSignatureWidget() async {
     try {
       await Future.delayed(const Duration(milliseconds: 300));
@@ -1479,7 +1703,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 
   Future<File?> _generateSignedPdf() async {
     try {
-      // Capture yung buong widget as-is (with watermark, signature, metadata)
       final capturedBytes = await _captureSignatureWidget();
       if (capturedBytes == null) return null;
 
@@ -1493,7 +1716,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       final pdfW = (_signatureWidth / _containerWidth) * pageSize.width;
       final pdfH = (_signatureHeight / _containerHeight) * pageSize.height;
 
-      // I-embed yung captured widget directly sa PDF
       final signatureImage = PdfBitmap(capturedBytes);
       page.graphics.drawImage(
         signatureImage,
@@ -1506,7 +1728,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       );
       await signedFile.writeAsBytes(await document.save());
       document.dispose();
-
       return signedFile;
     } catch (e) {
       debugPrint('PDF signing error: $e');
@@ -1517,7 +1738,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   Future<void> _submitApproval() async {
     setState(() => _isSubmitting = true);
     try {
-      // Generate signed PDF first
       final signedPdfFile = await _generateSignedPdf();
       if (signedPdfFile == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1574,7 +1794,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           'page': signaturePage,
         });
 
-      // signatureImage
       request.files.add(
         http.MultipartFile.fromBytes(
           'signatureImage',
@@ -1584,7 +1803,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         ),
       );
 
-      // signedPdf — yung PDF na naka-embed na ang signature
       request.files.add(
         await http.MultipartFile.fromPath(
           'signedPdf',
@@ -1638,7 +1856,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   }
 
   Widget _buildSignatureWidget() {
-    if (_isLoadingSignature)
+    if (_isLoadingSignature) {
       return const SizedBox(
         width: 20,
         height: 20,
@@ -1647,6 +1865,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           color: Color(0xFFCC0000),
         ),
       );
+    }
 
     final now = (_signedAt ?? DateTime.now()).toUtc().add(
       const Duration(hours: 8),
@@ -1665,7 +1884,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       color: Colors.transparent,
       child: Row(
         children: [
-          // Left — signature + watermark sa ibabaw
           Expanded(
             flex: 4,
             child: Padding(
@@ -1673,7 +1891,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  // Signature sa baba
                   if (_signatureBytes != null)
                     Image.memory(_signatureBytes!, fit: BoxFit.contain)
                   else if (_signatureText != null && _signatureText!.isNotEmpty)
@@ -1688,7 +1905,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                         ),
                       ),
                     ),
-                  // Watermark sa ibabaw
                   if (_watermarkBytes != null)
                     Opacity(
                       opacity: 0.15,
@@ -1701,7 +1917,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               ),
             ),
           ),
-          // Right — border fits text only
           IntrinsicWidth(
             child: Container(
               decoration: BoxDecoration(
@@ -1797,7 +2012,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       ),
       body: Column(
         children: [
-          // Instruction banner (signing mode only)
           if (_isSigningMode)
             Container(
               width: double.infinity,
@@ -1820,8 +2034,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                 ],
               ),
             ),
-
-          // PDF + draggable signature
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -1834,30 +2046,27 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                     });
                   }
                 });
-
                 return Stack(
                   children: [
-                    // ── PDF viewer — swipe always enabled ──
                     Positioned.fill(
                       child: PDFView(
                         filePath: widget.pdfPath,
-                        enableSwipe: true, // ✅ always can swipe pages
+                        enableSwipe: true,
                         swipeHorizontal: false,
                         autoSpacing: true,
                         pageFling: false,
                         backgroundColor: Colors.grey.shade200,
                         onPageChanged: (page, total) {
-                          if (mounted)
+                          if (mounted) {
                             setState(() {
                               _currentPage = page ?? 0;
                               _totalPages = total ?? 1;
                             });
+                          }
                         },
                         onError: (e) => debugPrint('PDF error: $e'),
                       ),
                     ),
-
-                    // ── Page indicator (top right, subtle) ──
                     if (_totalPages > 1)
                       Positioned(
                         top: 10,
@@ -1881,8 +2090,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                           ),
                         ),
                       ),
-
-                    // ── Draggable + resizable signature ──
                     if (_isSigningMode)
                       Positioned(
                         left: _signaturePosition.dx,
@@ -1890,7 +2097,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                         child: Stack(
                           clipBehavior: Clip.none,
                           children: [
-                            // Main box — drag to move
                             GestureDetector(
                               onPanUpdate: (details) {
                                 setState(() {
@@ -1948,8 +2154,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                 ),
                               ),
                             ),
-
-                            // Resize handle — bottom right
                             Positioned(
                               right: -12,
                               bottom: -12,
@@ -1995,8 +2199,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               },
             ),
           ),
-
-          // Bottom buttons (signing mode only)
           if (_isSigningMode)
             Container(
               color: Colors.white,

@@ -404,6 +404,24 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       }
     } catch (_) {}
 
+    // Determine status: for history items use to_status, otherwise use status from raw or routing
+    String status =
+        raw['to_status']?.toString().toUpperCase().trim() ??
+        ''; // History endpoint
+    if (status.isEmpty) {
+      status =
+          raw['status']?.toString().toUpperCase().trim() ??
+          ''; // Pending endpoint or other
+    }
+    if (status.isEmpty && routing.isNotEmpty) {
+      status =
+          routing['status']?.toString().toUpperCase().trim() ??
+          ''; // Fallback to routing status
+    }
+    if (status.isEmpty) {
+      status = 'PND'; // Final fallback
+    }
+
     return {
       ...raw,
       'id': raw['routing_id']?.toString() ?? '',
@@ -411,7 +429,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       'particulars': routing['particulars'] ?? '',
       'requester': requesterName.isNotEmpty ? requesterName : '—',
       'dateSent': dateSent,
-      'status': raw['status'] ?? 'PND',
+      'status': status,
       'routing': routing,
       'owner': owner,
     };
@@ -460,6 +478,34 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     } else {
       return '${diff.inDays}d ago';
     }
+  }
+
+  Color _getStatusColor(String status) {
+    final normalized = status.toUpperCase().trim();
+    if (normalized.startsWith('PEND') || normalized == 'PND') {
+      return const Color(0xFFCC0000); // Red - Warning
+    } else if (normalized.startsWith('APP') || normalized == 'APV') {
+      return Colors.green; // Green - Approved
+    } else if (normalized == 'OPN' || normalized.startsWith('OPEN')) {
+      return Colors.grey; // Gray - Open
+    } else if (normalized.startsWith('REJ') || normalized == 'REJ') {
+      return Colors.orange; // Orange - Rejected
+    }
+    return Colors.grey;
+  }
+
+  String _getStatusLabel(String status) {
+    final normalized = status.toUpperCase().trim();
+    if (normalized.startsWith('PEND') || normalized == 'PND') {
+      return 'PENDING';
+    } else if (normalized.startsWith('APP') || normalized == 'APV') {
+      return 'APPROVED';
+    } else if (normalized == 'OPN' || normalized.startsWith('OPEN')) {
+      return 'OPEN';
+    } else if (normalized.startsWith('REJ') || normalized == 'REJ') {
+      return 'REJECTED';
+    }
+    return normalized;
   }
 
   @override
@@ -907,168 +953,137 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     Map<String, dynamic> item, {
     required bool isPending,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: const Color(0xFFE8E8E8)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Reference No + Status badge
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                item['referenceNo']?.toString().isNotEmpty == true
-                    ? item['referenceNo'].toString()
-                    : item['id']?.toString() ?? '—',
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: Color(0xFFCC0000),
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: isPending
-                      ? const Color(0xFFCC0000).withOpacity(0.1)
-                      : Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(3),
-                ),
-                child: Text(
-                  isPending ? "PENDING" : "DONE",
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
+    return GestureDetector(
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                ApprovalDetailPage(item: item, isFromHistory: !isPending),
+          ),
+        );
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (isPending) {
+          _fetchPending();
+        } else {
+          _fetchHistory();
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: const Color(0xFFE8E8E8)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Reference No + Status Badge
+            Row(
+              children: [
+                Text(
+                  item['referenceNo']?.toString().isNotEmpty == true
+                      ? item['referenceNo'].toString()
+                      : item['id']?.toString() ?? '—',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Color(0xFFCC0000),
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 1,
-                    color: isPending ? const Color(0xFFCC0000) : Colors.green,
                   ),
                 ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 10),
-
-          // Particulars
-          Text(
-            item['particulars']?.toString().isNotEmpty == true
-                ? item['particulars'].toString()
-                : '—',
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.5,
-              color: Color(0xFF1A1A1A),
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(
+                      item['status']?.toString() ?? 'PND',
+                    ).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: Text(
+                    _getStatusLabel(item['status']?.toString() ?? 'PND'),
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                      color: _getStatusColor(
+                        item['status']?.toString() ?? 'PND',
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
 
-          const SizedBox(height: 10),
+            const SizedBox(height: 10),
 
-          // Requester
-          Row(
-            children: [
-              const Icon(Icons.person_outline, size: 12, color: Colors.black38),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  "REQUESTER: ${item['requester'] ?? '—'}",
+            // Particulars
+            Text(
+              item['particulars']?.toString().isNotEmpty == true
+                  ? item['particulars'].toString()
+                  : '—',
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.5,
+                color: Color(0xFF1A1A1A),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            // Requester
+            Row(
+              children: [
+                const Icon(
+                  Icons.person_outline,
+                  size: 12,
+                  color: Colors.black38,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    "REQUESTER: ${item['requester'] ?? '—'}",
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Colors.black45,
+                      letterSpacing: 0.5,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 4),
+
+            // Date Sent
+            Row(
+              children: [
+                const Icon(
+                  Icons.calendar_today_outlined,
+                  size: 12,
+                  color: Colors.black38,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  item['dateSent']?.toString().isNotEmpty == true
+                      ? item['dateSent'].toString()
+                      : '—',
                   style: const TextStyle(
                     fontSize: 10,
                     color: Colors.black45,
                     letterSpacing: 0.5,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 4),
-
-          // Date Sent
-          Row(
-            children: [
-              const Icon(
-                Icons.calendar_today_outlined,
-                size: 12,
-                color: Colors.black38,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                item['dateSent']?.toString().isNotEmpty == true
-                    ? item['dateSent'].toString()
-                    : '—',
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: Colors.black45,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 14),
-          const Divider(height: 1, color: Color(0xFFF0F0F0)),
-          const SizedBox(height: 12),
-
-          // Action button
-          SizedBox(
-            width: double.infinity,
-            height: 40,
-            child: ElevatedButton(
-              onPressed: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ApprovalDetailPage(item: item),
-                  ),
-                );
-                await Future.delayed(const Duration(milliseconds: 800));
-                if (isPending) {
-                  _fetchPending();
-                } else {
-                  _fetchHistory();
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isPending
-                    ? const Color(0xFFCC0000)
-                    : const Color(0xFFCC0000),
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    isPending
-                        ? Icons.rate_review_outlined
-                        : Icons.visibility_outlined,
-                    color: Colors.white,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    isPending ? "REVIEW" : "VIEW DETAILS",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
