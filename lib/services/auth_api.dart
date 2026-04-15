@@ -16,7 +16,7 @@ class AuthApi {
     required String password,
   }) async {
     return _post(
-      endpoint: '/auth/login',
+      endpoint: '/auth/mobile-login',
       body: {'email': email, 'password': password},
       successMessage: 'Login successful.',
       failureMessage: 'Login failed.',

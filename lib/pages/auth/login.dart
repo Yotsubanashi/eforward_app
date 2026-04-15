@@ -20,7 +20,6 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   bool _rememberMe = false;
   bool _isLoading = false;
-  bool _otpSent = false; //  Flag to prevent multiple OTP sends
 
   final AuthApi _authApi = AuthApi();
   final TextEditingController _emailController = TextEditingController();
@@ -30,7 +29,6 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _loadRememberedEmail();
-    _otpSent = false; //  Reset OTP flag on screen initialization
   }
 
   void _loadRememberedEmail() async {
@@ -63,17 +61,6 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    //  Prevent multiple OTP sends
-    if (_otpSent) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('OTP already sent. Please check your email.'),
-          backgroundColor: Color(0xFFCC0000),
-        ),
-      );
-      return;
-    }
-
     setState(() => _isLoading = true);
 
     final result = await _authApi.login(email: email, password: password);
@@ -85,50 +72,36 @@ class _LoginScreenState extends State<LoginScreen> {
     if (result.isSuccess) {
       _saveRememberMe(email);
       debugPrint('Login success: ${result.data}');
-      debugPrint('RequiredOTP: ${result.requiredOTP}');
 
-      // Check if OTP is required based on API response
-      if (result.requiredOTP) {
-        // requiredOTP = true → Go to OTP screen
-        setState(() => _otpSent = true);
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => OtpScreen(email: email)),
-        );
-      } else {
-        // requiredOTP = false → Save token and go to Dashboard
-        final token =
-            result.data?['accessToken'] ??
-            result.data?['access_token'] ??
-            result.data?['token'];
+      // Save token and go to Dashboard
+      final token =
+          result.data?['accessToken'] ??
+          result.data?['access_token'] ??
+          result.data?['token'];
 
-        if (token != null && token.toString().isNotEmpty) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('access_token', token.toString());
-          if (result.data != null) {
-            await prefs.setString('user_data', jsonEncode(result.data));
-          }
-
-          // 👇 Save FCM token to backend for push notifications
-          await FCMTokenService.saveFCMTokenToBackend(
-            accessToken: token.toString(),
-          );
+      if (token != null && token.toString().isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('access_token', token.toString());
+        if (result.data != null) {
+          await prefs.setString('user_data', jsonEncode(result.data));
         }
 
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => DashboardPage(userData: result.data),
-          ),
+        // 👇 Save FCM token to backend for push notifications
+        await FCMTokenService.saveFCMTokenToBackend(
+          accessToken: token.toString(),
         );
       }
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DashboardPage(userData: result.data),
+        ),
+      );
       return;
     }
 
     debugPrint('Login failed [${result.statusCode}]: ${result.message}');
-
-    // Reset OTP flag on login failure
-    setState(() => _otpSent = false);
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
