@@ -421,7 +421,6 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
 
-         
             const SizedBox(height: 40),
 
             // Profile Section
@@ -551,17 +550,13 @@ class _SettingsPageState extends State<SettingsPage> {
             const Divider(height: 1, color: Color(0xFFEEEEEE)),
 
             // Logout
+            // Logout
             _buildMenuItem(
               context,
               icon: Icons.logout,
               iconColor: const Color(0xFF555555),
               label: "SESSION MANAGEMENT",
               title: "LOGOUT",
-              trailing: const Icon(
-                Icons.power_settings_new,
-                color: Color(0xFFAAAAAA),
-                size: 18,
-              ),
               onTap: _logout,
             ),
 
@@ -578,7 +573,7 @@ class _SettingsPageState extends State<SettingsPage> {
     required Color iconColor,
     required String label,
     required String title,
-    required Widget trailing,
+    Widget? trailing, // ← now optional
     required VoidCallback onTap,
   }) {
     return InkWell(
@@ -623,7 +618,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
             ),
-            trailing,
+            if (trailing != null) trailing, // ← only renders if provided
           ],
         ),
       ),
