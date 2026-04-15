@@ -126,10 +126,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
         return;
       }
 
-      final queryParams = <String, String>{
-        'page': '1',
-        'limit': '$_pageLimit',
-      };
+      final queryParams = <String, String>{'page': '1', 'limit': '$_pageLimit'};
       if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
       final uri = Uri.parse(
@@ -251,10 +248,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
         return;
       }
 
-      final queryParams = <String, String>{
-        'page': '1',
-        'limit': '$_pageLimit',
-      };
+      final queryParams = <String, String>{'page': '1', 'limit': '$_pageLimit'};
       if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
       final uri = Uri.parse(
@@ -387,8 +381,18 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       if (dateSent.isNotEmpty) {
         final dt = DateTime.parse(dateSent).toLocal();
         const months = [
-          'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-          'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+          'JAN',
+          'FEB',
+          'MAR',
+          'APR',
+          'MAY',
+          'JUN',
+          'JUL',
+          'AUG',
+          'SEP',
+          'OCT',
+          'NOV',
+          'DEC',
         ];
         final hour = dt.hour > 12
             ? dt.hour - 12
@@ -844,10 +848,9 @@ class _ApprovalsPageState extends State<ApprovalsPage>
         controller: scrollController,
         padding: const EdgeInsets.all(16),
         itemCount: items.length + 1,
-        separatorBuilder: (_, i) =>
-            i == items.length - 1
-                ? const SizedBox(height: 16)
-                : const SizedBox(height: 12),
+        separatorBuilder: (_, i) => i == items.length - 1
+            ? const SizedBox(height: 16)
+            : const SizedBox(height: 12),
         itemBuilder: (context, index) {
           // Footer
           if (index == items.length) {
@@ -1035,7 +1038,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
               style: ElevatedButton.styleFrom(
                 backgroundColor: isPending
                     ? const Color(0xFFCC0000)
-                    : Colors.green,
+                    : const Color(0xFFCC0000),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(4),
