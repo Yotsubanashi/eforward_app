@@ -501,16 +501,14 @@ class _ApprovalsPageState extends State<ApprovalsPage>
   // ── Status helpers — abbreviation-only input (PND/APV/REJ/OPN) ────────────
   Color _getStatusColor(String status) {
     switch (status.toUpperCase().trim()) {
-      case 'PND':
+      case 'CNL':
         return const Color(0xFFCC0000);
       case 'APV':
         return Colors.green;
-      case 'REJ':
+      case 'PND':
         return Colors.orange;
       case 'OPN':
         return Colors.grey;
-      case 'CNL':
-        return Colors.blueGrey;
       default:
         return Colors.grey;
     }
@@ -522,8 +520,6 @@ class _ApprovalsPageState extends State<ApprovalsPage>
         return 'PENDING';
       case 'APV':
         return 'APPROVED';
-      case 'REJ':
-        return 'REJECTED';
       case 'OPN':
         return 'OPEN';
       case 'CNL':

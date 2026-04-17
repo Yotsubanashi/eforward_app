@@ -670,8 +670,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         return 'APPROVED';
       case 'OPN':
         return 'OPEN';
-      case 'REJ':
-        return 'REJECTED';
       case 'CNL':
         return 'CANCELLED';
       default:
@@ -683,16 +681,14 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   Color _getStatusBadgeColor() {
     final status = _getStatus();
     switch (status) {
-      case 'PND':
+      case 'CNL':
         return const Color(0xFFCC0000);
       case 'APV':
         return Colors.green;
       case 'OPN':
         return Colors.grey;
-      case 'REJ':
+      case 'PND':
         return Colors.orange;
-      case 'CNL':
-        return Colors.blueGrey;
       default:
         return Colors.grey;
     }
