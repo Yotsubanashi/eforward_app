@@ -244,7 +244,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               // Footer
               const Center(
                 child: Text(
-                  "© 2024 E-FORWARD INSTITUTIONAL SYSTEMS.\nALL RIGHTS RESERVED.",
+                  "© 2026 E-FORWARD INSTITUTIONAL SYSTEMS.\nALL RIGHTS RESERVED.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 8,
