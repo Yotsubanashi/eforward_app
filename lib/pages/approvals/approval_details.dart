@@ -672,6 +672,8 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         return 'OPEN';
       case 'REJ':
         return 'REJECTED';
+      case 'CNL':
+        return 'CANCELLED';
       default:
         return status;
     }
@@ -682,13 +684,15 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     final status = _getStatus();
     switch (status) {
       case 'PND':
-        return const Color(0xFFCC0000); // Red - Pending
+        return const Color(0xFFCC0000);
       case 'APV':
-        return Colors.green; // Green - Approved
+        return Colors.green;
       case 'OPN':
-        return Colors.grey; // Gray - Open
+        return Colors.grey;
       case 'REJ':
-        return Colors.orange; // Orange - Rejected
+        return Colors.orange;
+      case 'CNL':
+        return Colors.blueGrey;
       default:
         return Colors.grey;
     }

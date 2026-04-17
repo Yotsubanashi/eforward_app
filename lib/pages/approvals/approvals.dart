@@ -383,10 +383,11 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     final firstName = owner['fname']?.toString().trim() ?? '';
     final middleName = owner['mname']?.toString().trim() ?? '';
     final lastName = owner['lname']?.toString().trim() ?? '';
-    final requesterName = [firstName, middleName, lastName]
-        .where((p) => p.isNotEmpty)
-        .join(' ')
-        .trim();
+    final requesterName = [
+      firstName,
+      middleName,
+      lastName,
+    ].where((p) => p.isNotEmpty).join(' ').trim();
 
     // Try multiple date field names
     String dateSent =
@@ -396,11 +397,22 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       if (dateSent.isNotEmpty) {
         final dt = DateTime.parse(dateSent).toLocal();
         const months = [
-          'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-          'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+          'JAN',
+          'FEB',
+          'MAR',
+          'APR',
+          'MAY',
+          'JUN',
+          'JUL',
+          'AUG',
+          'SEP',
+          'OCT',
+          'NOV',
+          'DEC',
         ];
-        final hour =
-            dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+        final hour = dt.hour > 12
+            ? dt.hour - 12
+            : (dt.hour == 0 ? 12 : dt.hour);
         final ampm = dt.hour >= 12 ? 'PM' : 'AM';
         dateSent =
             '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
@@ -422,9 +434,10 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       'action=${raw['action']}',
     );
 
-    String status = _normalizeStatus(raw['to_status']?.toString());
+    // Priority: routing.status (most authoritative) → raw.status → to_status → action
+    String status = _normalizeStatus(routing['status']?.toString());
     if (status.isEmpty) status = _normalizeStatus(raw['status']?.toString());
-    if (status.isEmpty) status = _normalizeStatus(routing['status']?.toString());
+    if (status.isEmpty) status = _normalizeStatus(raw['to_status']?.toString());
     // Some APIs express history action as a verb — map it to a status code
     if (status.isEmpty) {
       final action = raw['action']?.toString().toUpperCase().trim() ?? '';
@@ -440,7 +453,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       'particulars': routing['particulars'] ?? '',
       'requester': requesterName.isNotEmpty ? requesterName : '—',
       'dateSent': dateSent,
-      'status': status,   // always one of: PND | APV | REJ | OPN
+      'status': status, // always one of: PND | APV | REJ | OPN
       'routing': routing,
       'owner': owner,
     };
@@ -965,148 +978,137 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     required bool isPending,
   }) {
     final status = item['status']?.toString() ?? 'PND';
-    final isCancelled = status == 'CNL';
     return GestureDetector(
-      onTap: isCancelled
-          ? () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('This document has been cancelled.'),
-                  backgroundColor: Colors.blueGrey,
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            }
-          : () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      ApprovalDetailPage(item: item, isFromHistory: !isPending),
-                ),
-              );
-              await Future.delayed(const Duration(milliseconds: 800));
-              if (isPending) {
-                _fetchPending();
-              } else {
-                _fetchHistory();
-              }
-            },
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                ApprovalDetailPage(item: item, isFromHistory: !isPending),
+          ),
+        );
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (isPending) {
+          _fetchPending();
+        } else {
+          _fetchHistory();
+        }
+      },
       child: Opacity(
-        opacity: isCancelled ? 0.55 : 1.0,
+        opacity: status == 'CNL' ? 0.55 : 1.0,
         child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: const Color(0xFFE8E8E8)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Reference No + Status Badge
-            Row(
-              children: [
-                Text(
-                  item['referenceNo']?.toString().isNotEmpty == true
-                      ? item['referenceNo'].toString()
-                      : item['id']?.toString() ?? '—',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Color(0xFFCC0000),
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(status).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                  child: Text(
-                    _getStatusLabel(status),
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.8,
-                      color: _getStatusColor(status),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: const Color(0xFFE8E8E8)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Reference No + Status Badge
+              Row(
+                children: [
+                  Text(
+                    item['referenceNo']?.toString().isNotEmpty == true
+                        ? item['referenceNo'].toString()
+                        : item['id']?.toString() ?? '—',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Color(0xFFCC0000),
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1,
                     ),
                   ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 10),
-
-            // Particulars
-            Text(
-              item['particulars']?.toString().isNotEmpty == true
-                  ? item['particulars'].toString()
-                  : '—',
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.5,
-                color: Color(0xFF1A1A1A),
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(status).withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: Text(
+                      _getStatusLabel(status),
+                      style: TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                        color: _getStatusColor(status),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
 
-            const SizedBox(height: 10),
+              const SizedBox(height: 10),
 
-            // Requester
-            Row(
-              children: [
-                const Icon(
-                  Icons.person_outline,
-                  size: 12,
-                  color: Colors.black38,
+              // Particulars
+              Text(
+                item['particulars']?.toString().isNotEmpty == true
+                    ? item['particulars'].toString()
+                    : '—',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.5,
+                  color: Color(0xFF1A1A1A),
                 ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    "REQUESTER: ${item['requester'] ?? '—'}",
+              ),
+
+              const SizedBox(height: 10),
+
+              // Requester
+              Row(
+                children: [
+                  const Icon(
+                    Icons.person_outline,
+                    size: 12,
+                    color: Colors.black38,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      "REQUESTER: ${item['requester'] ?? '—'}",
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Colors.black45,
+                        letterSpacing: 0.5,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 4),
+
+              // Date Sent
+              Row(
+                children: [
+                  const Icon(
+                    Icons.calendar_today_outlined,
+                    size: 12,
+                    color: Colors.black38,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    item['dateSent']?.toString().isNotEmpty == true
+                        ? item['dateSent'].toString()
+                        : '—',
                     style: const TextStyle(
                       fontSize: 10,
                       color: Colors.black45,
                       letterSpacing: 0.5,
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 4),
-
-            // Date Sent
-            Row(
-              children: [
-                const Icon(
-                  Icons.calendar_today_outlined,
-                  size: 12,
-                  color: Colors.black38,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  item['dateSent']?.toString().isNotEmpty == true
-                      ? item['dateSent'].toString()
-                      : '—',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Colors.black45,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
-      ), // Opacity
     );
   }
 }
