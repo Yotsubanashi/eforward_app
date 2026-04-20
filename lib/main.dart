@@ -4,6 +4,7 @@ import 'package:app_links/app_links.dart';
 import 'pages/auth/login.dart';
 import 'pages/auth/reset-password.dart';
 import 'services/firebase_notification_service.dart';
+import 'services/app_lifecycle_service.dart';
 import 'firebase_options.dart';
 
 // ✅ FIX: navigatorKey must be a global — NOT declared inside main()
@@ -22,6 +23,9 @@ void main() async {
 
   // 3. Init notifications (permissions, channel, listeners, background handler)
   await FirebaseNotificationService().initialize();
+
+  // 4. Initialize app lifecycle service to monitor app lifecycle
+  AppLifecycleService().initialize();
 
   runApp(const MyApp());
 }
