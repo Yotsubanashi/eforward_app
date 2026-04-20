@@ -205,15 +205,6 @@ class FirebaseNotificationService {
 
     // Update badge counter
     NotificationsService().incrementUnreadCount();
-
-    // Extra: in-app dialog for approval type
-    if (message.data['type'] == 'pending_approval') {
-      _showInAppDialog(
-        title: message.notification?.title ?? 'New Approval',
-        body: message.notification?.body ?? '',
-        data: message.data,
-      );
-    }
   }
 
   // ── Navigation ────────────────────────────────────────────────────────────
@@ -255,73 +246,6 @@ class FirebaseNotificationService {
         ),
       );
     }
-  }
-
-  // ── In-app dialog (foreground only) ──────────────────────────────────────
-  static void _showInAppDialog({
-    required String title,
-    required String body,
-    required Map<String, dynamic> data,
-  }) {
-    final context = _navigatorKey?.currentContext;
-    if (context == null || !context.mounted) return;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        title: Row(
-          children: [
-            const Icon(
-              Icons.notifications_active,
-              size: 22,
-              color: Color(0xFFCC0000),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Text(body, style: const TextStyle(fontSize: 13, height: 1.5)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text(
-              'DISMISS',
-              style: TextStyle(
-                color: Colors.black45,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _navigate(data);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFCC0000),
-              elevation: 0,
-            ),
-            child: const Text(
-              'VIEW',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   // ── Misc helpers ──────────────────────────────────────────────────────────
