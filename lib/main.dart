@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:app_links/app_links.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'pages/auth/login.dart';
 import 'pages/auth/reset-password.dart';
+import 'pages/dashboard/dashboard.dart';
 import 'services/firebase_notification_service.dart';
 import 'services/app_lifecycle_service.dart';
 import 'firebase_options.dart';
@@ -39,6 +41,7 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final _appLinks = AppLinks();
+  late final Future<bool> _hasSessionFuture = _hasSavedSession();
 
   @override
   void initState() {
@@ -84,12 +87,33 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
+  Future<bool> _hasSavedSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final accessToken = prefs.getString('access_token')?.trim() ?? '';
+    return accessToken.isNotEmpty;
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
-      home: const LoginScreen(),
+      home: FutureBuilder<bool>(
+        future: _hasSessionFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+
+          if (snapshot.data == true) {
+            return const DashboardPage();
+          }
+
+          return const LoginScreen();
+        },
+      ),
     );
   }
 }

@@ -822,7 +822,9 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   String _formatDate(String raw) {
     if (raw.isEmpty || raw == '—') return raw;
     try {
-      final dt = DateTime.parse(raw).toUtc().subtract(const Duration(hours: 12));
+      final dt = DateTime.parse(
+        raw,
+      ).toUtc().subtract(const Duration(hours: 12));
       const months = [
         'JAN',
         'FEB',
