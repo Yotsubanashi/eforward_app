@@ -390,12 +390,16 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     ].where((p) => p.isNotEmpty).join(' ').trim();
 
     // Try multiple date field names
+    // For history items, created_at is the action timestamp (most accurate)
+    // For pending items, prefer date_sent
     String dateSent =
-        (raw['date_sent'] ?? raw['created_at'] ?? raw['date_updated'] ?? '')
+        (raw['created_at'] ?? raw['date_sent'] ?? raw['date_updated'] ?? '')
             as String;
     try {
       if (dateSent.isNotEmpty) {
-        final dt = DateTime.parse(dateSent).toLocal();
+        final dt = DateTime.parse(
+          dateSent,
+        ).toUtc().subtract(const Duration(hours: 12));
         const months = [
           'JAN',
           'FEB',

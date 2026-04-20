@@ -822,7 +822,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   String _formatDate(String raw) {
     if (raw.isEmpty || raw == '—') return raw;
     try {
-      final dt = DateTime.parse(raw).toLocal();
+      final dt = DateTime.parse(raw).toUtc().subtract(const Duration(hours: 12));
       const months = [
         'JAN',
         'FEB',
@@ -1975,13 +1975,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       if (!mounted) return;
       if (response.statusCode >= 200 && response.statusCode < 300) {
         setState(() => _isSubmitting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Document approved and routed to next approver!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
         Navigator.pop(context);
         Navigator.pop(context);
       } else {
