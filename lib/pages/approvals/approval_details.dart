@@ -12,6 +12,8 @@ import 'package:http_parser/http_parser.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
+import 'package:open_file/open_file.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // APPROVAL DETAIL PAGE
@@ -456,6 +458,37 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     return null;
   }
 
+  // Get the downloadable document file with priority: SIGNED > HEAD > DOC
+  Map<dynamic, dynamic>? _getDownloadableFile() {
+    final data = _detail?['data'] ?? _detail;
+    if (data is Map) {
+      final files = data['files'];
+      if (files is List && files.isNotEmpty) {
+        // Priority 1: Try SIGNED file (approved document)
+        final signedFile = files.firstWhere(
+          (f) => f is Map && f['file_type']?.toString() == 'SIGNED',
+          orElse: () => null,
+        );
+        if (signedFile != null && signedFile is Map) return signedFile;
+
+        // Priority 2: Try HEAD file (original document)
+        final headFile = files.firstWhere(
+          (f) => f is Map && f['file_type']?.toString() == 'HEAD',
+          orElse: () => null,
+        );
+        if (headFile != null && headFile is Map) return headFile;
+
+        // Priority 3: Try first DOC file (attachment)
+        final docFile = files.firstWhere(
+          (f) => f is Map && f['file_type']?.toString() == 'DOC',
+          orElse: () => null,
+        );
+        if (docFile != null && docFile is Map) return docFile;
+      }
+    }
+    return null;
+  }
+
   Future<void> _loadPdfLocal() async {
     try {
       final byteData = await rootBundle.load('assets/documents/sample.pdf');
@@ -473,8 +506,58 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     }
   }
 
+  // Get accessible Downloads directory for saving files
+  Future<Directory?> _getDownloadsDirectory() async {
+    try {
+      if (Platform.isAndroid) {
+        // For Android, try to get external storage (Downloads folder)
+        final androidDownloads = Directory('/storage/emulated/0/Download');
+        if (await androidDownloads.exists()) {
+          return androidDownloads;
+        }
+        // Fallback to getExternalStorageDirectory
+        return await getExternalStorageDirectory();
+      } else if (Platform.isIOS) {
+        // For iOS, use app documents directory (accessible via Files app)
+        return await getApplicationDocumentsDirectory();
+      }
+      return await getTemporaryDirectory();
+    } catch (e) {
+      debugPrint('Get downloads directory error: $e');
+      return await getTemporaryDirectory();
+    }
+  }
+
+  // Request storage permissions
+  Future<bool> _requestStoragePermission() async {
+    try {
+      if (Platform.isAndroid) {
+        final status = await Permission.storage.request();
+        return status.isGranted;
+      }
+      return true; // iOS doesn't require explicit storage permission
+    } catch (e) {
+      debugPrint('Permission request error: $e');
+      return false;
+    }
+  }
+
   Future<void> _downloadFile(String fileId, String fileName) async {
     try {
+      // Request storage permission
+      final hasPermission = await _requestStoragePermission();
+      if (!hasPermission) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Storage permission denied. Cannot save file.'),
+              backgroundColor: Color(0xFFCC0000),
+            ),
+          );
+        }
+        return;
+      }
+
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token') ?? '';
 
@@ -513,18 +596,41 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       if (response.statusCode >= 200 &&
           response.statusCode < 300 &&
           response.bodyBytes.isNotEmpty) {
-        final dir = await getTemporaryDirectory();
+        // Get the correct download directory
+        final dir = await _getDownloadsDirectory();
+        if (dir == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Unable to determine save location'),
+                backgroundColor: Color(0xFFCC0000),
+              ),
+            );
+          }
+          return;
+        }
+
+        // Ensure directory exists
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
+        }
+
         final file = File('${dir.path}/$fileName');
         await file.writeAsBytes(response.bodyBytes);
 
         if (mounted) {
+          // Show success message with file location
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('File downloaded: $fileName'),
+              content: Text('File downloaded to Downloads folder: $fileName'),
               backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
+              duration: const Duration(seconds: 3),
             ),
           );
+
+          // Auto-open file after download
+          await Future.delayed(const Duration(milliseconds: 500));
+          await OpenFile.open(file.path);
         }
       } else {
         if (mounted) {
@@ -542,6 +648,159 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error downloading file: $e'),
+            backgroundColor: const Color(0xFFCC0000),
+          ),
+        );
+      }
+    }
+  }
+
+  // Helper: Get file extension from filename
+  String _getFileExtension(String fileName) {
+    if (fileName.contains('.')) {
+      return fileName.split('.').last.toLowerCase();
+    }
+    return '';
+  }
+
+  // Helper: Check if file is PDF
+  bool _isPdfFile(String fileName) {
+    final ext = _getFileExtension(fileName);
+    return ext == 'pdf';
+  }
+
+  // Helper: Get file type display name
+  String _getFileTypeDisplayName(String fileName) {
+    final ext = _getFileExtension(fileName).toUpperCase();
+    switch (ext) {
+      case 'PDF':
+        return 'PDF File';
+      case 'DOC':
+        return 'Word Document';
+      case 'DOCX':
+        return 'Word Document';
+      case 'XLS':
+        return 'Excel Spreadsheet';
+      case 'XLSX':
+        return 'Excel Spreadsheet';
+      case 'PPT':
+        return 'PowerPoint';
+      case 'PPTX':
+        return 'PowerPoint';
+      case 'JPG':
+      case 'JPEG':
+        return 'Image (JPG)';
+      case 'PNG':
+        return 'Image (PNG)';
+      case 'GIF':
+        return 'Image (GIF)';
+      case 'ZIP':
+        return 'Compressed File';
+      default:
+        return '${ext.isNotEmpty ? ext.toUpperCase() : 'Unknown'} File';
+    }
+  }
+
+  // View attachment - supports PDF preview, download for other types
+  Future<void> _viewAttachment(Map<String, dynamic> attachment) async {
+    try {
+      final fileId = attachment['file_id']?.toString() ?? '';
+      final fileName =
+          attachment['original_name'] ?? attachment['file_name'] ?? 'document';
+      final isPdf = _isPdfFile(fileName.toString());
+
+      if (fileId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to view attachment: File ID not found'),
+            backgroundColor: Color(0xFFCC0000),
+          ),
+        );
+        return;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token') ?? '';
+
+      if (token.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Session expired. Please login again.'),
+            backgroundColor: Color(0xFFCC0000),
+          ),
+        );
+        return;
+      }
+
+      final response = await http.get(
+        Uri.parse('$_baseUrl/upload/document/$fileId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Cache-Control': 'no-cache',
+        },
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          response.bodyBytes.isNotEmpty) {
+        final dir = await getTemporaryDirectory();
+
+        // Preserve original file extension
+        final fileExtension = _getFileExtension(fileName.toString());
+        final preservedFileName =
+            'attachment_${fileId}_${DateTime.now().millisecondsSinceEpoch}${fileExtension.isNotEmpty ? '.$fileExtension' : '.pdf'}';
+
+        final file = File('${dir.path}/$preservedFileName');
+        await file.writeAsBytes(response.bodyBytes);
+
+        if (isPdf) {
+          // For PDF files, show the PDF viewer
+          if (mounted) {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => PdfSignerPage(
+                  pdfPath: file.path,
+                  item: widget.item,
+                  enableSigning: false,
+                ),
+              ),
+            );
+          }
+        } else {
+          // For non-PDF files, show a message and suggest download
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Preview not available for ${_getFileTypeDisplayName(fileName.toString())}. Download to open with your device app.',
+                ),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+            // Auto-download for user
+            _downloadFile(fileId, fileName.toString());
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to load attachment'),
+              backgroundColor: Color(0xFFCC0000),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Attachment view error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening attachment: $e'),
             backgroundColor: const Color(0xFFCC0000),
           ),
         );
@@ -998,14 +1257,14 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                 const SizedBox(width: 8),
                                 GestureDetector(
                                   onTap: () {
-                                    final headFile = _getHeadFile();
-                                    if (headFile == null) {
+                                    final downloadFile = _getDownloadableFile();
+                                    if (downloadFile == null) {
                                       ScaffoldMessenger.of(
                                         context,
                                       ).showSnackBar(
                                         const SnackBar(
                                           content: Text(
-                                            'Unable to download file',
+                                            'Unable to download: No document available',
                                           ),
                                           backgroundColor: Color(0xFFCC0000),
                                         ),
@@ -1013,9 +1272,26 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                       return;
                                     }
                                     final fileId =
-                                        headFile['file_id']?.toString() ?? '';
-                                    final fileName = _getFileName();
-                                    _downloadFile(fileId, fileName);
+                                        downloadFile['file_id']?.toString() ??
+                                        '';
+                                    final fileName =
+                                        downloadFile['original_name'] ??
+                                        downloadFile['file_name'] ??
+                                        _getFileName();
+                                    if (fileId.isEmpty) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Unable to download: File ID not found',
+                                          ),
+                                          backgroundColor: Color(0xFFCC0000),
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                    _downloadFile(fileId, fileName.toString());
                                   },
                                   child: Container(
                                     padding: const EdgeInsets.all(8),
@@ -1100,9 +1376,9 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   const SizedBox(height: 2),
-                                  const Text(
-                                    "PDF Attachment",
-                                    style: TextStyle(
+                                  Text(
+                                    _getFileTypeDisplayName(name.toString()),
+                                    style: const TextStyle(
                                       fontSize: 10,
                                       color: Colors.black38,
                                     ),
@@ -1115,106 +1391,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 GestureDetector(
-                                  onTap: () async {
-                                    final fileId =
-                                        attachment['file_id']?.toString() ?? '';
-                                    if (fileId.isEmpty) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Unable to load attachment',
-                                          ),
-                                          duration: Duration(seconds: 2),
-                                        ),
-                                      );
-                                      return;
-                                    }
-                                    try {
-                                      final prefs =
-                                          await SharedPreferences.getInstance();
-                                      final token =
-                                          prefs.getString('access_token') ?? '';
-                                      if (token.isEmpty) {
-                                        if (mounted) {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('Session expired'),
-                                              backgroundColor: Color(
-                                                0xFFCC0000,
-                                              ),
-                                            ),
-                                          );
-                                        }
-                                        return;
-                                      }
-                                      final response = await http.get(
-                                        Uri.parse(
-                                          '$_baseUrl/upload/document/$fileId',
-                                        ),
-                                        headers: {
-                                          'Authorization': 'Bearer $token',
-                                          'Cache-Control': 'no-cache',
-                                        },
-                                      );
-                                      if (response.statusCode >= 200 &&
-                                          response.statusCode < 300 &&
-                                          response.bodyBytes.isNotEmpty) {
-                                        final dir =
-                                            await getTemporaryDirectory();
-                                        final file = File(
-                                          '${dir.path}/attachment_${fileId}_${DateTime.now().millisecondsSinceEpoch}.pdf',
-                                        );
-                                        await file.writeAsBytes(
-                                          response.bodyBytes,
-                                        );
-                                        if (mounted) {
-                                          await Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) => PdfSignerPage(
-                                                pdfPath: file.path,
-                                                item: widget.item,
-                                                enableSigning: false,
-                                              ),
-                                            ),
-                                          );
-                                        }
-                                      } else {
-                                        if (mounted) {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                'Failed to load attachment',
-                                              ),
-                                              backgroundColor: Color(
-                                                0xFFCC0000,
-                                              ),
-                                            ),
-                                          );
-                                        }
-                                      }
-                                    } catch (e) {
-                                      debugPrint('Attachment view error: $e');
-                                      if (mounted) {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              'Error opening attachment',
-                                            ),
-                                            backgroundColor: Color(0xFFCC0000),
-                                          ),
-                                        );
-                                      }
-                                    }
-                                  },
+                                  onTap: () => _viewAttachment(attachment),
                                   child: Container(
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
