@@ -222,7 +222,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token') ?? '';
-      // FIX 1: always resolve routing_id from the normalized item field.
       final id =
           widget.item['routing_id']?.toString() ??
           widget.item['id']?.toString() ??
@@ -412,8 +411,9 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         final val = data[key];
         if (val != null &&
             val.toString().isNotEmpty &&
-            val.toString() != 'null')
+            val.toString() != 'null') {
           return val.toString();
+        }
       }
       for (final val in data.values) {
         final found = _extractFileId(val);
@@ -458,27 +458,23 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     return null;
   }
 
-  // Get the downloadable document file with priority: SIGNED > HEAD > DOC
   Map<dynamic, dynamic>? _getDownloadableFile() {
     final data = _detail?['data'] ?? _detail;
     if (data is Map) {
       final files = data['files'];
       if (files is List && files.isNotEmpty) {
-        // Priority 1: Try SIGNED file (approved document)
         final signedFile = files.firstWhere(
           (f) => f is Map && f['file_type']?.toString() == 'SIGNED',
           orElse: () => null,
         );
         if (signedFile != null && signedFile is Map) return signedFile;
 
-        // Priority 2: Try HEAD file (original document)
         final headFile = files.firstWhere(
           (f) => f is Map && f['file_type']?.toString() == 'HEAD',
           orElse: () => null,
         );
         if (headFile != null && headFile is Map) return headFile;
 
-        // Priority 3: Try first DOC file (attachment)
         final docFile = files.firstWhere(
           (f) => f is Map && f['file_type']?.toString() == 'DOC',
           orElse: () => null,
@@ -506,19 +502,15 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     }
   }
 
-  // Get accessible Downloads directory for saving files
   Future<Directory?> _getDownloadsDirectory() async {
     try {
       if (Platform.isAndroid) {
-        // For Android, try to get external storage (Downloads folder)
         final androidDownloads = Directory('/storage/emulated/0/Download');
         if (await androidDownloads.exists()) {
           return androidDownloads;
         }
-        // Fallback to getExternalStorageDirectory
         return await getExternalStorageDirectory();
       } else if (Platform.isIOS) {
-        // For iOS, use app documents directory (accessible via Files app)
         return await getApplicationDocumentsDirectory();
       }
       return await getTemporaryDirectory();
@@ -528,14 +520,13 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     }
   }
 
-  // Request storage permissions
   Future<bool> _requestStoragePermission() async {
     try {
       if (Platform.isAndroid) {
         final status = await Permission.storage.request();
         return status.isGranted;
       }
-      return true; // iOS doesn't require explicit storage permission
+      return true;
     } catch (e) {
       debugPrint('Permission request error: $e');
       return false;
@@ -544,7 +535,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
 
   Future<void> _downloadFile(String fileId, String fileName) async {
     try {
-      // Request storage permission
       final hasPermission = await _requestStoragePermission();
       if (!hasPermission) {
         if (mounted) {
@@ -596,7 +586,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       if (response.statusCode >= 200 &&
           response.statusCode < 300 &&
           response.bodyBytes.isNotEmpty) {
-        // Get the correct download directory
         final dir = await _getDownloadsDirectory();
         if (dir == null) {
           if (mounted) {
@@ -610,7 +599,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           return;
         }
 
-        // Ensure directory exists
         if (!await dir.exists()) {
           await dir.create(recursive: true);
         }
@@ -619,7 +607,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         await file.writeAsBytes(response.bodyBytes);
 
         if (mounted) {
-          // Show success message with file location
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('File downloaded to Downloads folder: $fileName'),
@@ -628,7 +615,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
             ),
           );
 
-          // Auto-open file after download
           await Future.delayed(const Duration(milliseconds: 500));
           await OpenFile.open(file.path);
         }
@@ -655,7 +641,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     }
   }
 
-  // Helper: Get file extension from filename
   String _getFileExtension(String fileName) {
     if (fileName.contains('.')) {
       return fileName.split('.').last.toLowerCase();
@@ -663,13 +648,11 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     return '';
   }
 
-  // Helper: Check if file is PDF
   bool _isPdfFile(String fileName) {
     final ext = _getFileExtension(fileName);
     return ext == 'pdf';
   }
 
-  // Helper: Get file type display name
   String _getFileTypeDisplayName(String fileName) {
     final ext = _getFileExtension(fileName).toUpperCase();
     switch (ext) {
@@ -701,7 +684,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     }
   }
 
-  // View attachment - supports PDF preview, download for other types
   Future<void> _viewAttachment(Map<String, dynamic> attachment) async {
     try {
       final fileId = attachment['file_id']?.toString() ?? '';
@@ -709,13 +691,30 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           attachment['original_name'] ?? attachment['file_name'] ?? 'document';
       final isPdf = _isPdfFile(fileName.toString());
 
+      if (!isPdf) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Cannot preview ${_getFileTypeDisplayName(fileName.toString())}. Use the download button to open this file.',
+              ),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+
       if (fileId.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Unable to view attachment: File ID not found'),
-            backgroundColor: Color(0xFFCC0000),
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Unable to view attachment: File ID not found'),
+              backgroundColor: Color(0xFFCC0000),
+            ),
+          );
+        }
         return;
       }
 
@@ -723,12 +722,14 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       final token = prefs.getString('access_token') ?? '';
 
       if (token.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Session expired. Please login again.'),
-            backgroundColor: Color(0xFFCC0000),
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Session expired. Please login again.'),
+              backgroundColor: Color(0xFFCC0000),
+            ),
+          );
+        }
         return;
       }
 
@@ -747,7 +748,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           response.bodyBytes.isNotEmpty) {
         final dir = await getTemporaryDirectory();
 
-        // Preserve original file extension
         final fileExtension = _getFileExtension(fileName.toString());
         final preservedFileName =
             'attachment_${fileId}_${DateTime.now().millisecondsSinceEpoch}${fileExtension.isNotEmpty ? '.$fileExtension' : '.pdf'}';
@@ -755,42 +755,24 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         final file = File('${dir.path}/$preservedFileName');
         await file.writeAsBytes(response.bodyBytes);
 
-        if (isPdf) {
-          // For PDF files, show the PDF viewer
-          if (mounted) {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => PdfSignerPage(
-                  pdfPath: file.path,
-                  item: widget.item,
-                  enableSigning: false,
-                ),
+        if (mounted) {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PdfSignerPage(
+                pdfPath: file.path,
+                item: widget.item,
+                enableSigning: false,
               ),
-            );
-          }
-        } else {
-          // For non-PDF files, show a message and suggest download
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Preview not available for ${_getFileTypeDisplayName(fileName.toString())}. Download to open with your device app.',
-                ),
-                backgroundColor: Colors.orange,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-            // Auto-download for user
-            _downloadFile(fileId, fileName.toString());
-          }
+            ),
+          );
         }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to load attachment'),
-              backgroundColor: Color(0xFFCC0000),
+            SnackBar(
+              content: Text('Failed to load PDF: ${response.statusCode}'),
+              backgroundColor: const Color(0xFFCC0000),
             ),
           );
         }
@@ -879,14 +861,11 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         '${widget.item['particulars'] ?? 'Document'}.pdf';
   }
 
-  // FIX 2: _getStatus reads from the detail response first, then falls back to item
   String _getStatus() {
-    // Check detail response (most authoritative source)
     final data = _detail?['data'] ?? _detail;
     if (data is Map) {
       final s = data['status']?.toString().toUpperCase().trim() ?? '';
       if (s.isNotEmpty && s != 'NULL') {
-        // Normalize full text status to abbreviations
         if (s.startsWith('PEND')) return 'PND';
         if (s.startsWith('APP')) return 'APV';
         if (s.startsWith('REJ')) return 'REJ';
@@ -894,32 +873,24 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         return s;
       }
     }
-    // Fallback to item status if set
     final itemStatus =
         widget.item['status']?.toString().toUpperCase().trim() ?? '';
     if (itemStatus.isNotEmpty && itemStatus != 'NULL') {
-      // Normalize
       if (itemStatus.startsWith('PEND')) return 'PND';
       if (itemStatus.startsWith('APP')) return 'APV';
       if (itemStatus.startsWith('REJ')) return 'REJ';
       if (itemStatus == 'OPN' || itemStatus.startsWith('OPEN')) return 'OPN';
       return itemStatus;
     }
-    // If truly no status available, assume pending (but this shouldn't happen for history items)
     return 'PND';
   }
 
-  // FIX 3: isPending checks if status is 'PND' AND not from history
-  // Hide all action buttons for history items, regardless of status
   bool _isPending() {
-    if (widget.isFromHistory) {
-      return false; // Never show buttons for history items
-    }
+    if (widget.isFromHistory) return false;
     final s = _getStatus();
     return s == 'PND';
   }
 
-  // Format status code to human-readable label
   String _getStatusLabel() {
     final status = _getStatus();
     switch (status) {
@@ -936,7 +907,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     }
   }
 
-  // Get status color based on status code
   Color _getStatusBadgeColor() {
     final status = _getStatus();
     switch (status) {
@@ -953,12 +923,9 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     }
   }
 
-  // FIX 4: safe date_sent resolution — try routing detail row first, then
-  //         fall back to the already-formatted dateSent from the list item.
   String _getDateSent() {
     final data = _detail?['data'] ?? _detail;
     if (data is Map) {
-      // Get the most recent date_sent from the details array
       final details = data['details'];
       if (details is List && details.isNotEmpty) {
         DateTime? mostRecentDate;
@@ -980,16 +947,13 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           return _formatDate(mostRecentDate.toIso8601String());
         }
       }
-      // Fall back to top-level date_sent if available
       final topLevelDateSent = data['date_sent']?.toString() ?? '';
       if (topLevelDateSent.isNotEmpty && topLevelDateSent != 'null') {
         return _formatDate(topLevelDateSent);
       }
-      // Fall back to routing creation date
       final created = data['date_created']?.toString() ?? '';
       if (created.isNotEmpty && created != 'null') return _formatDate(created);
     }
-    // Last resort: already-formatted string from the list item
     return widget.item['dateSent']?.toString() ?? '—';
   }
 
@@ -1127,7 +1091,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                       _getRequesterName(),
                     ),
                     const Divider(height: 24, color: Color(0xFFF0F0F0)),
-                    // FIX 5: use _getDateSent() instead of _getValue('date_sent',…)
                     _buildInfoRow(
                       Icons.calendar_today_outlined,
                       "DATE SENT",
@@ -1226,7 +1189,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 GestureDetector(
-                                  // FIX 6: null-guard before force-unwrapping _localPdfPath
                                   onTap: _localPdfPath != null
                                       ? () => Navigator.push(
                                           context,
@@ -1274,7 +1236,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                     final fileId =
                                         downloadFile['file_id']?.toString() ??
                                         '';
-                                    final fileName =
+                                    final fName =
                                         downloadFile['original_name'] ??
                                         downloadFile['file_name'] ??
                                         _getFileName();
@@ -1291,7 +1253,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                       );
                                       return;
                                     }
-                                    _downloadFile(fileId, fileName.toString());
+                                    _downloadFile(fileId, fName.toString());
                                   },
                                   child: Container(
                                     padding: const EdgeInsets.all(8),
@@ -1342,6 +1304,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                           attachment['original_name'] ??
                           attachment['file_name'] ??
                           'Document';
+                      final isPdf = _isPdfFile(name.toString());
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: Row(
@@ -1390,31 +1353,32 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                GestureDetector(
-                                  onTap: () => _viewAttachment(attachment),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFCC0000),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: const Icon(
-                                      Icons.visibility_outlined,
-                                      color: Colors.white,
-                                      size: 16,
+                                if (isPdf)
+                                  GestureDetector(
+                                    onTap: () => _viewAttachment(attachment),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFCC0000),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Icon(
+                                        Icons.visibility_outlined,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 8),
+                                if (isPdf) const SizedBox(width: 8),
                                 GestureDetector(
                                   onTap: () {
                                     final fileId =
                                         attachment['file_id']?.toString() ?? '';
-                                    final fileName =
+                                    final fName =
                                         attachment['original_name'] ??
                                         attachment['file_name'] ??
                                         'document.pdf';
-                                    _downloadFile(fileId, fileName);
+                                    _downloadFile(fileId, fName);
                                   },
                                   child: Container(
                                     padding: const EdgeInsets.all(8),
@@ -1471,8 +1435,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                       children: [
                         Expanded(
                           child: ElevatedButton.icon(
-                            // FIX 7: guard against null _localPdfPath before
-                            //         entering PdfSignerPage with enableSigning=true
                             onPressed:
                                 (_isSubmittingRevision || _localPdfPath == null)
                                 ? null
@@ -1609,7 +1571,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PDF SIGNER PAGE  (unchanged from original — no bugs found here)
+// PDF SIGNER PAGE
 // ─────────────────────────────────────────────────────────────────────────────
 
 class PdfSignerPage extends StatefulWidget {
@@ -2071,7 +2033,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         widget.item['routing']?['reference_no']?.toString() ??
         '';
 
-    // Calculate responsive sizes based on signature height - IMPROVED SCALING
     final responsiveFontSize = (_signatureHeight * 0.14).clamp(4.0, 12.0);
     final responsiveLabelFontSize = (_signatureHeight * 0.12).clamp(3.5, 10.0);
     final responsivePadding = (_signatureHeight * 0.08).clamp(0.5, 2.0);
@@ -2085,35 +2046,29 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         children: [
           Expanded(
             flex: 4,
-            child: Padding(
-              padding: EdgeInsets.zero,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  if (_signatureBytes != null)
-                    Image.memory(_signatureBytes!, fit: BoxFit.contain)
-                  else if (_signatureText != null && _signatureText!.isNotEmpty)
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        _signatureText!,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontStyle: FontStyle.italic,
-                          color: Color(0xFF1A1A1A),
-                        ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                if (_signatureBytes != null)
+                  Image.memory(_signatureBytes!, fit: BoxFit.contain)
+                else if (_signatureText != null && _signatureText!.isNotEmpty)
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      _signatureText!,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontStyle: FontStyle.italic,
+                        color: Color(0xFF1A1A1A),
                       ),
                     ),
-                  if (_watermarkBytes != null)
-                    Opacity(
-                      opacity: 0.15,
-                      child: Image.memory(
-                        _watermarkBytes!,
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                ],
-              ),
+                  ),
+                if (_watermarkBytes != null)
+                  Opacity(
+                    opacity: 0.15,
+                    child: Image.memory(_watermarkBytes!, fit: BoxFit.contain),
+                  ),
+              ],
             ),
           ),
           IntrinsicWidth(
@@ -2253,6 +2208,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       ),
       body: Column(
         children: [
+          // ── Instruction banner ───────────────────────────────────────────
           if (_isSigningMode)
             Container(
               width: double.infinity,
@@ -2264,7 +2220,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      "Scroll to the page you want, then drag your signature to position it.",
+                      "Drag to move · pull corners/edges to resize",
                       style: TextStyle(
                         fontSize: 11,
                         color: Colors.white,
@@ -2275,6 +2231,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                 ],
               ),
             ),
+
+          // ── PDF + Signature overlay ──────────────────────────────────────
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -2289,6 +2247,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                 });
                 return Stack(
                   children: [
+                    // PDF viewer
                     Positioned.fill(
                       child: PDFView(
                         filePath: widget.pdfPath,
@@ -2308,6 +2267,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                         onError: (e) => debugPrint('PDF error: $e'),
                       ),
                     ),
+
+                    // Page counter
                     if (_totalPages > 1)
                       Positioned(
                         top: 10,
@@ -2331,256 +2292,293 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                           ),
                         ),
                       ),
+
+                    // ── Signature overlay (drag + 8-handle resize) ───────────
                     if (_isSigningMode)
                       Positioned(
-                        left: _signaturePosition.dx,
-                        top: _signaturePosition.dy,
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            GestureDetector(
-                              onPanUpdate: (details) {
-                                setState(() {
-                                  _signaturePosition = Offset(
-                                    (_signaturePosition.dx + details.delta.dx)
-                                        .clamp(
-                                          0,
-                                          constraints.maxWidth -
-                                              _signatureWidth,
-                                        ),
-                                    (_signaturePosition.dy + details.delta.dy)
-                                        .clamp(
-                                          0,
-                                          constraints.maxHeight -
-                                              _signatureHeight,
-                                        ),
-                                  );
-                                });
-                              },
-                              child: Container(
-                                width: _signatureWidth,
-                                height: _signatureHeight,
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: const Color(0xFFCC0000),
-                                    width: 1.5,
-                                  ),
-                                  color: Colors.white.withOpacity(0.9),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.15),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ],
-                                ),
-                                child: Stack(
-                                  children: [
-                                    RepaintBoundary(
-                                      key: _signatureKey,
-                                      child: Center(
-                                        child: _buildSignatureWidget(),
-                                      ),
-                                    ),
-                                    const Positioned(
-                                      top: 2,
-                                      left: 4,
-                                      child: Icon(
-                                        Icons.open_with,
-                                        size: 12,
-                                        color: Color(0xFFCC0000),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            // Top-left corner handle
-                            Positioned(
-                              left: -12,
-                              top: -12,
-                              child: GestureDetector(
-                                onPanUpdate: (details) {
-                                  setState(() {
-                                    final newX =
-                                        _signaturePosition.dx +
-                                        details.delta.dx;
-                                    final newY =
-                                        _signaturePosition.dy +
-                                        details.delta.dy;
-                                    final newWidth =
-                                        _signatureWidth - details.delta.dx;
-                                    final newHeight =
-                                        _signatureHeight - details.delta.dy;
-
-                                    if (newWidth >= 100 &&
-                                        newHeight >= 60 &&
-                                        newX >= 0 &&
-                                        newY >= 0) {
-                                      _signaturePosition = Offset(newX, newY);
-                                      _signatureWidth = newWidth.clamp(
-                                        100.0,
-                                        constraints.maxWidth - newX,
-                                      );
-                                      _signatureHeight = newHeight.clamp(
-                                        60.0,
-                                        constraints.maxHeight - newY,
-                                      );
-                                    }
-                                  });
-                                },
-                                child: Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFCC0000),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.open_in_full,
-                                    size: 13,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            // Top-right corner handle
-                            Positioned(
-                              right: -12,
-                              top: -12,
-                              child: GestureDetector(
-                                onPanUpdate: (details) {
-                                  setState(() {
-                                    final newY =
-                                        _signaturePosition.dy +
-                                        details.delta.dy;
-                                    final newWidth =
-                                        _signatureWidth + details.delta.dx;
-                                    final newHeight =
-                                        _signatureHeight - details.delta.dy;
-
-                                    if (newWidth >= 100 &&
-                                        newHeight >= 60 &&
-                                        newY >= 0) {
+                        left: _signaturePosition.dx - 12,
+                        top: _signaturePosition.dy - 12,
+                        child: SizedBox(
+                          width: _signatureWidth + 24,
+                          height: _signatureHeight + 24,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              // ── Body (drag to move) ──────────────────────
+                              Positioned(
+                                left: 12,
+                                top: 12,
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onPanUpdate: (d) {
+                                    setState(() {
                                       _signaturePosition = Offset(
-                                        _signaturePosition.dx,
-                                        newY,
-                                      );
-                                      _signatureWidth = newWidth.clamp(
-                                        100.0,
-                                        constraints.maxWidth -
-                                            _signaturePosition.dx,
-                                      );
-                                      _signatureHeight = newHeight.clamp(
-                                        60.0,
-                                        constraints.maxHeight - newY,
-                                      );
-                                    }
-                                  });
-                                },
-                                child: Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFCC0000),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.open_in_full,
-                                    size: 13,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            // Bottom-left corner handle
-                            Positioned(
-                              left: -12,
-                              bottom: -12,
-                              child: GestureDetector(
-                                onPanUpdate: (details) {
-                                  setState(() {
-                                    final newX =
-                                        _signaturePosition.dx +
-                                        details.delta.dx;
-                                    final newWidth =
-                                        _signatureWidth - details.delta.dx;
-                                    final newHeight =
-                                        _signatureHeight + details.delta.dy;
-
-                                    if (newWidth >= 100 &&
-                                        newHeight >= 60 &&
-                                        newX >= 0) {
-                                      _signaturePosition = Offset(
-                                        newX,
-                                        _signaturePosition.dy,
-                                      );
-                                      _signatureWidth = newWidth.clamp(
-                                        100.0,
-                                        constraints.maxWidth - newX,
-                                      );
-                                      _signatureHeight = newHeight.clamp(
-                                        60.0,
-                                        constraints.maxHeight -
-                                            _signaturePosition.dy,
-                                      );
-                                    }
-                                  });
-                                },
-                                child: Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFCC0000),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.open_in_full,
-                                    size: 13,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            // Bottom-right corner handle
-                            Positioned(
-                              right: -12,
-                              bottom: -12,
-                              child: GestureDetector(
-                                onPanUpdate: (details) {
-                                  setState(() {
-                                    _signatureWidth =
-                                        (_signatureWidth + details.delta.dx)
+                                        (_signaturePosition.dx + d.delta.dx)
                                             .clamp(
-                                              100.0,
+                                              0.0,
                                               constraints.maxWidth -
-                                                  _signaturePosition.dx,
-                                            );
-                                    _signatureHeight =
-                                        (_signatureHeight + details.delta.dy)
+                                                  _signatureWidth,
+                                            ),
+                                        (_signaturePosition.dy + d.delta.dy)
                                             .clamp(
-                                              60.0,
+                                              0.0,
                                               constraints.maxHeight -
-                                                  _signaturePosition.dy,
-                                            );
-                                  });
-                                },
-                                child: Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFCC0000),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.open_in_full,
-                                    size: 13,
-                                    color: Colors.white,
+                                                  _signatureHeight,
+                                            ),
+                                      );
+                                    });
+                                  },
+                                  child: Container(
+                                    width: _signatureWidth,
+                                    height: _signatureHeight,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(
+                                        color: const Color(0xFFCC0000),
+                                        width: 1.5,
+                                      ),
+                                      color: Colors.white.withOpacity(0.9),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.15),
+                                          blurRadius: 6,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Stack(
+                                      children: [
+                                        RepaintBoundary(
+                                          key: _signatureKey,
+                                          child: Center(
+                                            child: _buildSignatureWidget(),
+                                          ),
+                                        ),
+                                        const Positioned(
+                                          top: 2,
+                                          left: 4,
+                                          child: Icon(
+                                            Icons.open_with,
+                                            size: 12,
+                                            color: Color(0xFFCC0000),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+
+                              // ── Corner: Top-Left ─────────────────────────
+                              Positioned(
+                                left: 0,
+                                top: 0,
+                                child: _ResizeHandle(
+                                  onPanUpdate: (d) {
+                                    setState(() {
+                                      final newW = _signatureWidth - d.delta.dx;
+                                      final newH =
+                                          _signatureHeight - d.delta.dy;
+                                      if (newW >= 100 && newH >= 40) {
+                                        _signaturePosition = Offset(
+                                          (_signaturePosition.dx + d.delta.dx)
+                                              .clamp(0.0, double.infinity),
+                                          (_signaturePosition.dy + d.delta.dy)
+                                              .clamp(0.0, double.infinity),
+                                        );
+                                        _signatureWidth = newW.clamp(
+                                          100.0,
+                                          constraints.maxWidth,
+                                        );
+                                        _signatureHeight = newH.clamp(
+                                          40.0,
+                                          constraints.maxHeight,
+                                        );
+                                      }
+                                    });
+                                  },
+                                ),
+                              ),
+
+                              // ── Corner: Top-Right ────────────────────────
+                              Positioned(
+                                right: 0,
+                                top: 0,
+                                child: _ResizeHandle(
+                                  onPanUpdate: (d) {
+                                    setState(() {
+                                      final newW = _signatureWidth + d.delta.dx;
+                                      final newH =
+                                          _signatureHeight - d.delta.dy;
+                                      if (newW >= 100 && newH >= 40) {
+                                        _signaturePosition = Offset(
+                                          _signaturePosition.dx,
+                                          (_signaturePosition.dy + d.delta.dy)
+                                              .clamp(0.0, double.infinity),
+                                        );
+                                        _signatureWidth = newW.clamp(
+                                          100.0,
+                                          constraints.maxWidth -
+                                              _signaturePosition.dx,
+                                        );
+                                        _signatureHeight = newH.clamp(
+                                          40.0,
+                                          constraints.maxHeight,
+                                        );
+                                      }
+                                    });
+                                  },
+                                ),
+                              ),
+
+                              // ── Corner: Bottom-Left ──────────────────────
+                              Positioned(
+                                left: 0,
+                                bottom: 0,
+                                child: _ResizeHandle(
+                                  onPanUpdate: (d) {
+                                    setState(() {
+                                      final newW = _signatureWidth - d.delta.dx;
+                                      final newH =
+                                          _signatureHeight + d.delta.dy;
+                                      if (newW >= 100 && newH >= 40) {
+                                        _signaturePosition = Offset(
+                                          (_signaturePosition.dx + d.delta.dx)
+                                              .clamp(0.0, double.infinity),
+                                          _signaturePosition.dy,
+                                        );
+                                        _signatureWidth = newW.clamp(
+                                          100.0,
+                                          constraints.maxWidth,
+                                        );
+                                        _signatureHeight = newH.clamp(
+                                          40.0,
+                                          constraints.maxHeight -
+                                              _signaturePosition.dy,
+                                        );
+                                      }
+                                    });
+                                  },
+                                ),
+                              ),
+
+                              // ── Corner: Bottom-Right ─────────────────────
+                              Positioned(
+                                right: 0,
+                                bottom: 0,
+                                child: _ResizeHandle(
+                                  onPanUpdate: (d) {
+                                    setState(() {
+                                      _signatureWidth =
+                                          (_signatureWidth + d.delta.dx).clamp(
+                                            100.0,
+                                            constraints.maxWidth -
+                                                _signaturePosition.dx,
+                                          );
+                                      _signatureHeight =
+                                          (_signatureHeight + d.delta.dy).clamp(
+                                            40.0,
+                                            constraints.maxHeight -
+                                                _signaturePosition.dy,
+                                          );
+                                    });
+                                  },
+                                ),
+                              ),
+
+                              // ── Edge: Top ────────────────────────────────
+                              Positioned(
+                                left: 24,
+                                right: 24,
+                                top: 0,
+                                child: _ResizeHandle(
+                                  isEdge: true,
+                                  onPanUpdate: (d) {
+                                    setState(() {
+                                      final newH =
+                                          _signatureHeight - d.delta.dy;
+                                      if (newH >= 40) {
+                                        _signaturePosition = Offset(
+                                          _signaturePosition.dx,
+                                          (_signaturePosition.dy + d.delta.dy)
+                                              .clamp(0.0, double.infinity),
+                                        );
+                                        _signatureHeight = newH.clamp(
+                                          40.0,
+                                          constraints.maxHeight,
+                                        );
+                                      }
+                                    });
+                                  },
+                                ),
+                              ),
+
+                              // ── Edge: Bottom ─────────────────────────────
+                              Positioned(
+                                left: 24,
+                                right: 24,
+                                bottom: 0,
+                                child: _ResizeHandle(
+                                  isEdge: true,
+                                  onPanUpdate: (d) {
+                                    setState(() {
+                                      _signatureHeight =
+                                          (_signatureHeight + d.delta.dy).clamp(
+                                            40.0,
+                                            constraints.maxHeight -
+                                                _signaturePosition.dy,
+                                          );
+                                    });
+                                  },
+                                ),
+                              ),
+
+                              // ── Edge: Left ───────────────────────────────
+                              Positioned(
+                                left: 0,
+                                top: 24,
+                                bottom: 24,
+                                child: _ResizeHandle(
+                                  isEdge: true,
+                                  onPanUpdate: (d) {
+                                    setState(() {
+                                      final newW = _signatureWidth - d.delta.dx;
+                                      if (newW >= 100) {
+                                        _signaturePosition = Offset(
+                                          (_signaturePosition.dx + d.delta.dx)
+                                              .clamp(0.0, double.infinity),
+                                          _signaturePosition.dy,
+                                        );
+                                        _signatureWidth = newW.clamp(
+                                          100.0,
+                                          constraints.maxWidth,
+                                        );
+                                      }
+                                    });
+                                  },
+                                ),
+                              ),
+
+                              // ── Edge: Right ──────────────────────────────
+                              Positioned(
+                                right: 0,
+                                top: 24,
+                                bottom: 24,
+                                child: _ResizeHandle(
+                                  isEdge: true,
+                                  onPanUpdate: (d) {
+                                    setState(() {
+                                      _signatureWidth =
+                                          (_signatureWidth + d.delta.dx).clamp(
+                                            100.0,
+                                            constraints.maxWidth -
+                                                _signaturePosition.dx,
+                                          );
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                   ],
@@ -2588,6 +2586,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               },
             ),
           ),
+
+          // ── Confirm / Cancel buttons ─────────────────────────────────────
           if (_isSigningMode)
             Container(
               color: Colors.white,
@@ -2675,6 +2675,43 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
             ),
         ],
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RESIZE HANDLE WIDGET
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ResizeHandle extends StatelessWidget {
+  final GestureDragUpdateCallback onPanUpdate;
+
+  /// true  → thin edge bar (top/bottom/left/right)
+  /// false → 24×24 corner circle (default)
+  final bool isEdge;
+
+  const _ResizeHandle({required this.onPanUpdate, this.isEdge = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onPanUpdate: onPanUpdate,
+      child: isEdge
+          ? Container(color: const Color(0xFFCC0000).withOpacity(0.6))
+          : Container(
+              width: 24,
+              height: 24,
+              decoration: const BoxDecoration(
+                color: Color(0xFFCC0000),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.open_in_full,
+                size: 12,
+                color: Colors.white,
+              ),
+            ),
     );
   }
 }
