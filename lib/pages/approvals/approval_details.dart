@@ -1878,6 +1878,12 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         widget.item['routing']?['reference_no']?.toString() ??
         '';
 
+    // Calculate responsive sizes based on signature height - IMPROVED SCALING
+    final responsiveFontSize = (_signatureHeight * 0.14).clamp(4.0, 12.0);
+    final responsiveLabelFontSize = (_signatureHeight * 0.12).clamp(3.5, 10.0);
+    final responsivePadding = (_signatureHeight * 0.08).clamp(0.5, 2.0);
+    final responsiveSpacing = (_signatureHeight * 0.06).clamp(2.0, 5.0);
+
     return Container(
       width: _signatureWidth,
       height: _signatureHeight,
@@ -1920,20 +1926,51 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           IntrinsicWidth(
             child: Container(
               decoration: BoxDecoration(
-                border: Border.all(color: const Color(0xFF1B5E20), width: 0.5),
+                border: Border.all(
+                  color: const Color(0xFF1B5E20),
+                  width: responsivePadding * 0.6,
+                ),
               ),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 0.5,
-                vertical: 0.5,
+              padding: EdgeInsets.symmetric(
+                horizontal: responsivePadding * 1.5,
+                vertical: responsivePadding,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _metaRow('Digitally signed by:', _signerName),
-                  _metaRow('Employee ID:', _signerEmployeeId),
-                  _metaRow('Date:', dateStr),
-                  _metaRow('Ref:', refNo),
+                  _metaRow(
+                    'Digitally signed by:',
+                    _signerName,
+                    responsiveFontSize,
+                    responsiveLabelFontSize,
+                    responsiveSpacing,
+                  ),
+                  SizedBox(height: responsiveSpacing * 0.5),
+                  _metaRow(
+                    'Employee ID:',
+                    _signerEmployeeId,
+                    responsiveFontSize,
+                    responsiveLabelFontSize,
+                    responsiveSpacing,
+                  ),
+                  SizedBox(height: responsiveSpacing * 0.5),
+                  _metaRow(
+                    'Date:',
+                    dateStr,
+                    responsiveFontSize,
+                    responsiveLabelFontSize,
+                    responsiveSpacing,
+                  ),
+                  SizedBox(height: responsiveSpacing * 0.5),
+                  _metaRow(
+                    'Ref:',
+                    refNo,
+                    responsiveFontSize,
+                    responsiveLabelFontSize,
+                    responsiveSpacing,
+                  ),
                 ],
               ),
             ),
@@ -1943,19 +1980,30 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     );
   }
 
-  Widget _metaRow(String label, String value) {
+  Widget _metaRow(
+    String label,
+    String value,
+    double fontSize,
+    double labelFontSize,
+    double spacing,
+  ) {
     return RichText(
       softWrap: false,
-      overflow: TextOverflow.visible,
+      overflow: TextOverflow.ellipsis,
+      maxLines: 1,
       text: TextSpan(
-        style: const TextStyle(
-          fontSize: 5.5,
-          color: Color(0xFF1A1A1A),
-          height: 1,
+        style: TextStyle(
+          fontSize: labelFontSize,
+          fontWeight: FontWeight.w600,
+          color: const Color(0xFF1A1A1A),
+          height: 1.1,
         ),
         children: [
           TextSpan(text: '$label '),
-          TextSpan(text: value),
+          TextSpan(
+            text: value,
+            style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.normal),
+          ),
         ],
       ),
     );
@@ -2154,6 +2202,154 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                 ),
                               ),
                             ),
+                            // Top-left corner handle
+                            Positioned(
+                              left: -12,
+                              top: -12,
+                              child: GestureDetector(
+                                onPanUpdate: (details) {
+                                  setState(() {
+                                    final newX =
+                                        _signaturePosition.dx +
+                                        details.delta.dx;
+                                    final newY =
+                                        _signaturePosition.dy +
+                                        details.delta.dy;
+                                    final newWidth =
+                                        _signatureWidth - details.delta.dx;
+                                    final newHeight =
+                                        _signatureHeight - details.delta.dy;
+
+                                    if (newWidth >= 100 &&
+                                        newHeight >= 60 &&
+                                        newX >= 0 &&
+                                        newY >= 0) {
+                                      _signaturePosition = Offset(newX, newY);
+                                      _signatureWidth = newWidth.clamp(
+                                        100.0,
+                                        constraints.maxWidth - newX,
+                                      );
+                                      _signatureHeight = newHeight.clamp(
+                                        60.0,
+                                        constraints.maxHeight - newY,
+                                      );
+                                    }
+                                  });
+                                },
+                                child: Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFCC0000),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.open_in_full,
+                                    size: 13,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Top-right corner handle
+                            Positioned(
+                              right: -12,
+                              top: -12,
+                              child: GestureDetector(
+                                onPanUpdate: (details) {
+                                  setState(() {
+                                    final newY =
+                                        _signaturePosition.dy +
+                                        details.delta.dy;
+                                    final newWidth =
+                                        _signatureWidth + details.delta.dx;
+                                    final newHeight =
+                                        _signatureHeight - details.delta.dy;
+
+                                    if (newWidth >= 100 &&
+                                        newHeight >= 60 &&
+                                        newY >= 0) {
+                                      _signaturePosition = Offset(
+                                        _signaturePosition.dx,
+                                        newY,
+                                      );
+                                      _signatureWidth = newWidth.clamp(
+                                        100.0,
+                                        constraints.maxWidth -
+                                            _signaturePosition.dx,
+                                      );
+                                      _signatureHeight = newHeight.clamp(
+                                        60.0,
+                                        constraints.maxHeight - newY,
+                                      );
+                                    }
+                                  });
+                                },
+                                child: Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFCC0000),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.open_in_full,
+                                    size: 13,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Bottom-left corner handle
+                            Positioned(
+                              left: -12,
+                              bottom: -12,
+                              child: GestureDetector(
+                                onPanUpdate: (details) {
+                                  setState(() {
+                                    final newX =
+                                        _signaturePosition.dx +
+                                        details.delta.dx;
+                                    final newWidth =
+                                        _signatureWidth - details.delta.dx;
+                                    final newHeight =
+                                        _signatureHeight + details.delta.dy;
+
+                                    if (newWidth >= 100 &&
+                                        newHeight >= 60 &&
+                                        newX >= 0) {
+                                      _signaturePosition = Offset(
+                                        newX,
+                                        _signaturePosition.dy,
+                                      );
+                                      _signatureWidth = newWidth.clamp(
+                                        100.0,
+                                        constraints.maxWidth - newX,
+                                      );
+                                      _signatureHeight = newHeight.clamp(
+                                        60.0,
+                                        constraints.maxHeight -
+                                            _signaturePosition.dy,
+                                      );
+                                    }
+                                  });
+                                },
+                                child: Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFCC0000),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.open_in_full,
+                                    size: 13,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Bottom-right corner handle
                             Positioned(
                               right: -12,
                               bottom: -12,

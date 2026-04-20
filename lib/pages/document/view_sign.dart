@@ -72,6 +72,11 @@ class _ViewSignPageState extends State<ViewSignPage>
   bool _isLoadingSignature = false;
   List<int>? _apiSignatureBytes;
 
+  // Metadata
+  String _signerName = '';
+  String _signerEmployeeId = '';
+  DateTime? _signedAt;
+
   // Draw tab (edit mode)
   final List<List<Offset?>> _strokes = [];
   List<Offset?> _currentStroke = [];
@@ -89,6 +94,7 @@ class _ViewSignPageState extends State<ViewSignPage>
     _tabController = TabController(length: 2, vsync: this);
     _loadSignature();
     _loadWatermark();
+    _loadUserInfo();
   }
 
   @override
@@ -96,6 +102,52 @@ class _ViewSignPageState extends State<ViewSignPage>
     _tabController.dispose();
     _authApi.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadUserInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userDataStr = prefs.getString('user_data');
+    if (userDataStr != null) {
+      try {
+        final full = jsonDecode(userDataStr) as Map<String, dynamic>;
+        Map<String, dynamic>? userData;
+        if (full['user'] is Map)
+          userData = full['user'] as Map<String, dynamic>;
+        else if (full['data'] is Map)
+          userData = full['data'] as Map<String, dynamic>;
+        else
+          userData = full;
+
+        final first =
+            userData['fname'] ??
+            userData['first_name'] ??
+            userData['firstName'] ??
+            '';
+        final last =
+            userData['lname'] ??
+            userData['last_name'] ??
+            userData['lastName'] ??
+            '';
+        final empId =
+            userData['employee_id'] ??
+            userData['employeeId'] ??
+            userData['emp_id'] ??
+            '';
+        if (mounted) {
+          setState(() {
+            _signerName = [first, last]
+                .map((p) => p.toString().trim())
+                .where((p) => p.isNotEmpty)
+                .join(' ')
+                .trim();
+            _signerEmployeeId = empId.toString().trim();
+            _signedAt = DateTime.now();
+          });
+        }
+      } catch (e) {
+        debugPrint('Error loading user info: $e');
+      }
+    }
   }
 
   Future<void> _loadWatermark() async {
@@ -363,36 +415,147 @@ class _ViewSignPageState extends State<ViewSignPage>
       );
     }
 
-    Widget signatureWidget;
+    return _buildSignatureWithMetadata();
+  }
 
+  Widget _buildSignatureWithMetadata() {
+    // Default dimensions for the preview
+    final double previewWidth = 300.0;
+    final double previewHeight = 80.0;
+
+    // Calculate responsive sizes based on preview height - IMPROVED SCALING
+    final responsiveFontSize = (previewHeight * 0.14).clamp(4.0, 12.0);
+    final responsiveLabelFontSize = (previewHeight * 0.12).clamp(3.5, 10.0);
+    final responsivePadding = (previewHeight * 0.08).clamp(0.5, 2.0);
+    final responsiveSpacing = (previewHeight * 0.06).clamp(2.0, 5.0);
+
+    final now = (_signedAt ?? DateTime.now()).toUtc().add(
+      const Duration(hours: 8),
+    );
+    final dateStr =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+
+    Widget signatureImage;
     if (_apiSignatureBytes != null && _apiSignatureBytes!.isNotEmpty) {
-      signatureWidget = Image.memory(
+      signatureImage = Image.memory(
         Uint8List.fromList(_apiSignatureBytes!),
         fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) {
-          debugPrint('Bytes image error: $error');
-          return _buildLocalSignatureWidget();
-        },
+      );
+    } else if (_signatureType == 'draw' && _drawBase64 != null) {
+      signatureImage = Image.memory(
+        base64Decode(_drawBase64!),
+        fit: BoxFit.contain,
+      );
+    } else if (_signatureType == 'upload' && _signatureImagePath.isNotEmpty) {
+      signatureImage = Image.file(
+        File(_signatureImagePath),
+        fit: BoxFit.contain,
       );
     } else {
-      signatureWidget = _buildLocalSignatureWidget();
+      signatureImage = const Center(
+        child: Text(
+          "No signature",
+          style: TextStyle(fontSize: 12, color: Colors.black26),
+        ),
+      );
     }
 
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        signatureWidget,
-        if (_watermarkBytes != null)
-          Opacity(
-            opacity: 0.12,
-            child: Image.memory(
-              _watermarkBytes!,
-              fit: BoxFit.contain,
-              width: 180,
-              height: 180,
+    return Container(
+      width: previewWidth,
+      height: previewHeight,
+      color: Colors.transparent,
+      child: Row(
+        children: [
+          Expanded(
+            flex: 4,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                signatureImage,
+                if (_watermarkBytes != null)
+                  Opacity(
+                    opacity: 0.15,
+                    child: Image.memory(_watermarkBytes!, fit: BoxFit.contain),
+                  ),
+              ],
             ),
           ),
-      ],
+          IntrinsicWidth(
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: const Color(0xFF1B5E20),
+                  width: responsivePadding * 0.6,
+                ),
+              ),
+              padding: EdgeInsets.symmetric(
+                horizontal: responsivePadding * 1.5,
+                vertical: responsivePadding,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _metaRow(
+                    'Digitally signed by:',
+                    _signerName,
+                    responsiveFontSize,
+                    responsiveLabelFontSize,
+                    responsiveSpacing,
+                  ),
+                  SizedBox(height: responsiveSpacing * 0.5),
+                  _metaRow(
+                    'Employee ID:',
+                    _signerEmployeeId,
+                    responsiveFontSize,
+                    responsiveLabelFontSize,
+                    responsiveSpacing,
+                  ),
+                  SizedBox(height: responsiveSpacing * 0.5),
+                  _metaRow(
+                    'Date:',
+                    dateStr,
+                    responsiveFontSize,
+                    responsiveLabelFontSize,
+                    responsiveSpacing,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _metaRow(
+    String label,
+    String value,
+    double fontSize,
+    double labelFontSize,
+    double spacing,
+  ) {
+    return RichText(
+      softWrap: false,
+      overflow: TextOverflow.ellipsis,
+      maxLines: 1,
+      text: TextSpan(
+        style: TextStyle(
+          fontSize: labelFontSize,
+          fontWeight: FontWeight.w600,
+          color: const Color(0xFF1A1A1A),
+          height: 1.1,
+        ),
+        children: [
+          TextSpan(text: '$label '),
+          TextSpan(
+            text: value,
+            style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.normal),
+          ),
+        ],
+      ),
     );
   }
 
