@@ -372,15 +372,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     if (inner is Map) {
       final files = inner['files'];
       if (files is List && files.isNotEmpty) {
-        final headFile = files.firstWhere(
-          (f) => f is Map && f['file_type']?.toString() == 'HEAD',
-          orElse: () => null,
-        );
-        if (headFile != null && headFile is Map) {
-          final id =
-              headFile['file_id'] ?? headFile['fileId'] ?? headFile['id'];
-          if (id != null) return id.toString();
-        }
         final signedFile = files.firstWhere(
           (f) => f is Map && f['file_type']?.toString() == 'SIGNED',
           orElse: () => null,
@@ -388,6 +379,15 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         if (signedFile != null && signedFile is Map) {
           final id =
               signedFile['file_id'] ?? signedFile['fileId'] ?? signedFile['id'];
+          if (id != null) return id.toString();
+        }
+        final headFile = files.firstWhere(
+          (f) => f is Map && f['file_type']?.toString() == 'HEAD',
+          orElse: () => null,
+        );
+        if (headFile != null && headFile is Map) {
+          final id =
+              headFile['file_id'] ?? headFile['fileId'] ?? headFile['id'];
           if (id != null) return id.toString();
         }
         final docFile = files.firstWhere(
