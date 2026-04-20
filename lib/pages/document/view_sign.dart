@@ -76,6 +76,7 @@ class _ViewSignPageState extends State<ViewSignPage>
   String _signerName = '';
   String _signerEmployeeId = '';
   DateTime? _signedAt;
+  bool _showMetadata = false;
 
   // Draw tab (edit mode)
   final List<List<Offset?>> _strokes = [];
@@ -481,50 +482,55 @@ class _ViewSignPageState extends State<ViewSignPage>
               ],
             ),
           ),
-          IntrinsicWidth(
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: const Color(0xFF1B5E20),
-                  width: responsivePadding * 0.6,
+          if (_showMetadata)
+            // AFTER
+            Expanded(
+              flex: 3,
+              child: Container(
+                margin: const EdgeInsets.only(right: 8.0), // ← ADD THIS
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: const Color(0xFF1B5E20),
+                    width: responsivePadding * 0.6,
+                  ),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  // ← FIXED PADDING
+                  horizontal: 8.0,
+                  vertical: 6.0,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _metaRow(
+                      'Digitally signed by:',
+                      _signerName,
+                      responsiveFontSize,
+                      responsiveLabelFontSize,
+                      responsiveSpacing,
+                    ),
+                    SizedBox(height: responsiveSpacing * 0.5),
+                    _metaRow(
+                      'Employee ID:',
+                      _signerEmployeeId,
+                      responsiveFontSize,
+                      responsiveLabelFontSize,
+                      responsiveSpacing,
+                    ),
+                    SizedBox(height: responsiveSpacing * 0.5),
+                    _metaRow(
+                      'Date:',
+                      dateStr,
+                      responsiveFontSize,
+                      responsiveLabelFontSize,
+                      responsiveSpacing,
+                    ),
+                  ],
                 ),
               ),
-              padding: EdgeInsets.symmetric(
-                horizontal: responsivePadding * 1.5,
-                vertical: responsivePadding,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _metaRow(
-                    'Digitally signed by:',
-                    _signerName,
-                    responsiveFontSize,
-                    responsiveLabelFontSize,
-                    responsiveSpacing,
-                  ),
-                  SizedBox(height: responsiveSpacing * 0.5),
-                  _metaRow(
-                    'Employee ID:',
-                    _signerEmployeeId,
-                    responsiveFontSize,
-                    responsiveLabelFontSize,
-                    responsiveSpacing,
-                  ),
-                  SizedBox(height: responsiveSpacing * 0.5),
-                  _metaRow(
-                    'Date:',
-                    dateStr,
-                    responsiveFontSize,
-                    responsiveLabelFontSize,
-                    responsiveSpacing,
-                  ),
-                ],
-              ),
             ),
-          ),
         ],
       ),
     );
@@ -628,6 +634,30 @@ class _ViewSignPageState extends State<ViewSignPage>
                   border: Border.all(color: const Color(0xFFE8E8E8)),
                 ),
                 child: _buildSavedSignaturePreview(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Button to show/hide metadata
+            GestureDetector(
+              onTap: () => setState(() => _showMetadata = !_showMetadata),
+              child: Row(
+                children: [
+                  Icon(
+                    _showMetadata ? Icons.visibility : Icons.visibility_off,
+                    color: const Color(0xFFCC0000),
+                    size: 14,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _showMetadata ? "HIDE DETAILS" : "SHOW DIGITAL SIGNATURE",
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Color(0xFFCC0000),
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 16),
