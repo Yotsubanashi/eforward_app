@@ -699,16 +699,32 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   String _getDateSent() {
     final data = _detail?['data'] ?? _detail;
     if (data is Map) {
-      // The detail endpoint returns the routing document (not the detail row),
-      // so date_sent may not be present at top level. Try the details array.
+      // Get the most recent date_sent from the details array
       final details = data['details'];
       if (details is List && details.isNotEmpty) {
+        DateTime? mostRecentDate;
         for (final d in details) {
           if (d is Map) {
             final ds = d['date_sent']?.toString() ?? '';
-            if (ds.isNotEmpty && ds != 'null') return _formatDate(ds);
+            if (ds.isNotEmpty && ds != 'null') {
+              try {
+                final parsedDate = DateTime.parse(ds);
+                if (mostRecentDate == null ||
+                    parsedDate.isAfter(mostRecentDate)) {
+                  mostRecentDate = parsedDate;
+                }
+              } catch (_) {}
+            }
           }
         }
+        if (mostRecentDate != null) {
+          return _formatDate(mostRecentDate.toIso8601String());
+        }
+      }
+      // Fall back to top-level date_sent if available
+      final topLevelDateSent = data['date_sent']?.toString() ?? '';
+      if (topLevelDateSent.isNotEmpty && topLevelDateSent != 'null') {
+        return _formatDate(topLevelDateSent);
       }
       // Fall back to routing creation date
       final created = data['date_created']?.toString() ?? '';
