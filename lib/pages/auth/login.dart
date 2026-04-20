@@ -5,8 +5,6 @@ import '../../services/auth_api.dart';
 import '../../services/fcm_token_service.dart';
 import '../dashboard/dashboard.dart';
 import 'forgot_password.dart';
-import 'package:flutter_svg/flutter_svg.dart';
-
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -128,53 +126,40 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Logo + Brand
-                
-                const SizedBox(height: 102),
+                const SizedBox(height: 40),
 
-                // ✅ Fixed: SVG logo + subtitle properly wrapped
-              Center(
-                child: Column(
-                  children: [
-                    Image.network(
-                      'https://ardentnetworks.com.ph/wp-content/uploads/2023/07/ardent-logo-with-powering-innovation-8.png',
-                      width: 240,
-                      fit: BoxFit.contain,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return const SizedBox(
-                          width: 220,
-                          height: 66,
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Color(0xFFCC0000),
-                            ),
-                          ),
-                        );
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Icon(
-                          Icons.shield_outlined,
-                          color: Color(0xFFCC0000),
-                          size: 40,
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 15),
-                    const Text(
-                      "E-FORWARD",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 17,
-                        color: Colors.black,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.2,
+                // Logo
+                Center(
+                  child: Column(
+                    children: [
+                      Image.asset(
+                        'assets/ardent-logo-with-powering-innovation-8.webp',
+                        width: 280,
+                        height: 120,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          debugPrint('❌ Logo load error: $error');
+                          return const Icon(
+                            Icons.shield_outlined,
+                            color: Color(0xFFCC0000),
+                            size: 60,
+                          );
+                        },
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 15),
+                      const Text(
+                        "E-FORWARD",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 17,
+                          color: Colors.black,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
                 const SizedBox(height: 40),
 
                 // Email Field
