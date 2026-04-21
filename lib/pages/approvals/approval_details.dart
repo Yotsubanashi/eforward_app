@@ -14,7 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:open_file/open_file.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:excel/excel.dart';
+import 'package:excel/excel.dart' hide TextSpan, Border;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // APPROVAL DETAIL PAGE
@@ -353,9 +353,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         final fileExtension = _getFileExtension(fileName);
         final preservedFileName =
             'doc_${fileId}_${DateTime.now().millisecondsSinceEpoch}${fileExtension.isNotEmpty ? '.$fileExtension' : '.pdf'}';
-        final file = File(
-          '${dir.path}/$preservedFileName',
-        );
+        final file = File('${dir.path}/$preservedFileName');
         await file.writeAsBytes(response.bodyBytes);
         if (mounted) {
           setState(() {
@@ -1611,6 +1609,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     );
   }
 }
+
 class ExcelFileViewerPage extends StatefulWidget {
   final String filePath;
   final String fileName;
@@ -1659,9 +1658,7 @@ class _ExcelFileViewerPageState extends State<ExcelFileViewerPage> {
         if (table == null) continue;
         final rows = <List<String>>[];
         for (final row in table.rows) {
-          rows.add(
-            row.map((cell) => cell?.value?.toString() ?? '').toList(),
-          );
+          rows.add(row.map((cell) => cell?.value?.toString() ?? '').toList());
         }
         parsed[name] = rows;
       }
