@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:open_file/open_file.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:excel/excel.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // APPROVAL DETAIL PAGE
@@ -729,27 +730,48 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     String fileName, {
     String? fallbackMimeType,
   }) async {
-    final explicitMimeType = _getMimeType(
-      fileName,
-      fallbackMimeType: fallbackMimeType,
-    );
-    OpenResult result = await OpenFile.open(filePath, type: explicitMimeType);
+    try {
+      final ext = _getFileExtension(fileName);
+      if (ext == 'xlsx' || ext == 'xls') {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                ExcelFileViewerPage(filePath: filePath, fileName: fileName),
+          ),
+        );
+        return;
+      }
 
-    if (result.type != ResultType.done) {
-      // Some Android handlers are strict; retry without forcing MIME.
-      result = await OpenFile.open(filePath);
-    }
+      final explicitMimeType = _getMimeType(
+        fileName,
+        fallbackMimeType: fallbackMimeType,
+      );
+      OpenResult result = await OpenFile.open(filePath, type: explicitMimeType);
 
-    if (!mounted || result.type == ResultType.done) return;
+      if (result.type != ResultType.done) {
+        result = await OpenFile.open(filePath);
+      }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Unable to open file. Install an app for ${_getFileTypeDisplayName(fileName)}.',
+      if (!mounted || result.type == ResultType.done) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Unable to open ${_getFileTypeDisplayName(fileName)}. Please install a compatible viewer app.',
+          ),
+          backgroundColor: const Color(0xFFCC0000),
         ),
-        backgroundColor: const Color(0xFFCC0000),
-      ),
-    );
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error opening file: $e'),
+          backgroundColor: const Color(0xFFCC0000),
+        ),
+      );
+    }
   }
 
   Future<void> _viewAttachment(Map<String, dynamic> attachment) async {
@@ -1586,6 +1608,172 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           ),
         ),
       ],
+    );
+  }
+}
+class ExcelFileViewerPage extends StatefulWidget {
+  final String filePath;
+  final String fileName;
+
+  const ExcelFileViewerPage({
+    super.key,
+    required this.filePath,
+    required this.fileName,
+  });
+
+  @override
+  State<ExcelFileViewerPage> createState() => _ExcelFileViewerPageState();
+}
+
+class _ExcelFileViewerPageState extends State<ExcelFileViewerPage> {
+  bool _isLoading = true;
+  String? _error;
+  List<String> _sheetNames = [];
+  final Map<String, List<List<String>>> _sheetRows = {};
+  int _sheetIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWorkbook();
+  }
+
+  Future<void> _loadWorkbook() async {
+    try {
+      final file = File(widget.filePath);
+      if (!await file.exists()) {
+        setState(() {
+          _error = 'File not found.';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      final bytes = await file.readAsBytes();
+      final excel = Excel.decodeBytes(bytes);
+      final names = excel.tables.keys.toList();
+      final parsed = <String, List<List<String>>>{};
+
+      for (final name in names) {
+        final table = excel.tables[name];
+        if (table == null) continue;
+        final rows = <List<String>>[];
+        for (final row in table.rows) {
+          rows.add(
+            row.map((cell) => cell?.value?.toString() ?? '').toList(),
+          );
+        }
+        parsed[name] = rows;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _sheetNames = names;
+        _sheetRows
+          ..clear()
+          ..addAll(parsed);
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Unable to read Excel file.';
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentSheet = _sheetNames.isNotEmpty ? _sheetNames[_sheetIndex] : '';
+    final rows = _sheetRows[currentSheet] ?? const <List<String>>[];
+    final maxCols = rows.fold<int>(0, (m, r) => r.length > m ? r.length : m);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          widget.fileName,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(child: Text(_error!))
+          : _sheetNames.isEmpty
+          ? const Center(child: Text('No sheets found.'))
+          : Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  color: const Color(0xFFF8F8F8),
+                  child: DropdownButton<int>(
+                    isExpanded: true,
+                    value: _sheetIndex,
+                    items: List.generate(
+                      _sheetNames.length,
+                      (i) => DropdownMenuItem(
+                        value: i,
+                        child: Text(_sheetNames[i]),
+                      ),
+                    ),
+                    onChanged: (val) {
+                      if (val == null) return;
+                      setState(() => _sheetIndex = val);
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: (maxCols * 140).toDouble().clamp(280, 5000),
+                      child: ListView.builder(
+                        itemCount: rows.length,
+                        itemBuilder: (context, rowIndex) {
+                          final row = rows[rowIndex];
+                          return Container(
+                            color: rowIndex == 0
+                                ? const Color(0xFFF1F1F1)
+                                : Colors.white,
+                            child: Row(
+                              children: List.generate(maxCols, (colIndex) {
+                                final text = colIndex < row.length
+                                    ? row[colIndex]
+                                    : '';
+                                return Container(
+                                  width: 140,
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: const Color(0xFFE3E3E3),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    text,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: rowIndex == 0
+                                          ? FontWeight.w700
+                                          : FontWeight.w400,
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }

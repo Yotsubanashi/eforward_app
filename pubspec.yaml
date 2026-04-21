@@ -50,6 +50,7 @@ dependencies:
   flutter_local_notifications: ^18.0.1
   app_links: ^6.3.2   # ← ADD THIS
   flutter_svg: ^2.2.4
+  excel: ^4.0.6
 
 
 
