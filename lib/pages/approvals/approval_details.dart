@@ -2236,19 +2236,27 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     final responsivePadding = (_signatureHeight * 0.08).clamp(0.5, 2.0);
     final responsiveSpacing = (_signatureHeight * 0.06).clamp(2.0, 5.0);
 
+    //signature and metadata layout
     return Container(
       width: _signatureWidth,
       height: _signatureHeight,
       color: Colors.transparent,
       child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Expanded(
-            flex: 4,
+          SizedBox(
+            width: _signatureWidth * 0.45,
+            height: _signatureHeight,
             child: Stack(
               alignment: Alignment.center,
               children: [
                 if (_signatureBytes != null)
-                  Image.memory(_signatureBytes!, fit: BoxFit.contain)
+                  Image.memory(
+                    _signatureBytes!,
+                    fit: BoxFit.contain,
+                    width: _signatureWidth * 0.45,
+                  )
                 else if (_signatureText != null && _signatureText!.isNotEmpty)
                   FittedBox(
                     fit: BoxFit.scaleDown,
@@ -2269,55 +2277,60 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               ],
             ),
           ),
-          IntrinsicWidth(
+
+          Expanded(
             child: Container(
               decoration: BoxDecoration(
                 border: Border.all(
-                  color: const Color(0xFF1B5E20),
-                  width: responsivePadding * 0.6,
+                  color: const Color(0xFF1B5E20).withOpacity(0.35),
+                  width: 0.8,
                 ),
               ),
               padding: EdgeInsets.symmetric(
                 horizontal: responsivePadding * 1.5,
-                vertical: responsivePadding,
+                vertical: responsivePadding * 0.5,
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _metaRow(
-                    'Digitally signed by:',
-                    _signerName,
-                    responsiveFontSize,
-                    responsiveLabelFontSize,
-                    responsiveSpacing,
-                  ),
-                  SizedBox(height: responsiveSpacing * 0.5),
-                  _metaRow(
-                    'Employee ID:',
-                    _signerEmployeeId,
-                    responsiveFontSize,
-                    responsiveLabelFontSize,
-                    responsiveSpacing,
-                  ),
-                  SizedBox(height: responsiveSpacing * 0.5),
-                  _metaRow(
-                    'Date:',
-                    dateStr,
-                    responsiveFontSize,
-                    responsiveLabelFontSize,
-                    responsiveSpacing,
-                  ),
-                  SizedBox(height: responsiveSpacing * 0.5),
-                  _metaRow(
-                    'Ref:',
-                    refNo,
-                    responsiveFontSize,
-                    responsiveLabelFontSize,
-                    responsiveSpacing,
-                  ),
-                ],
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _metaRow(
+                      'Digitally signed by:',
+                      _signerName,
+                      responsiveFontSize,
+                      responsiveLabelFontSize,
+                      responsiveSpacing,
+                    ),
+                    SizedBox(height: responsiveSpacing * 0.5),
+                    _metaRow(
+                      'Employee ID:',
+                      _signerEmployeeId,
+                      responsiveFontSize,
+                      responsiveLabelFontSize,
+                      responsiveSpacing,
+                    ),
+                    SizedBox(height: responsiveSpacing * 0.5),
+                    _metaRow(
+                      'Date:',
+                      dateStr,
+                      responsiveFontSize,
+                      responsiveLabelFontSize,
+                      responsiveSpacing,
+                    ),
+                    SizedBox(height: responsiveSpacing * 0.5),
+                    _metaRow(
+                      'Ref:',
+                      refNo,
+                      responsiveFontSize,
+                      responsiveLabelFontSize,
+                      responsiveSpacing,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -2573,24 +2586,24 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                 child: _ResizeHandle(
                                   onPanUpdate: (d) {
                                     setState(() {
-                                      final newW = _signatureWidth - d.delta.dx;
-                                      final newH =
-                                          _signatureHeight - d.delta.dy;
-                                      if (newW >= 100 && newH >= 40) {
+                                      final aspectRatio =
+                                          _signatureWidth / _signatureHeight;
+                                      final newW =
+                                          (_signatureWidth - d.delta.dx).clamp(
+                                            100.0,
+                                            constraints.maxWidth,
+                                          );
+                                      final newH = newW / aspectRatio;
+                                      if (newH >= 40) {
                                         _signaturePosition = Offset(
                                           (_signaturePosition.dx + d.delta.dx)
                                               .clamp(0.0, double.infinity),
-                                          (_signaturePosition.dy + d.delta.dy)
+                                          (_signaturePosition.dy -
+                                                  (newH - _signatureHeight))
                                               .clamp(0.0, double.infinity),
                                         );
-                                        _signatureWidth = newW.clamp(
-                                          100.0,
-                                          constraints.maxWidth,
-                                        );
-                                        _signatureHeight = newH.clamp(
-                                          40.0,
-                                          constraints.maxHeight,
-                                        );
+                                        _signatureWidth = newW;
+                                        _signatureHeight = newH;
                                       }
                                     });
                                   },
@@ -2604,24 +2617,24 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                 child: _ResizeHandle(
                                   onPanUpdate: (d) {
                                     setState(() {
-                                      final newW = _signatureWidth + d.delta.dx;
-                                      final newH =
-                                          _signatureHeight - d.delta.dy;
-                                      if (newW >= 100 && newH >= 40) {
+                                      final aspectRatio =
+                                          _signatureWidth / _signatureHeight;
+                                      final newW =
+                                          (_signatureWidth + d.delta.dx).clamp(
+                                            100.0,
+                                            constraints.maxWidth -
+                                                _signaturePosition.dx,
+                                          );
+                                      final newH = newW / aspectRatio;
+                                      if (newH >= 40) {
                                         _signaturePosition = Offset(
                                           _signaturePosition.dx,
-                                          (_signaturePosition.dy + d.delta.dy)
+                                          (_signaturePosition.dy -
+                                                  (newH - _signatureHeight))
                                               .clamp(0.0, double.infinity),
                                         );
-                                        _signatureWidth = newW.clamp(
-                                          100.0,
-                                          constraints.maxWidth -
-                                              _signaturePosition.dx,
-                                        );
-                                        _signatureHeight = newH.clamp(
-                                          40.0,
-                                          constraints.maxHeight,
-                                        );
+                                        _signatureWidth = newW;
+                                        _signatureHeight = newH;
                                       }
                                     });
                                   },
@@ -2635,24 +2648,22 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                 child: _ResizeHandle(
                                   onPanUpdate: (d) {
                                     setState(() {
-                                      final newW = _signatureWidth - d.delta.dx;
-                                      final newH =
-                                          _signatureHeight + d.delta.dy;
-                                      if (newW >= 100 && newH >= 40) {
+                                      final aspectRatio =
+                                          _signatureWidth / _signatureHeight;
+                                      final newW =
+                                          (_signatureWidth - d.delta.dx).clamp(
+                                            100.0,
+                                            constraints.maxWidth,
+                                          );
+                                      final newH = newW / aspectRatio;
+                                      if (newH >= 40) {
                                         _signaturePosition = Offset(
                                           (_signaturePosition.dx + d.delta.dx)
                                               .clamp(0.0, double.infinity),
                                           _signaturePosition.dy,
                                         );
-                                        _signatureWidth = newW.clamp(
-                                          100.0,
-                                          constraints.maxWidth,
-                                        );
-                                        _signatureHeight = newH.clamp(
-                                          40.0,
-                                          constraints.maxHeight -
-                                              _signaturePosition.dy,
-                                        );
+                                        _signatureWidth = newW;
+                                        _signatureHeight = newH;
                                       }
                                     });
                                   },
@@ -2666,111 +2677,19 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                 child: _ResizeHandle(
                                   onPanUpdate: (d) {
                                     setState(() {
-                                      _signatureWidth =
+                                      final aspectRatio =
+                                          _signatureWidth / _signatureHeight;
+                                      final newW =
                                           (_signatureWidth + d.delta.dx).clamp(
                                             100.0,
                                             constraints.maxWidth -
                                                 _signaturePosition.dx,
                                           );
-                                      _signatureHeight =
-                                          (_signatureHeight + d.delta.dy).clamp(
-                                            40.0,
-                                            constraints.maxHeight -
-                                                _signaturePosition.dy,
-                                          );
-                                    });
-                                  },
-                                ),
-                              ),
-
-                              // ── Edge: Top ────────────────────────────────
-                              Positioned(
-                                left: 24,
-                                right: 24,
-                                top: 0,
-                                child: _ResizeHandle(
-                                  isEdge: true,
-                                  onPanUpdate: (d) {
-                                    setState(() {
-                                      final newH =
-                                          _signatureHeight - d.delta.dy;
+                                      final newH = newW / aspectRatio;
                                       if (newH >= 40) {
-                                        _signaturePosition = Offset(
-                                          _signaturePosition.dx,
-                                          (_signaturePosition.dy + d.delta.dy)
-                                              .clamp(0.0, double.infinity),
-                                        );
-                                        _signatureHeight = newH.clamp(
-                                          40.0,
-                                          constraints.maxHeight,
-                                        );
+                                        _signatureWidth = newW;
+                                        _signatureHeight = newH;
                                       }
-                                    });
-                                  },
-                                ),
-                              ),
-
-                              // ── Edge: Bottom ─────────────────────────────
-                              Positioned(
-                                left: 24,
-                                right: 24,
-                                bottom: 0,
-                                child: _ResizeHandle(
-                                  isEdge: true,
-                                  onPanUpdate: (d) {
-                                    setState(() {
-                                      _signatureHeight =
-                                          (_signatureHeight + d.delta.dy).clamp(
-                                            40.0,
-                                            constraints.maxHeight -
-                                                _signaturePosition.dy,
-                                          );
-                                    });
-                                  },
-                                ),
-                              ),
-
-                              // ── Edge: Left ───────────────────────────────
-                              Positioned(
-                                left: 0,
-                                top: 24,
-                                bottom: 24,
-                                child: _ResizeHandle(
-                                  isEdge: true,
-                                  onPanUpdate: (d) {
-                                    setState(() {
-                                      final newW = _signatureWidth - d.delta.dx;
-                                      if (newW >= 100) {
-                                        _signaturePosition = Offset(
-                                          (_signaturePosition.dx + d.delta.dx)
-                                              .clamp(0.0, double.infinity),
-                                          _signaturePosition.dy,
-                                        );
-                                        _signatureWidth = newW.clamp(
-                                          100.0,
-                                          constraints.maxWidth,
-                                        );
-                                      }
-                                    });
-                                  },
-                                ),
-                              ),
-
-                              // ── Edge: Right ──────────────────────────────
-                              Positioned(
-                                right: 0,
-                                top: 24,
-                                bottom: 24,
-                                child: _ResizeHandle(
-                                  isEdge: true,
-                                  onPanUpdate: (d) {
-                                    setState(() {
-                                      _signatureWidth =
-                                          (_signatureWidth + d.delta.dx).clamp(
-                                            100.0,
-                                            constraints.maxWidth -
-                                                _signaturePosition.dx,
-                                          );
                                     });
                                   },
                                 ),
