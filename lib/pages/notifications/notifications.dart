@@ -349,22 +349,21 @@ class _NotificationsPageState extends State<NotificationsPage>
           _markAsRead(notificationId);
         }
 
-        if (link.isNotEmpty) {
-          final parts = link.split('/');
-          if (parts.length >= 3 && parts[1] == 'approvals') {
-            final tempItem = {
-              'routing_id': parts[2],
-              'header': header,
-              'detail': detail,
-            };
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) =>
-                    ApprovalDetailPage(item: tempItem, isFromHistory: false),
-              ),
-            );
-          }
+        final routingId = _extractApprovalRoutingId(link);
+        if (routingId != null) {
+          final tempItem = {
+            'routing_id': routingId,
+            'id': routingId,
+            'header': header,
+            'detail': detail,
+          };
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) =>
+                  ApprovalDetailPage(item: tempItem, isFromHistory: false),
+            ),
+          );
         }
       },
       child: Container(
@@ -446,5 +445,71 @@ class _NotificationsPageState extends State<NotificationsPage>
         ),
       ),
     );
+  }
+
+  String? _extractApprovalRoutingId(String rawLink) {
+    if (rawLink.trim().isEmpty) return null;
+
+    try {
+      final trimmed = rawLink.trim();
+      final uri = Uri.tryParse(trimmed);
+
+      if (uri == null) return null;
+
+      final segments = uri.pathSegments;
+      final approvalsIndex = segments.indexOf('approvals');
+      if (approvalsIndex != -1 && approvalsIndex + 1 < segments.length) {
+        const ignoredSegments = {
+          'pending',
+          'history',
+          'routing',
+          'approve',
+          'revision',
+          'read',
+        };
+
+        for (int i = approvalsIndex + 1; i < segments.length; i++) {
+          final candidate = segments[i].trim();
+          if (candidate.isEmpty) continue;
+          if (!ignoredSegments.contains(candidate.toLowerCase())) {
+            return candidate;
+          }
+        }
+      }
+
+      // Also support links like:
+      // /user/documents/{routingId}/view
+      // /routing/{routingId}/history
+      final documentLikeRoots = {'documents', 'routing'};
+      for (final root in documentLikeRoots) {
+        final rootIndex = segments.indexOf(root);
+        if (rootIndex != -1 && rootIndex + 1 < segments.length) {
+          final candidate = segments[rootIndex + 1].trim();
+          if (candidate.isNotEmpty && RegExp(r'^\d+$').hasMatch(candidate)) {
+            return candidate;
+          }
+        }
+      }
+
+      // Last fallback for legacy paths: pick first numeric segment.
+      for (final segment in segments) {
+        final candidate = segment.trim();
+        if (RegExp(r'^\d+$').hasMatch(candidate)) {
+          return candidate;
+        }
+      }
+
+      final routingId =
+          uri.queryParameters['routing_id'] ??
+          uri.queryParameters['id'] ??
+          uri.queryParameters['approval_id'];
+      if (routingId != null && routingId.trim().isNotEmpty) {
+        return routingId.trim();
+      }
+    } catch (_) {
+      // Ignore malformed links and skip navigation.
+    }
+
+    return null;
   }
 }
