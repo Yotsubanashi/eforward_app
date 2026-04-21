@@ -348,8 +348,12 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           response.statusCode < 300 &&
           response.bodyBytes.isNotEmpty) {
         final dir = await getTemporaryDirectory();
+        final fileName = _getFileName();
+        final fileExtension = _getFileExtension(fileName);
+        final preservedFileName =
+            'doc_${fileId}_${DateTime.now().millisecondsSinceEpoch}${fileExtension.isNotEmpty ? '.$fileExtension' : '.pdf'}';
         final file = File(
-          '${dir.path}/doc_${fileId}_${DateTime.now().millisecondsSinceEpoch}.pdf',
+          '${dir.path}/$preservedFileName',
         );
         await file.writeAsBytes(response.bodyBytes);
         if (mounted) {
@@ -684,27 +688,76 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     }
   }
 
+  String _getMimeType(String fileName, {String? fallbackMimeType}) {
+    final fallback = fallbackMimeType?.trim() ?? '';
+    if (fallback.isNotEmpty) return fallback;
+    switch (_getFileExtension(fileName)) {
+      case 'pdf':
+        return 'application/pdf';
+      case 'doc':
+        return 'application/msword';
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'xls':
+        return 'application/vnd.ms-excel';
+      case 'xlsx':
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      case 'ppt':
+        return 'application/vnd.ms-powerpoint';
+      case 'pptx':
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'txt':
+        return 'text/plain';
+      case 'csv':
+        return 'text/csv';
+      case 'zip':
+        return 'application/zip';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  Future<void> _openFileExternally(
+    String filePath,
+    String fileName, {
+    String? fallbackMimeType,
+  }) async {
+    final explicitMimeType = _getMimeType(
+      fileName,
+      fallbackMimeType: fallbackMimeType,
+    );
+    OpenResult result = await OpenFile.open(filePath, type: explicitMimeType);
+
+    if (result.type != ResultType.done) {
+      // Some Android handlers are strict; retry without forcing MIME.
+      result = await OpenFile.open(filePath);
+    }
+
+    if (!mounted || result.type == ResultType.done) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Unable to open file. Install an app for ${_getFileTypeDisplayName(fileName)}.',
+        ),
+        backgroundColor: const Color(0xFFCC0000),
+      ),
+    );
+  }
+
   Future<void> _viewAttachment(Map<String, dynamic> attachment) async {
     try {
       final fileId = attachment['file_id']?.toString() ?? '';
       final fileName =
           attachment['original_name'] ?? attachment['file_name'] ?? 'document';
       final isPdf = _isPdfFile(fileName.toString());
-
-      if (!isPdf) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Cannot preview ${_getFileTypeDisplayName(fileName.toString())}. Use the download button to open this file.',
-              ),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
-        return;
-      }
 
       if (fileId.isEmpty) {
         if (mounted) {
@@ -756,22 +809,32 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         await file.writeAsBytes(response.bodyBytes);
 
         if (mounted) {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => PdfSignerPage(
-                pdfPath: file.path,
-                item: widget.item,
-                enableSigning: false,
+          if (isPdf) {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => PdfSignerPage(
+                  pdfPath: file.path,
+                  item: widget.item,
+                  enableSigning: false,
+                ),
               ),
-            ),
-          );
+            );
+          } else {
+            await _openFileExternally(
+              file.path,
+              fileName.toString(),
+              fallbackMimeType: attachment['mime_type']?.toString(),
+            );
+          }
         }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Failed to load PDF: ${response.statusCode}'),
+              content: Text(
+                'Failed to load attachment: ${response.statusCode}',
+              ),
               backgroundColor: const Color(0xFFCC0000),
             ),
           );
@@ -822,9 +885,8 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   String _formatDate(String raw) {
     if (raw.isEmpty || raw == '—') return raw;
     try {
-      final dt = DateTime.parse(
-        raw,
-      ).toUtc().subtract(const Duration(hours: 12));
+      final parsed = DateTime.parse(raw);
+      final dt = parsed.isUtc ? parsed.toLocal() : parsed;
       const months = [
         'JAN',
         'FEB',
@@ -847,6 +909,25 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     } catch (_) {
       return raw;
     }
+  }
+
+  Future<void> _openMainDocument() async {
+    if (_localPdfPath == null) return;
+    final fileName = _getFileName();
+    if (_isPdfFile(fileName)) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PdfSignerPage(
+            pdfPath: _localPdfPath!,
+            item: widget.item,
+            enableSigning: false,
+          ),
+        ),
+      );
+      return;
+    }
+    await _openFileExternally(_localPdfPath!, fileName);
   }
 
   String _getFileName() {
@@ -928,6 +1009,10 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   String _getDateSent() {
     final data = _detail?['data'] ?? _detail;
     if (data is Map) {
+      final topLevelDateSent = data['date_sent']?.toString() ?? '';
+      if (topLevelDateSent.isNotEmpty && topLevelDateSent != 'null') {
+        return _formatDate(topLevelDateSent);
+      }
       final details = data['details'];
       if (details is List && details.isNotEmpty) {
         DateTime? mostRecentDate;
@@ -949,14 +1034,28 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           return _formatDate(mostRecentDate.toIso8601String());
         }
       }
-      final topLevelDateSent = data['date_sent']?.toString() ?? '';
-      if (topLevelDateSent.isNotEmpty && topLevelDateSent != 'null') {
-        return _formatDate(topLevelDateSent);
-      }
       final created = data['date_created']?.toString() ?? '';
       if (created.isNotEmpty && created != 'null') return _formatDate(created);
     }
     return widget.item['dateSent']?.toString() ?? '—';
+  }
+
+  String _getDateUpdated() {
+    final data = _detail?['data'] ?? _detail;
+    if (data is Map) {
+      final updated = data['date_updated']?.toString() ?? '';
+      if (updated.isNotEmpty && updated != 'null') return _formatDate(updated);
+      final actionDate = data['action_date']?.toString() ?? '';
+      if (actionDate.isNotEmpty && actionDate != 'null') {
+        return _formatDate(actionDate);
+      }
+    }
+    final fromItem =
+        widget.item['dateUpdated']?.toString() ??
+        widget.item['date_updated']?.toString() ??
+        '';
+    if (fromItem.isNotEmpty && fromItem != 'null') return _formatDate(fromItem);
+    return '—';
   }
 
   @override
@@ -1100,6 +1199,12 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                     ),
                     const Divider(height: 24, color: Color(0xFFF0F0F0)),
                     _buildInfoRow(
+                      Icons.update_outlined,
+                      "DATE UPDATED",
+                      _getDateUpdated(),
+                    ),
+                    const Divider(height: 24, color: Color(0xFFF0F0F0)),
+                    _buildInfoRow(
                       Icons.label_outline,
                       "PARTICULARS",
                       _getValue('particulars', 'particulars'),
@@ -1167,9 +1272,9 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 2),
-                            const Text(
-                              "PDF Document",
-                              style: TextStyle(
+                            Text(
+                              _getFileTypeDisplayName(fileName),
+                              style: const TextStyle(
                                 fontSize: 11,
                                 color: Colors.black38,
                               ),
@@ -1192,16 +1297,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                               children: [
                                 GestureDetector(
                                   onTap: _localPdfPath != null
-                                      ? () => Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => PdfSignerPage(
-                                              pdfPath: _localPdfPath!,
-                                              item: widget.item,
-                                              enableSigning: false,
-                                            ),
-                                          ),
-                                        )
+                                      ? _openMainDocument
                                       : null,
                                   child: Container(
                                     padding: const EdgeInsets.all(8),
@@ -1213,58 +1309,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                     ),
                                     child: const Icon(
                                       Icons.visibility_outlined,
-                                      color: Colors.white,
-                                      size: 16,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                GestureDetector(
-                                  onTap: () {
-                                    final downloadFile = _getDownloadableFile();
-                                    if (downloadFile == null) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Unable to download: No document available',
-                                          ),
-                                          backgroundColor: Color(0xFFCC0000),
-                                        ),
-                                      );
-                                      return;
-                                    }
-                                    final fileId =
-                                        downloadFile['file_id']?.toString() ??
-                                        '';
-                                    final fName =
-                                        downloadFile['original_name'] ??
-                                        downloadFile['file_name'] ??
-                                        _getFileName();
-                                    if (fileId.isEmpty) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Unable to download: File ID not found',
-                                          ),
-                                          backgroundColor: Color(0xFFCC0000),
-                                        ),
-                                      );
-                                      return;
-                                    }
-                                    _downloadFile(fileId, fName.toString());
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFCC0000),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: const Icon(
-                                      Icons.download_outlined,
                                       color: Colors.white,
                                       size: 16,
                                     ),
@@ -1306,7 +1350,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                           attachment['original_name'] ??
                           attachment['file_name'] ??
                           'Document';
-                      final isPdf = _isPdfFile(name.toString());
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: Row(
@@ -1355,33 +1398,8 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                if (isPdf)
-                                  GestureDetector(
-                                    onTap: () => _viewAttachment(attachment),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFCC0000),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: const Icon(
-                                        Icons.visibility_outlined,
-                                        color: Colors.white,
-                                        size: 16,
-                                      ),
-                                    ),
-                                  ),
-                                if (isPdf) const SizedBox(width: 8),
                                 GestureDetector(
-                                  onTap: () {
-                                    final fileId =
-                                        attachment['file_id']?.toString() ?? '';
-                                    final fName =
-                                        attachment['original_name'] ??
-                                        attachment['file_name'] ??
-                                        'document.pdf';
-                                    _downloadFile(fileId, fName);
-                                  },
+                                  onTap: () => _viewAttachment(attachment),
                                   child: Container(
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
@@ -1389,7 +1407,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                       borderRadius: BorderRadius.circular(4),
                                     ),
                                     child: const Icon(
-                                      Icons.download_outlined,
+                                      Icons.visibility_outlined,
                                       color: Colors.white,
                                       size: 16,
                                     ),

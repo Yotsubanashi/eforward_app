@@ -376,6 +376,34 @@ class _ApprovalsPageState extends State<ApprovalsPage>
   }
 
   // ─── Normalize API fields to consistent keys ──────────────────────────────
+  String _formatApiDate(String raw) {
+    if (raw.isEmpty) return '';
+    try {
+      final parsed = DateTime.parse(raw);
+      final dt = parsed.isUtc ? parsed.toLocal() : parsed;
+      const months = [
+        'JAN',
+        'FEB',
+        'MAR',
+        'APR',
+        'MAY',
+        'JUN',
+        'JUL',
+        'AUG',
+        'SEP',
+        'OCT',
+        'NOV',
+        'DEC',
+      ];
+      final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+      final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+      return '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
+          '${hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} $ampm';
+    } catch (_) {
+      return raw;
+    }
+  }
+
   Map<String, dynamic> _normalizeItem(Map<String, dynamic> raw) {
     final routing = raw['routing'] as Map<String, dynamic>? ?? {};
     final owner = routing['owner'] as Map<String, dynamic>? ?? {};
@@ -389,40 +417,17 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       lastName,
     ].where((p) => p.isNotEmpty).join(' ').trim();
 
-    // Try multiple date field names
-    // For history items, created_at is the action timestamp (most accurate)
-    // For pending items, prefer date_sent
-    String dateSent =
-        (raw['created_at'] ?? raw['date_sent'] ?? raw['date_updated'] ?? '')
-            as String;
-    try {
-      if (dateSent.isNotEmpty) {
-        final dt = DateTime.parse(
-          dateSent,
-        ).toUtc().subtract(const Duration(hours: 12));
-        const months = [
-          'JAN',
-          'FEB',
-          'MAR',
-          'APR',
-          'MAY',
-          'JUN',
-          'JUL',
-          'AUG',
-          'SEP',
-          'OCT',
-          'NOV',
-          'DEC',
-        ];
-        final hour = dt.hour > 12
-            ? dt.hour - 12
-            : (dt.hour == 0 ? 12 : dt.hour);
-        final ampm = dt.hour >= 12 ? 'PM' : 'AM';
-        dateSent =
-            '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
-            '${hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} $ampm';
-      }
-    } catch (_) {}
+    // Pending endpoint rows contain top-level date_sent.
+    // History endpoint rows should show routing.date_updated.
+    final isHistoryItem = raw['history_id'] != null;
+    final rawDate = isHistoryItem
+        ? (routing['date_updated'] ?? raw['date_updated'] ?? raw['created_at'])
+              ?.toString() ??
+          ''
+        : (raw['date_sent'] ?? routing['date_sent'] ?? routing['date_created'])
+              ?.toString() ??
+          '';
+    final dateSent = _formatApiDate(rawDate);
 
     // ── STATUS RESOLUTION (priority order) ───────────────────────────────
     // 1. to_status  — history endpoint action result  (e.g. "APV", "APPROVED")
