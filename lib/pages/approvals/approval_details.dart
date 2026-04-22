@@ -837,7 +837,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
               MaterialPageRoute(
                 builder: (_) => PdfSignerPage(
                   pdfPath: file.path,
-                  item: widget.item,
+                  item: _signerItemData(),
                   enableSigning: false,
                 ),
               ),
@@ -904,13 +904,30 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     return widget.item['requester']?.toString() ?? '—';
   }
 
+  DateTime? _parseApiDate(String raw) {
+    if (raw.trim().isEmpty || raw == 'null') return null;
+    try {
+      // Keep API clock values exactly as sent (ignore timezone shifting).
+      var normalized = raw.trim();
+      normalized = normalized.replaceFirst(RegExp(r'(Z|[+-]\d{2}:\d{2})$'), '');
+      return DateTime.parse(normalized);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Map<String, dynamic> _signerItemData() {
+    final data = _detail?['data'];
+    if (data is Map<String, dynamic>) {
+      return {...widget.item, ...data};
+    }
+    return widget.item;
+  }
+
   String _formatDate(String raw) {
-  if (raw.isEmpty || raw == '—') return raw;
-  
-  try {
-    // Always treat parsed date as UTC, then convert to local
-    final parsed = DateTime.parse(raw);
-    final dt = parsed.toLocal(); // ← always convert, regardless of isUtc
+    if (raw.isEmpty || raw == '—') return raw;
+    final dt = _parseApiDate(raw);
+    if (dt == null) return raw;
 
     const months = [
       'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
@@ -921,10 +938,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         '${hour.toString().padLeft(2, '0')}:'
         '${dt.minute.toString().padLeft(2, '0')} '
         '${dt.hour >= 12 ? 'PM' : 'AM'}';
-  } catch (_) {
-    return raw;
   }
-}
 
   Future<void> _openMainDocument() async {
     if (_localPdfPath == null) return;
@@ -935,7 +949,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         MaterialPageRoute(
           builder: (_) => PdfSignerPage(
             pdfPath: _localPdfPath!,
-            item: widget.item,
+            item: _signerItemData(),
             enableSigning: false,
           ),
         ),
@@ -1033,7 +1047,8 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
             final ds = d['date_sent']?.toString() ?? '';
             if (ds.isNotEmpty && ds != 'null') {
               try {
-                final parsedDate = DateTime.parse(ds).toLocal();
+                final parsedDate = _parseApiDate(ds);
+                if (parsedDate == null) continue;
                 if (mostRecentDate == null ||
                     parsedDate.isAfter(mostRecentDate)) {
                   mostRecentDate = parsedDate;
@@ -1481,7 +1496,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                     MaterialPageRoute(
                                       builder: (_) => PdfSignerPage(
                                         pdfPath: _localPdfPath!,
-                                        item: widget.item,
+                                        item: _signerItemData(),
                                         enableSigning: true,
                                       ),
                                     ),
@@ -1827,6 +1842,35 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   static const double _pdfPageWidthPt = 595.0;
   static const double _pdfPageHeightPt = 842.0;
 
+  DateTime? _parseApiDate(String? raw) {
+    final value = (raw ?? '').trim();
+    if (value.isEmpty || value == 'null') return null;
+    try {
+      var normalized = value;
+      normalized = normalized.replaceFirst(RegExp(r'(Z|[+-]\d{2}:\d{2})$'), '');
+      return DateTime.parse(normalized);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  DateTime? _resolveSigningApiTime() {
+    final routing = widget.item['routing'];
+    final routingMap = routing is Map ? routing : <String, dynamic>{};
+    final candidates = [
+      widget.item['date_sent']?.toString(),
+      routingMap['date_sent']?.toString(),
+      widget.item['date_updated']?.toString(),
+      routingMap['date_updated']?.toString(),
+      widget.item['created_at']?.toString(),
+    ];
+    for (final raw in candidates) {
+      final parsed = _parseApiDate(raw);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
   double _toPdfX(double screenX) => _containerWidth == 0
       ? screenX
       : (screenX / _containerWidth) * _pdfPageWidthPt;
@@ -2041,7 +2085,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     }
     setState(() {
       _isSigningMode = true;
-      _signedAt = DateTime.now();
+      _signedAt = _resolveSigningApiTime() ?? DateTime.now();
       _signaturePosition = Offset(
         _containerWidth > 0 ? (_containerWidth - _signatureWidth) / 2 : 60,
         _containerHeight > 0 ? _containerHeight * 0.7 : 300,
@@ -2224,9 +2268,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       );
     }
 
-    final now = (_signedAt ?? DateTime.now()).toUtc().add(
-      const Duration(hours: 8),
-    );
+    final now = _signedAt ?? DateTime.now();
     final dateStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';

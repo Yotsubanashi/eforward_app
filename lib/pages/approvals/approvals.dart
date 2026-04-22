@@ -376,32 +376,40 @@ class _ApprovalsPageState extends State<ApprovalsPage>
   }
 
   // ─── Normalize API fields to consistent keys ──────────────────────────────
+  DateTime? _parseApiDate(String raw) {
+    if (raw.trim().isEmpty) return null;
+    try {
+      // Keep API clock values exactly as sent (ignore timezone shifting).
+      var normalized = raw.trim();
+      normalized = normalized.replaceFirst(RegExp(r'(Z|[+-]\d{2}:\d{2})$'), '');
+      return DateTime.parse(normalized);
+    } catch (_) {
+      return null;
+    }
+  }
+
   String _formatApiDate(String raw) {
     if (raw.isEmpty) return '';
-    try {
-      final parsed = DateTime.parse(raw);
-      final dt = parsed.isUtc ? parsed.toLocal() : parsed;
-      const months = [
-        'JAN',
-        'FEB',
-        'MAR',
-        'APR',
-        'MAY',
-        'JUN',
-        'JUL',
-        'AUG',
-        'SEP',
-        'OCT',
-        'NOV',
-        'DEC',
-      ];
-      final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
-      final ampm = dt.hour >= 12 ? 'PM' : 'AM';
-      return '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
-          '${hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} $ampm';
-    } catch (_) {
-      return raw;
-    }
+    final dt = _parseApiDate(raw);
+    if (dt == null) return raw;
+    const months = [
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC',
+    ];
+    final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+    final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+    return '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
+        '${hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} $ampm';
   }
 
   Map<String, dynamic> _normalizeItem(Map<String, dynamic> raw) {
