@@ -38,6 +38,7 @@ class _NotificationsPageState extends State<NotificationsPage>
     _notificationsService = NotificationsService();
     _scrollController.addListener(_onScroll);
     _fetchNotifications();
+    _notificationsService.fetchUnreadCount();
   }
 
   @override
@@ -50,6 +51,7 @@ class _NotificationsPageState extends State<NotificationsPage>
         _hasMore = true;
       });
       _fetchNotifications();
+      _notificationsService.fetchUnreadCount();
     }
   }
 
@@ -119,6 +121,7 @@ class _NotificationsPageState extends State<NotificationsPage>
           _isLoading = false;
           _lastUpdated = DateTime.now();
         });
+        await _notificationsService.fetchUnreadCount();
       } else {
         setState(() => _isLoading = false);
       }
@@ -161,6 +164,7 @@ class _NotificationsPageState extends State<NotificationsPage>
         _hasMore = true;
       });
       await _fetchNotifications();
+      await _notificationsService.fetchUnreadCount();
     } else if (!success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -173,8 +177,6 @@ class _NotificationsPageState extends State<NotificationsPage>
 
   @override
   Widget build(BuildContext context) {
-    final unreadCount = _notifications.where((n) => !n['is_read']).length;
-
     return Scaffold(
       backgroundColor: const Color(0xFFF4F5F7),
       body: SafeArea(
@@ -209,45 +211,50 @@ class _NotificationsPageState extends State<NotificationsPage>
                 const SizedBox(height: 12),
 
                 // Unread count + Mark All Read
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      unreadCount > 0
-                          ? '$unreadCount unread notification${unreadCount != 1 ? 's' : ''}'
-                          : 'All caught up!',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: unreadCount > 0
-                            ? const Color(0xFFCC0000)
-                            : Colors.black54,
-                        letterSpacing: 0.3,
-                      ),
-                    ),
-                    if (unreadCount > 0)
-                      GestureDetector(
-                        onTap: _markAllAsRead,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFCC0000),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            "MARK ALL READ",
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1,
-                              color: Colors.white,
-                            ),
+                ValueListenableBuilder<int>(
+                  valueListenable: _notificationsService.unreadCountNotifier,
+                  builder: (context, unreadCount, _) {
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          unreadCount > 0
+                              ? '$unreadCount unread notification${unreadCount != 1 ? 's' : ''}'
+                              : 'All caught up!',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: unreadCount > 0
+                                ? const Color(0xFFCC0000)
+                                : Colors.black54,
+                            letterSpacing: 0.3,
                           ),
                         ),
-                      ),
-                  ],
+                        if (unreadCount > 0)
+                          GestureDetector(
+                            onTap: _markAllAsRead,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFCC0000),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                "MARK ALL READ",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
 
                 const SizedBox(height: 20),
