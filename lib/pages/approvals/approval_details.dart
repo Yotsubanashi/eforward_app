@@ -15,6 +15,7 @@ import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:open_file/open_file.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:excel/excel.dart' hide TextSpan, Border;
+import 'package:spreadsheet_decoder/spreadsheet_decoder.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // APPROVAL DETAIL PAGE
@@ -38,6 +39,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   bool _isLoadingPdf = false;
   bool _isLoadingDetail = true;
   String? _localPdfPath;
+  String? _localExcelPath;
   bool _isSubmittingRevision = false;
 
   Map<String, dynamic>? _detail;
@@ -903,33 +905,26 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   }
 
   String _formatDate(String raw) {
-    if (raw.isEmpty || raw == '—') return raw;
-    try {
-      final parsed = DateTime.parse(raw);
-      final dt = parsed.isUtc ? parsed.toLocal() : parsed;
-      const months = [
-        'JAN',
-        'FEB',
-        'MAR',
-        'APR',
-        'MAY',
-        'JUN',
-        'JUL',
-        'AUG',
-        'SEP',
-        'OCT',
-        'NOV',
-        'DEC',
-      ];
-      final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
-      return '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
-          '${hour.toString().padLeft(2, '0')}:'
-          '${dt.minute.toString().padLeft(2, '0')} '
-          '${dt.hour >= 12 ? 'PM' : 'AM'}';
-    } catch (_) {
-      return raw;
-    }
+  if (raw.isEmpty || raw == '—') return raw;
+  
+  try {
+    // Always treat parsed date as UTC, then convert to local
+    final parsed = DateTime.parse(raw);
+    final dt = parsed.toLocal(); // ← always convert, regardless of isUtc
+
+    const months = [
+      'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+      'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+    ];
+    final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+    return '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
+        '${hour.toString().padLeft(2, '0')}:'
+        '${dt.minute.toString().padLeft(2, '0')} '
+        '${dt.hour >= 12 ? 'PM' : 'AM'}';
+  } catch (_) {
+    return raw;
   }
+}
 
   Future<void> _openMainDocument() async {
     if (_localPdfPath == null) return;
@@ -1029,10 +1024,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   String _getDateSent() {
     final data = _detail?['data'] ?? _detail;
     if (data is Map) {
-      final topLevelDateSent = data['date_sent']?.toString() ?? '';
-      if (topLevelDateSent.isNotEmpty && topLevelDateSent != 'null') {
-        return _formatDate(topLevelDateSent);
-      }
+      
       final details = data['details'];
       if (details is List && details.isNotEmpty) {
         DateTime? mostRecentDate;
@@ -1041,7 +1033,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
             final ds = d['date_sent']?.toString() ?? '';
             if (ds.isNotEmpty && ds != 'null') {
               try {
-                final parsedDate = DateTime.parse(ds);
+                final parsedDate = DateTime.parse(ds).toLocal();
                 if (mostRecentDate == null ||
                     parsedDate.isAfter(mostRecentDate)) {
                   mostRecentDate = parsedDate;
@@ -1054,9 +1046,15 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           return _formatDate(mostRecentDate.toIso8601String());
         }
       }
+    final topLevelDateSent = data['date_sent']?.toString() ?? '';
+      if (topLevelDateSent.isNotEmpty && topLevelDateSent != 'null') {
+        return _formatDate(topLevelDateSent);
+      }
+      // Fall back to routing creation date
       final created = data['date_created']?.toString() ?? '';
       if (created.isNotEmpty && created != 'null') return _formatDate(created);
     }
+    // Last resort: already-formatted string from the list item
     return widget.item['dateSent']?.toString() ?? '—';
   }
 
@@ -1637,48 +1635,54 @@ class _ExcelFileViewerPageState extends State<ExcelFileViewerPage> {
     _loadWorkbook();
   }
 
-  Future<void> _loadWorkbook() async {
-    try {
+ Future<void> _loadWorkbook() async {
+  try {
+    late Uint8List bytes;
+
+    if (widget.filePath.startsWith('http')) {
+      final response = await http.get(Uri.parse(widget.filePath));
+      if (response.statusCode != 200) throw Exception('Failed to fetch');
+      bytes = response.bodyBytes;
+    } else {
       final file = File(widget.filePath);
       if (!await file.exists()) {
-        setState(() {
-          _error = 'File not found.';
-          _isLoading = false;
-        });
+        setState(() { _error = 'File not found.'; _isLoading = false; });
         return;
       }
-
-      final bytes = await file.readAsBytes();
-      final excel = Excel.decodeBytes(bytes);
-      final names = excel.tables.keys.toList();
-      final parsed = <String, List<List<String>>>{};
-
-      for (final name in names) {
-        final table = excel.tables[name];
-        if (table == null) continue;
-        final rows = <List<String>>[];
-        for (final row in table.rows) {
-          rows.add(row.map((cell) => cell?.value?.toString() ?? '').toList());
-        }
-        parsed[name] = rows;
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _sheetNames = names;
-        _sheetRows
-          ..clear()
-          ..addAll(parsed);
-        _isLoading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = 'Unable to read Excel file.';
-        _isLoading = false;
-      });
+      bytes = await file.readAsBytes();
     }
+
+    final decoder = SpreadsheetDecoder.decodeBytes(bytes);
+    final names = decoder.tables.keys.toList();
+    final parsed = <String, List<List<String>>>{};
+
+    for (final name in names) {
+      final table = decoder.tables[name]!;
+      final rows = <List<String>>[];
+      for (var r = 0; r < table.maxRows; r++) {
+        final row = <String>[];
+        for (var c = 0; c < table.maxCols; c++) {
+          row.add(table.rows[r][c]?.toString() ?? '');
+        }
+        rows.add(row);
+      }
+      parsed[name] = rows;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _sheetNames = names;
+      _sheetRows..clear()..addAll(parsed);
+      _isLoading = false;
+    });
+  } catch (e) {
+    if (!mounted) return;
+    setState(() {
+      _error = 'Unable to read Excel file: $e';
+      _isLoading = false;
+    });
   }
+}
 
   @override
   Widget build(BuildContext context) {
