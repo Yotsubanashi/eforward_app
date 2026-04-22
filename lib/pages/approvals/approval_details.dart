@@ -973,7 +973,9 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     if (!hasSignature) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No signature uploaded. Please upload/create one first.'),
+          content: Text(
+            'No signature uploaded. Please upload/create one first.',
+          ),
           backgroundColor: Color(0xFFCC0000),
         ),
       );
@@ -998,8 +1000,18 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     if (dt == null) return raw;
 
     const months = [
-      'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-      'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC',
     ];
     final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
     return '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
@@ -1106,7 +1118,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   String _getDateSent() {
     final data = _detail?['data'] ?? _detail;
     if (data is Map) {
-      
       final details = data['details'];
       if (details is List && details.isNotEmpty) {
         DateTime? mostRecentDate;
@@ -1129,7 +1140,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           return _formatDate(mostRecentDate.toIso8601String());
         }
       }
-    final topLevelDateSent = data['date_sent']?.toString() ?? '';
+      final topLevelDateSent = data['date_sent']?.toString() ?? '';
       if (topLevelDateSent.isNotEmpty && topLevelDateSent != 'null') {
         return _formatDate(topLevelDateSent);
       }
@@ -1709,54 +1720,59 @@ class _ExcelFileViewerPageState extends State<ExcelFileViewerPage> {
     _loadWorkbook();
   }
 
- Future<void> _loadWorkbook() async {
-  try {
-    late Uint8List bytes;
+  Future<void> _loadWorkbook() async {
+    try {
+      late Uint8List bytes;
 
-    if (widget.filePath.startsWith('http')) {
-      final response = await http.get(Uri.parse(widget.filePath));
-      if (response.statusCode != 200) throw Exception('Failed to fetch');
-      bytes = response.bodyBytes;
-    } else {
-      final file = File(widget.filePath);
-      if (!await file.exists()) {
-        setState(() { _error = 'File not found.'; _isLoading = false; });
-        return;
-      }
-      bytes = await file.readAsBytes();
-    }
-
-    final decoder = SpreadsheetDecoder.decodeBytes(bytes);
-    final names = decoder.tables.keys.toList();
-    final parsed = <String, List<List<String>>>{};
-
-    for (final name in names) {
-      final table = decoder.tables[name]!;
-      final rows = <List<String>>[];
-      for (var r = 0; r < table.maxRows; r++) {
-        final row = <String>[];
-        for (var c = 0; c < table.maxCols; c++) {
-          row.add(table.rows[r][c]?.toString() ?? '');
+      if (widget.filePath.startsWith('http')) {
+        final response = await http.get(Uri.parse(widget.filePath));
+        if (response.statusCode != 200) throw Exception('Failed to fetch');
+        bytes = response.bodyBytes;
+      } else {
+        final file = File(widget.filePath);
+        if (!await file.exists()) {
+          setState(() {
+            _error = 'File not found.';
+            _isLoading = false;
+          });
+          return;
         }
-        rows.add(row);
+        bytes = await file.readAsBytes();
       }
-      parsed[name] = rows;
-    }
 
-    if (!mounted) return;
-    setState(() {
-      _sheetNames = names;
-      _sheetRows..clear()..addAll(parsed);
-      _isLoading = false;
-    });
-  } catch (e) {
-    if (!mounted) return;
-    setState(() {
-      _error = 'Unable to read Excel file: $e';
-      _isLoading = false;
-    });
+      final decoder = SpreadsheetDecoder.decodeBytes(bytes);
+      final names = decoder.tables.keys.toList();
+      final parsed = <String, List<List<String>>>{};
+
+      for (final name in names) {
+        final table = decoder.tables[name]!;
+        final rows = <List<String>>[];
+        for (var r = 0; r < table.maxRows; r++) {
+          final row = <String>[];
+          for (var c = 0; c < table.maxCols; c++) {
+            row.add(table.rows[r][c]?.toString() ?? '');
+          }
+          rows.add(row);
+        }
+        parsed[name] = rows;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _sheetNames = names;
+        _sheetRows
+          ..clear()
+          ..addAll(parsed);
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Unable to read Excel file: $e';
+        _isLoading = false;
+      });
+    }
   }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -1877,6 +1893,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   bool _isSigningMode = false;
   bool _isSubmitting = false;
   bool _isLoadingSignature = true;
+  bool _showSignatureLoadingOverlay = false;
+  bool _pendingEnterSigningMode = false;
   DateTime? _signedAt;
   Uint8List? _watermarkBytes;
 
@@ -2067,6 +2085,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               _signatureBytes = processed;
               _isLoadingSignature = false;
             });
+            _onSignatureLoadingCompleted();
           }
           return;
         }
@@ -2087,6 +2106,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                   _signatureBytes = processed;
                   _isLoadingSignature = false;
                 });
+                _onSignatureLoadingCompleted();
               }
               return;
             }
@@ -2117,17 +2137,33 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         );
       }
     }
-    if (mounted) setState(() => _isLoadingSignature = false);
+    if (mounted) {
+      setState(() => _isLoadingSignature = false);
+      _onSignatureLoadingCompleted();
+    }
+  }
+
+  void _onSignatureLoadingCompleted() {
+    if (!mounted) return;
+    if (_pendingEnterSigningMode) {
+      setState(() {
+        _pendingEnterSigningMode = false;
+        _showSignatureLoadingOverlay = false;
+      });
+      _enterSigningMode();
+      return;
+    }
+    if (_showSignatureLoadingOverlay) {
+      setState(() => _showSignatureLoadingOverlay = false);
+    }
   }
 
   void _enterSigningMode() {
     if (_isLoadingSignature) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Signature still loading. Please wait.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      setState(() {
+        _showSignatureLoadingOverlay = true;
+        _pendingEnterSigningMode = true;
+      });
       return;
     }
     if (_signatureBytes == null &&
@@ -2522,377 +2558,437 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
             ),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          // ── Instruction banner ───────────────────────────────────────────
-          if (_isSigningMode)
-            Container(
-              width: double.infinity,
-              color: const Color(0xFFCC0000),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: Row(
-                children: const [
-                  Icon(Icons.drag_indicator, size: 16, color: Colors.white),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      "Drag to move · pull corners/edges to resize",
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+          Column(
+            children: [
+              // ── Instruction banner ───────────────────────────────────────────
+              if (_isSigningMode)
+                Container(
+                  width: double.infinity,
+                  color: const Color(0xFFCC0000),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
                   ),
-                ],
-              ),
-            ),
-
-          // ── PDF + Signature overlay ──────────────────────────────────────
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (_containerWidth != constraints.maxWidth ||
-                      _containerHeight != constraints.maxHeight) {
-                    setState(() {
-                      _containerWidth = constraints.maxWidth;
-                      _containerHeight = constraints.maxHeight;
-                    });
-                  }
-                });
-                return Stack(
-                  children: [
-                    // PDF viewer
-                    Positioned.fill(
-                      child: PDFView(
-                        filePath: widget.pdfPath,
-                        enableSwipe: true,
-                        swipeHorizontal: false,
-                        autoSpacing: true,
-                        pageFling: false,
-                        backgroundColor: Colors.grey.shade200,
-                        onPageChanged: (page, total) {
-                          if (mounted) {
-                            setState(() {
-                              _currentPage = page ?? 0;
-                              _totalPages = total ?? 1;
-                            });
-                          }
-                        },
-                        onError: (e) => debugPrint('PDF error: $e'),
-                      ),
-                    ),
-
-                    // Page counter
-                    if (_totalPages > 1)
-                      Positioned(
-                        top: 10,
-                        right: 10,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.55),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            "${_currentPage + 1} / $_totalPages",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
+                  child: Row(
+                    children: const [
+                      Icon(Icons.drag_indicator, size: 16, color: Colors.white),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          "Drag to move · pull corners/edges to resize",
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
+                    ],
+                  ),
+                ),
 
-                    // ── Signature overlay (drag + 8-handle resize) ───────────
-                    if (_isSigningMode)
-                      Positioned(
-                        left: _signaturePosition.dx - 12,
-                        top: _signaturePosition.dy - 12,
-                        child: SizedBox(
-                          width: _signatureWidth + 24,
-                          height: _signatureHeight + 24,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              // ── Body (drag to move) ──────────────────────
-                              Positioned(
-                                left: 12,
-                                top: 12,
-                                child: GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onPanUpdate: (d) {
-                                    setState(() {
-                                      _signaturePosition = Offset(
-                                        (_signaturePosition.dx + d.delta.dx)
-                                            .clamp(
-                                              0.0,
-                                              constraints.maxWidth -
-                                                  _signatureWidth,
+              // ── PDF + Signature overlay ──────────────────────────────────────
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (_containerWidth != constraints.maxWidth ||
+                          _containerHeight != constraints.maxHeight) {
+                        setState(() {
+                          _containerWidth = constraints.maxWidth;
+                          _containerHeight = constraints.maxHeight;
+                        });
+                      }
+                    });
+                    return Stack(
+                      children: [
+                        // PDF viewer
+                        Positioned.fill(
+                          child: PDFView(
+                            filePath: widget.pdfPath,
+                            enableSwipe: true,
+                            swipeHorizontal: false,
+                            autoSpacing: true,
+                            pageFling: false,
+                            backgroundColor: Colors.grey.shade200,
+                            onPageChanged: (page, total) {
+                              if (mounted) {
+                                setState(() {
+                                  _currentPage = page ?? 0;
+                                  _totalPages = total ?? 1;
+                                });
+                              }
+                            },
+                            onError: (e) => debugPrint('PDF error: $e'),
+                          ),
+                        ),
+
+                        // Page counter
+                        if (_totalPages > 1)
+                          Positioned(
+                            top: 10,
+                            right: 10,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.55),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                "${_currentPage + 1} / $_totalPages",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+
+                        // ── Signature overlay (drag + 8-handle resize) ───────────
+                        if (_isSigningMode)
+                          Positioned(
+                            left: _signaturePosition.dx - 12,
+                            top: _signaturePosition.dy - 12,
+                            child: SizedBox(
+                              width: _signatureWidth + 24,
+                              height: _signatureHeight + 24,
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  // ── Body (drag to move) ──────────────────────
+                                  Positioned(
+                                    left: 12,
+                                    top: 12,
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onPanUpdate: (d) {
+                                        setState(() {
+                                          _signaturePosition = Offset(
+                                            (_signaturePosition.dx + d.delta.dx)
+                                                .clamp(
+                                                  0.0,
+                                                  constraints.maxWidth -
+                                                      _signatureWidth,
+                                                ),
+                                            (_signaturePosition.dy + d.delta.dy)
+                                                .clamp(
+                                                  0.0,
+                                                  constraints.maxHeight -
+                                                      _signatureHeight,
+                                                ),
+                                          );
+                                        });
+                                      },
+                                      child: Container(
+                                        width: _signatureWidth,
+                                        height: _signatureHeight,
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color: const Color(0xFFCC0000),
+                                            width: 1.5,
+                                          ),
+                                          color: Colors.white.withOpacity(0.9),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withOpacity(
+                                                0.15,
+                                              ),
+                                              blurRadius: 6,
+                                              offset: const Offset(0, 3),
                                             ),
-                                        (_signaturePosition.dy + d.delta.dy)
-                                            .clamp(
-                                              0.0,
-                                              constraints.maxHeight -
-                                                  _signatureHeight,
+                                          ],
+                                        ),
+                                        child: Stack(
+                                          children: [
+                                            RepaintBoundary(
+                                              key: _signatureKey,
+                                              child: Center(
+                                                child: _buildSignatureWidget(),
+                                              ),
                                             ),
-                                      );
-                                    });
-                                  },
-                                  child: Container(
-                                    width: _signatureWidth,
-                                    height: _signatureHeight,
-                                    decoration: BoxDecoration(
-                                      border: Border.all(
-                                        color: const Color(0xFFCC0000),
-                                        width: 1.5,
+                                            const Positioned(
+                                              top: 2,
+                                              left: 4,
+                                              child: Icon(
+                                                Icons.open_with,
+                                                size: 12,
+                                                color: Color(0xFFCC0000),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                      color: Colors.white.withOpacity(0.9),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.15),
-                                          blurRadius: 6,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Stack(
-                                      children: [
-                                        RepaintBoundary(
-                                          key: _signatureKey,
-                                          child: Center(
-                                            child: _buildSignatureWidget(),
-                                          ),
-                                        ),
-                                        const Positioned(
-                                          top: 2,
-                                          left: 4,
-                                          child: Icon(
-                                            Icons.open_with,
-                                            size: 12,
-                                            color: Color(0xFFCC0000),
-                                          ),
-                                        ),
-                                      ],
                                     ),
                                   ),
-                                ),
-                              ),
 
-                              // ── Corner: Top-Left ─────────────────────────
-                              Positioned(
-                                left: 0,
-                                top: 0,
-                                child: _ResizeHandle(
-                                  onPanUpdate: (d) {
-                                    setState(() {
-                                      final aspectRatio =
-                                          _signatureWidth / _signatureHeight;
-                                      final newW =
-                                          (_signatureWidth - d.delta.dx).clamp(
-                                            100.0,
-                                            constraints.maxWidth,
-                                          );
-                                      final newH = newW / aspectRatio;
-                                      if (newH >= 40) {
-                                        _signaturePosition = Offset(
-                                          (_signaturePosition.dx + d.delta.dx)
-                                              .clamp(0.0, double.infinity),
-                                          (_signaturePosition.dy -
-                                                  (newH - _signatureHeight))
-                                              .clamp(0.0, double.infinity),
-                                        );
-                                        _signatureWidth = newW;
-                                        _signatureHeight = newH;
-                                      }
-                                    });
-                                  },
-                                ),
-                              ),
+                                  // ── Corner: Top-Left ─────────────────────────
+                                  Positioned(
+                                    left: 0,
+                                    top: 0,
+                                    child: _ResizeHandle(
+                                      onPanUpdate: (d) {
+                                        setState(() {
+                                          final aspectRatio =
+                                              _signatureWidth /
+                                              _signatureHeight;
+                                          final newW =
+                                              (_signatureWidth - d.delta.dx)
+                                                  .clamp(
+                                                    100.0,
+                                                    constraints.maxWidth,
+                                                  );
+                                          final newH = newW / aspectRatio;
+                                          if (newH >= 40) {
+                                            _signaturePosition = Offset(
+                                              (_signaturePosition.dx +
+                                                      d.delta.dx)
+                                                  .clamp(0.0, double.infinity),
+                                              (_signaturePosition.dy -
+                                                      (newH - _signatureHeight))
+                                                  .clamp(0.0, double.infinity),
+                                            );
+                                            _signatureWidth = newW;
+                                            _signatureHeight = newH;
+                                          }
+                                        });
+                                      },
+                                    ),
+                                  ),
 
-                              // ── Corner: Top-Right ────────────────────────
-                              Positioned(
-                                right: 0,
-                                top: 0,
-                                child: _ResizeHandle(
-                                  onPanUpdate: (d) {
-                                    setState(() {
-                                      final aspectRatio =
-                                          _signatureWidth / _signatureHeight;
-                                      final newW =
-                                          (_signatureWidth + d.delta.dx).clamp(
-                                            100.0,
-                                            constraints.maxWidth -
-                                                _signaturePosition.dx,
-                                          );
-                                      final newH = newW / aspectRatio;
-                                      if (newH >= 40) {
-                                        _signaturePosition = Offset(
-                                          _signaturePosition.dx,
-                                          (_signaturePosition.dy -
-                                                  (newH - _signatureHeight))
-                                              .clamp(0.0, double.infinity),
-                                        );
-                                        _signatureWidth = newW;
-                                        _signatureHeight = newH;
-                                      }
-                                    });
-                                  },
-                                ),
-                              ),
+                                  // ── Corner: Top-Right ────────────────────────
+                                  Positioned(
+                                    right: 0,
+                                    top: 0,
+                                    child: _ResizeHandle(
+                                      onPanUpdate: (d) {
+                                        setState(() {
+                                          final aspectRatio =
+                                              _signatureWidth /
+                                              _signatureHeight;
+                                          final newW =
+                                              (_signatureWidth + d.delta.dx)
+                                                  .clamp(
+                                                    100.0,
+                                                    constraints.maxWidth -
+                                                        _signaturePosition.dx,
+                                                  );
+                                          final newH = newW / aspectRatio;
+                                          if (newH >= 40) {
+                                            _signaturePosition = Offset(
+                                              _signaturePosition.dx,
+                                              (_signaturePosition.dy -
+                                                      (newH - _signatureHeight))
+                                                  .clamp(0.0, double.infinity),
+                                            );
+                                            _signatureWidth = newW;
+                                            _signatureHeight = newH;
+                                          }
+                                        });
+                                      },
+                                    ),
+                                  ),
 
-                              // ── Corner: Bottom-Left ──────────────────────
-                              Positioned(
-                                left: 0,
-                                bottom: 0,
-                                child: _ResizeHandle(
-                                  onPanUpdate: (d) {
-                                    setState(() {
-                                      final aspectRatio =
-                                          _signatureWidth / _signatureHeight;
-                                      final newW =
-                                          (_signatureWidth - d.delta.dx).clamp(
-                                            100.0,
-                                            constraints.maxWidth,
-                                          );
-                                      final newH = newW / aspectRatio;
-                                      if (newH >= 40) {
-                                        _signaturePosition = Offset(
-                                          (_signaturePosition.dx + d.delta.dx)
-                                              .clamp(0.0, double.infinity),
-                                          _signaturePosition.dy,
-                                        );
-                                        _signatureWidth = newW;
-                                        _signatureHeight = newH;
-                                      }
-                                    });
-                                  },
-                                ),
-                              ),
+                                  // ── Corner: Bottom-Left ──────────────────────
+                                  Positioned(
+                                    left: 0,
+                                    bottom: 0,
+                                    child: _ResizeHandle(
+                                      onPanUpdate: (d) {
+                                        setState(() {
+                                          final aspectRatio =
+                                              _signatureWidth /
+                                              _signatureHeight;
+                                          final newW =
+                                              (_signatureWidth - d.delta.dx)
+                                                  .clamp(
+                                                    100.0,
+                                                    constraints.maxWidth,
+                                                  );
+                                          final newH = newW / aspectRatio;
+                                          if (newH >= 40) {
+                                            _signaturePosition = Offset(
+                                              (_signaturePosition.dx +
+                                                      d.delta.dx)
+                                                  .clamp(0.0, double.infinity),
+                                              _signaturePosition.dy,
+                                            );
+                                            _signatureWidth = newW;
+                                            _signatureHeight = newH;
+                                          }
+                                        });
+                                      },
+                                    ),
+                                  ),
 
-                              // ── Corner: Bottom-Right ─────────────────────
-                              Positioned(
-                                right: 0,
-                                bottom: 0,
-                                child: _ResizeHandle(
-                                  onPanUpdate: (d) {
-                                    setState(() {
-                                      final aspectRatio =
-                                          _signatureWidth / _signatureHeight;
-                                      final newW =
-                                          (_signatureWidth + d.delta.dx).clamp(
-                                            100.0,
-                                            constraints.maxWidth -
-                                                _signaturePosition.dx,
-                                          );
-                                      final newH = newW / aspectRatio;
-                                      if (newH >= 40) {
-                                        _signatureWidth = newW;
-                                        _signatureHeight = newH;
-                                      }
-                                    });
-                                  },
+                                  // ── Corner: Bottom-Right ─────────────────────
+                                  Positioned(
+                                    right: 0,
+                                    bottom: 0,
+                                    child: _ResizeHandle(
+                                      onPanUpdate: (d) {
+                                        setState(() {
+                                          final aspectRatio =
+                                              _signatureWidth /
+                                              _signatureHeight;
+                                          final newW =
+                                              (_signatureWidth + d.delta.dx)
+                                                  .clamp(
+                                                    100.0,
+                                                    constraints.maxWidth -
+                                                        _signaturePosition.dx,
+                                                  );
+                                          final newH = newW / aspectRatio;
+                                          if (newH >= 40) {
+                                            _signatureWidth = newW;
+                                            _signatureHeight = newH;
+                                          }
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+
+              // ── Confirm / Cancel buttons ─────────────────────────────────────
+              if (_isSigningMode)
+                Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: _isSubmitting ? null : _submitApproval,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            disabledBackgroundColor: Colors.green.withOpacity(
+                              0.6,
+                            ),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          // AFTER — always show the label, spinner is gone from button
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: const [
+                              Icon(
+                                Icons.check_circle_outline,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                              SizedBox(width: 10),
+                              Text(
+                                "CONFIRM & APPROVE",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.2,
                                 ),
                               ),
                             ],
                           ),
                         ),
                       ),
-                  ],
-                );
-              },
-            ),
-          ),
-
-          // ── Confirm / Cancel buttons ─────────────────────────────────────
-          if (_isSigningMode)
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: _isSubmitting ? null : _submitApproval,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        disabledBackgroundColor: Colors.green.withOpacity(0.6),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(
-                                  Icons.check_circle_outline,
-                                  color: Colors.white,
-                                  size: 18,
-                                ),
-                                SizedBox(width: 10),
-                                Text(
-                                  "CONFIRM & APPROVE",
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.2,
-                                  ),
-                                ),
-                              ],
-                            ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 50,
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(
-                          color: Color(0xFFCC0000),
-                          width: 1.5,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Icon(Icons.close, color: Color(0xFFCC0000), size: 18),
-                          SizedBox(width: 8),
-                          Text(
-                            "CANCEL",
-                            style: TextStyle(
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 50,
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(
                               color: Color(0xFFCC0000),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.2,
+                              width: 1.5,
                             ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: const [
+                              Icon(
+                                Icons.close,
+                                color: Color(0xFFCC0000),
+                                size: 18,
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                "CANCEL",
+                                style: TextStyle(
+                                  color: Color(0xFFCC0000),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          if (_isSubmitting || _showSignatureLoadingOverlay)
+            Positioned.fill(
+              child: AbsorbPointer(
+                absorbing: true,
+                child: Container(
+                  color: Colors.black.withOpacity(0.45),
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 18,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.35),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const _PulsingDotsLoader(
+                            color: Colors.white,
+                            dotSize: 10,
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            _isSubmitting
+                                ? 'Please wait...'
+                                : 'Signature is still loading. Please wait...',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
                         ],
                       ),
                     ),
                   ),
-                ],
+                ),
               ),
             ),
         ],
@@ -2934,6 +3030,82 @@ class _ResizeHandle extends StatelessWidget {
                 color: Colors.white,
               ),
             ),
+    );
+  }
+}
+
+class _PulsingDotsLoader extends StatefulWidget {
+  final Color color;
+  final double dotSize;
+  const _PulsingDotsLoader({this.color = Colors.white, this.dotSize = 8});
+
+  @override
+  State<_PulsingDotsLoader> createState() => _PulsingDotsLoaderState();
+}
+
+class _PulsingDotsLoaderState extends State<_PulsingDotsLoader>
+    with TickerProviderStateMixin {
+  late final List<AnimationController> _controllers;
+  late final List<Animation<double>> _animations;
+
+  @override
+  void initState() {
+    super.initState();
+    _controllers = List.generate(
+      3,
+      (i) => AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 600),
+      ),
+    );
+    _animations = _controllers
+        .map(
+          (c) => Tween<double>(
+            begin: 0,
+            end: 1,
+          ).animate(CurvedAnimation(parent: c, curve: Curves.easeInOut)),
+        )
+        .toList();
+
+    for (int i = 0; i < 3; i++) {
+      Future.delayed(Duration(milliseconds: i * 160), () {
+        if (mounted) _controllers[i].repeat(reverse: true);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _controllers) c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(3, (i) {
+        return AnimatedBuilder(
+          animation: _animations[i],
+          builder: (_, __) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: Opacity(
+              opacity: 0.3 + (_animations[i].value * 0.7),
+              child: Transform.translate(
+                offset: Offset(0, -4 * _animations[i].value),
+                child: Container(
+                  width: widget.dotSize,
+                  height: widget.dotSize,
+                  decoration: BoxDecoration(
+                    color: widget.color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 }
