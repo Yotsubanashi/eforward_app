@@ -924,6 +924,74 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     return widget.item;
   }
 
+  Future<bool> _hasUploadedOrSavedSignature() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('access_token') ?? '';
+
+    if (token.isNotEmpty) {
+      try {
+        final response = await http.get(
+          Uri.parse('$_baseUrl/upload/signature/image'),
+          headers: {'Authorization': 'Bearer $token', 'Accept': '*/*'},
+        );
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final contentType = response.headers['content-type'] ?? '';
+          if ((contentType.contains('image/') ||
+                  contentType.contains('octet-stream')) &&
+              response.bodyBytes.isNotEmpty) {
+            return true;
+          }
+          try {
+            final decoded = jsonDecode(response.body);
+            final data = decoded['data'];
+            if (data is Map &&
+                (data['base64']?.toString().trim().isNotEmpty ?? false)) {
+              return true;
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
+
+    final type = prefs.getString('signature_type') ?? '';
+    if (type == 'draw' || type == 'capture') {
+      final signatureData = prefs.getString('signature_draw_data') ?? '';
+      if (signatureData.trim().isNotEmpty) return true;
+    } else if (type == 'type') {
+      final signatureText = prefs.getString('signature_text') ?? '';
+      if (signatureText.trim().isNotEmpty) return true;
+    }
+    return false;
+  }
+
+  Future<void> _handleApproveTap() async {
+    if (_isSubmittingRevision || _localPdfPath == null) return;
+
+    final hasSignature = await _hasUploadedOrSavedSignature();
+    if (!mounted) return;
+
+    if (!hasSignature) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No signature uploaded. Please upload/create one first.'),
+          backgroundColor: Color(0xFFCC0000),
+        ),
+      );
+      return;
+    }
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PdfSignerPage(
+          pdfPath: _localPdfPath!,
+          item: _signerItemData(),
+          enableSigning: true,
+        ),
+      ),
+    );
+  }
+
   String _formatDate(String raw) {
     if (raw.isEmpty || raw == '—') return raw;
     final dt = _parseApiDate(raw);
@@ -1491,16 +1559,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                             onPressed:
                                 (_isSubmittingRevision || _localPdfPath == null)
                                 ? null
-                                : () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => PdfSignerPage(
-                                        pdfPath: _localPdfPath!,
-                                        item: _signerItemData(),
-                                        enableSigning: true,
-                                      ),
-                                    ),
-                                  ),
+                                : _handleApproveTap,
                             icon: const Icon(
                               Icons.check_circle_outlined,
                               color: Colors.white,
