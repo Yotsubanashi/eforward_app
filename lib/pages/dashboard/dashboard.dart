@@ -138,6 +138,30 @@ class _DashboardPageState extends State<DashboardPage> {
     });
   }
 
+  // ─── FORMAT DATE ──────────────────────────────────────────────────────────
+  // Handles dot-separated format: 2026.04.22T11:07:10.000Z
+  String _formatDateTime(String? raw) {
+    if (raw == null || raw.isEmpty) return '—';
+    try {
+      final datePart = raw.substring(0, 10).replaceAll('.', '-');
+      final rest = raw.substring(10);
+      final normalized = datePart + rest;
+      final dt = DateTime.parse(normalized);
+      const months = [
+        'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+        'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+      ];
+      final hour = dt.hour > 12
+          ? dt.hour - 12
+          : (dt.hour == 0 ? 12 : dt.hour);
+      final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+      return '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
+          '${hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} $ampm';
+    } catch (_) {
+      return raw;
+    }
+  }
+
   // ─── GET /approvals/pending ───────────────────────────────────────────────
   Future<void> _fetchPendingApprovals() async {
     setState(() => _isLoadingPending = true);
@@ -200,41 +224,13 @@ class _DashboardPageState extends State<DashboardPage> {
       lastName,
     ].where((p) => p.isNotEmpty).join(' ').trim();
 
-    String dateSent = raw['date_sent'] ?? '';
-    try {
-      if (dateSent.isNotEmpty) {
-        final dt = DateTime.parse(dateSent).toLocal();
-        const months = [
-          'JAN',
-          'FEB',
-          'MAR',
-          'APR',
-          'MAY',
-          'JUN',
-          'JUL',
-          'AUG',
-          'SEP',
-          'OCT',
-          'NOV',
-          'DEC',
-        ];
-        final hour = dt.hour > 12
-            ? dt.hour - 12
-            : (dt.hour == 0 ? 12 : dt.hour);
-        final ampm = dt.hour >= 12 ? 'PM' : 'AM';
-        dateSent =
-            '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
-            '${hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} $ampm';
-      }
-    } catch (_) {}
-
     return {
       ...raw,
       'id': raw['routing_id']?.toString() ?? '',
       'referenceNo': routing['reference_no'] ?? '',
       'particulars': routing['particulars'] ?? '',
       'requester': requesterName.isNotEmpty ? requesterName : '—',
-      'dateSent': dateSent,
+      'dateSent': _formatDateTime(raw['date_sent']?.toString()), // ✅ formatted
       'routing': routing,
       'owner': owner,
     };
@@ -350,7 +346,6 @@ class _DashboardPageState extends State<DashboardPage> {
                       ),
                       const SizedBox(width: 16),
                       ElevatedButton(
-                        // ✅ Auto-refresh pagbalik mula sa ApprovalsPage
                         onPressed: () {
                           Navigator.push(
                             context,
@@ -405,7 +400,6 @@ class _DashboardPageState extends State<DashboardPage> {
                     ),
                   ),
                   GestureDetector(
-                    // ✅ Auto-refresh pagbalik mula sa ApprovalsPage
                     onTap: () {
                       Navigator.push(
                         context,
@@ -431,7 +425,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
               const SizedBox(height: 16),
 
-              // Pending approvals list
               if (_isLoadingPending)
                 const Center(
                   child: Padding(
@@ -488,7 +481,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildActivityCard(Map<String, dynamic> item) {
     return InkWell(
-      // ✅ Auto-refresh pagbalik mula sa ApprovalDetailPage
       onTap: () =>
           Navigator.push(
             context,
@@ -508,11 +500,9 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Left — red accent line
             Container(width: 3, height: 40, color: const Color(0xFFCC0000)),
             const SizedBox(width: 12),
 
-            // Middle — reference no + particulars + status
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -560,7 +550,7 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             ),
 
-            // Right — date + chevron
+            // ✅ Right — using item['dateSent'] (formatted)
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
