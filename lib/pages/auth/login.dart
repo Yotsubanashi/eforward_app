@@ -44,6 +44,39 @@ class _LoginScreenState extends State<LoginScreen> {
         : await prefs.remove('saved_email');
   }
 
+  String? _extractAccountStatus(Map<String, dynamic>? data) {
+    if (data == null) return null;
+
+    String? readStatus(Map<String, dynamic>? source) {
+      if (source == null) return null;
+      const candidateKeys = ['status', 'account_status', 'accountStatus'];
+      for (final key in candidateKeys) {
+        final value = source[key];
+        if (value is String && value.trim().isNotEmpty) {
+          return value.trim().toUpperCase();
+        }
+      }
+      return null;
+    }
+
+    final topLevelStatus = readStatus(data);
+    if (topLevelStatus != null) return topLevelStatus;
+
+    final nestedUser = data['user'];
+    if (nestedUser is Map<String, dynamic>) {
+      final nestedStatus = readStatus(nestedUser);
+      if (nestedStatus != null) return nestedStatus;
+    }
+
+    final nestedData = data['data'];
+    if (nestedData is Map<String, dynamic>) {
+      final nestedStatus = readStatus(nestedData);
+      if (nestedStatus != null) return nestedStatus;
+    }
+
+    return null;
+  }
+
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -67,6 +100,37 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = false);
 
     if (result.isSuccess) {
+      final status = _extractAccountStatus(result.data);
+      final activeStatuses = <String>{'ATV', 'ACTIVE', 'ACT', 'APPROVED'};
+      final inactiveStatuses = <String>{
+        'ITV',
+        'INACTIVE',
+        'INA',
+        'DISABLED',
+        'DEACTIVATED',
+        'SUSPENDED',
+        'BLOCKED',
+      };
+
+      // Only block logins for clearly-inactive/disabled statuses.
+      // If the backend doesn't return a status (or returns a new/unknown one),
+      // we should not lock users out client-side.
+      if (status != null && inactiveStatuses.contains(status)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Your account is inactive. Please contact support.'),
+            backgroundColor: Color(0xFFCC0000),
+          ),
+        );
+        return;
+      }
+
+      // If status is present and not recognized as active, still allow login
+      // (avoid client-side lockout), but keep the status available in logs.
+      if (status != null && !activeStatuses.contains(status)) {
+        debugPrint('Unrecognized account status during login: $status');
+      }
+
       _saveRememberMe(email);
       debugPrint('Login success: ${result.data}');
 
