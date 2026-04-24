@@ -7,6 +7,7 @@ import 'package:eforward_app/components/bottom_navigator.dart';
 import 'package:eforward_app/services/auth_api.dart';
 import 'package:eforward_app/services/fcm_token_service.dart';
 import 'package:eforward_app/services/notifications_service.dart';
+import 'package:eforward_app/services/secure_unlock_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -25,6 +26,8 @@ class _SettingsPageState extends State<SettingsPage> {
   String _employeeId = '';
   String _role = '';
   bool _isLoading = true;
+  bool _biometricUnlockEnabled = false;
+  bool _biometricAvailable = false;
 
   String get _displayName =>
       '$_firstName${_middleName.isNotEmpty ? ' $_middleName' : ''} $_lastName'
@@ -40,6 +43,35 @@ class _SettingsPageState extends State<SettingsPage> {
   void initState() {
     super.initState();
     _loadUserData();
+    _loadSecuritySettings();
+  }
+
+  Future<void> _loadSecuritySettings() async {
+    final enabled = await SecureUnlockService.isEnabled();
+    final available = await SecureUnlockService.isAvailable();
+    if (!mounted) return;
+    setState(() {
+      _biometricUnlockEnabled = enabled && available;
+      _biometricAvailable = available;
+    });
+  }
+
+  Future<void> _onToggleBiometricUnlock(bool enabled) async {
+    if (enabled && !_biometricAvailable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Biometric unlock is not available on this device. Device PIN will be used when supported.',
+          ),
+          backgroundColor: Color(0xFFCC0000),
+        ),
+      );
+      return;
+    }
+
+    await SecureUnlockService.setEnabled(enabled);
+    if (!mounted) return;
+    setState(() => _biometricUnlockEnabled = enabled);
   }
 
   Future<void> _loadUserData() async {
@@ -546,6 +578,22 @@ class _SettingsPageState extends State<SettingsPage> {
                 context,
                 MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
               ),
+            ),
+
+            const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+            _buildMenuItem(
+              context,
+              icon: Icons.fingerprint,
+              iconColor: const Color(0xFFCC0000),
+              label: "SECURITY",
+              title: "BIOMETRIC/PIN UNLOCK",
+              trailing: Switch(
+                value: _biometricUnlockEnabled,
+                onChanged: _onToggleBiometricUnlock,
+                activeThumbColor: const Color(0xFFCC0000),
+              ),
+              onTap: () => _onToggleBiometricUnlock(!_biometricUnlockEnabled),
             ),
 
             const Divider(height: 1, color: Color(0xFFEEEEEE)),

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:eforward_app/services/secure_unlock_service.dart';
 
 class DashboardPage extends StatefulWidget {
   final Map<String, dynamic>? userData;
@@ -20,6 +21,7 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   static const String _baseUrl =
       'https://eforward-api.ardentnetworks.com.ph/api';
+  static const String _biometricPromptSeenKey = 'biometric_prompt_seen';
   final int _selectedIndex = 0;
 
   String _userName = 'User';
@@ -38,7 +40,67 @@ class _DashboardPageState extends State<DashboardPage> {
       _fetchPendingApprovals();
       _syncFCMToken();
       _setupFCMListener();
+      await _maybeShowBiometricSetupPrompt();
     });
+  }
+
+  Future<void> _maybeShowBiometricSetupPrompt() async {
+    final prefs = await SharedPreferences.getInstance();
+    final alreadySeen = prefs.getBool(_biometricPromptSeenKey) ?? false;
+    final biometricEnabled = await SecureUnlockService.isEnabled();
+
+    if (alreadySeen || biometricEnabled || !mounted) return;
+
+    await prefs.setBool(_biometricPromptSeenKey, true);
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Enable Biometric Security'),
+          content: const Text(
+            'You can protect app access using fingerprint/biometric with device PIN fallback. Enable it now?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('LATER'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final success =
+                    await SecureUnlockService.authenticateAfterLogin();
+                if (success) {
+                  await SecureUnlockService.setEnabled(true);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Biometric/PIN unlock enabled.'),
+                        backgroundColor: Color(0xFF2E7D32),
+                      ),
+                    );
+                  }
+                } else if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Unable to enable biometric unlock right now.',
+                      ),
+                      backgroundColor: Color(0xFFCC0000),
+                    ),
+                  );
+                }
+                if (Navigator.of(dialogContext).canPop()) {
+                  Navigator.of(dialogContext).pop();
+                }
+              },
+              child: const Text('ENABLE NOW'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override

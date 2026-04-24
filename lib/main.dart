@@ -9,6 +9,7 @@ import 'pages/dashboard/dashboard.dart';
 import 'services/firebase_notification_service.dart';
 import 'services/app_lifecycle_service.dart';
 import 'services/auth_api.dart';
+import 'services/secure_unlock_service.dart';
 import 'firebase_options.dart';
 
 // ✅ FIX: navigatorKey must be a global — NOT declared inside main()
@@ -100,8 +101,9 @@ class _MyAppState extends State<MyApp> {
 
     final meResult = await authApi.getMe(token: accessToken);
     if (meResult.isSuccess) {
+      final isUnlocked = await SecureUnlockService.authenticateAfterLogin();
       authApi.dispose();
-      return true;
+      return isUnlocked;
     }
 
     // Access token might be expired, try refresh token once.
@@ -121,7 +123,7 @@ class _MyAppState extends State<MyApp> {
     authApi.dispose();
     if (meAfterRefresh.isSuccess && meAfterRefresh.data != null) {
       await prefs.setString('user_data', jsonEncode(meAfterRefresh.data));
-      return true;
+      return SecureUnlockService.authenticateAfterLogin();
     }
 
     await prefs.remove('access_token');

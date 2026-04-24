@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_api.dart';
 import '../../services/fcm_token_service.dart';
+import '../../services/secure_unlock_service.dart';
 import '../dashboard/dashboard.dart';
 import 'forgot_password.dart';
 
@@ -154,6 +155,18 @@ class _LoginScreenState extends State<LoginScreen> {
         await FCMTokenService.saveFCMTokenToBackend(
           accessToken: token.toString(),
         );
+      }
+
+      final isUnlocked = await SecureUnlockService.authenticateAfterLogin();
+      if (!mounted) return;
+      if (!isUnlocked) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Authentication cancelled. Please login again.'),
+            backgroundColor: Color(0xFFCC0000),
+          ),
+        );
+        return;
       }
 
       Navigator.pushReplacement(

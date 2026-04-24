@@ -52,6 +52,7 @@ dependencies:
   flutter_svg: ^2.2.4
   excel: ^4.0.6
   spreadsheet_decoder: ^2.2.0
+  local_auth: ^2.3.0
 
 
 
