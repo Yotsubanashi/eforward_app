@@ -1082,3 +1082,33 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     );
   }
 }
+
+class ApprovalsApi {
+  static const String _baseUrl =
+      'https://eforward-api.ardentnetworks.com.ph/api';
+
+  Future<List<Map<String, dynamic>>> getDocumentLinks({
+    required String token,
+    required String routingId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/routing/$routingId/document-links'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      },
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Failed to load document links (${response.statusCode})');
+    }
+
+    final decoded = jsonDecode(response.body);
+    final data = decoded is Map<String, dynamic> ? decoded['data'] : null;
+
+    if (data is List) {
+      return data.whereType<Map<String, dynamic>>().toList();
+    }
+    return [];
+  }
+}

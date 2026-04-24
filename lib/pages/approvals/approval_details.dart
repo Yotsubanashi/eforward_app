@@ -16,6 +16,7 @@ import 'package:open_file/open_file.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:excel/excel.dart' hide TextSpan, Border;
 import 'package:spreadsheet_decoder/spreadsheet_decoder.dart';
+import 'package:eforward_app/services/approvals_api.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // APPROVAL DETAIL PAGE
@@ -38,11 +39,14 @@ class ApprovalDetailPage extends StatefulWidget {
 class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   bool _isLoadingPdf = false;
   bool _isLoadingDetail = true;
+  bool _isLoadingDocumentLinks = false;
   String? _localPdfPath;
   String? _localExcelPath;
   bool _isSubmittingRevision = false;
+  int _selectedAttachmentTab = 0;
 
   Map<String, dynamic>? _detail;
+  List<Map<String, dynamic>> _documentLinks = [];
   final TextEditingController _revisionRemarksController =
       TextEditingController();
 
@@ -313,11 +317,13 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
             _isLoadingDetail = false;
           });
           await _loadPdfFromApi(decoded);
+          await _fetchDocumentLinks();
         }
       } else {
         if (mounted) {
           setState(() => _isLoadingDetail = false);
           await _loadPdfLocal();
+          await _fetchDocumentLinks();
         }
       }
     } catch (e) {
@@ -325,7 +331,53 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       if (mounted) {
         setState(() => _isLoadingDetail = false);
         await _loadPdfLocal();
+        await _fetchDocumentLinks();
       }
+    }
+  }
+
+  String _getRoutingId() {
+    return widget.item['routing_id']?.toString() ??
+        widget.item['id']?.toString() ??
+        '';
+  }
+
+  Future<void> _fetchDocumentLinks() async {
+    final routingId = _getRoutingId();
+    if (routingId.isEmpty) return;
+
+    setState(() => _isLoadingDocumentLinks = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token') ?? '';
+
+      if (token.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _isLoadingDocumentLinks = false;
+            _documentLinks = [];
+          });
+        }
+        return;
+      }
+
+      final links = await ApprovalsApi().getDocumentLinks(
+        token: token,
+        routingId: routingId,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _documentLinks = links;
+        _isLoadingDocumentLinks = false;
+      });
+    } catch (e) {
+      debugPrint('Document links fetch error: $e');
+      if (!mounted) return;
+      setState(() {
+        _documentLinks = [];
+        _isLoadingDocumentLinks = false;
+      });
     }
   }
 
@@ -444,6 +496,14 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
             .where((f) => f['file_type']?.toString() == 'DOC')
             .toList();
       }
+    }
+    return [];
+  }
+
+  List<Map<String, dynamic>> _getDocumentLinkFiles(Map<String, dynamic> link) {
+    final files = link['files'];
+    if (files is List) {
+      return files.whereType<Map<String, dynamic>>().toList();
     }
     return [];
   }
@@ -907,7 +967,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   DateTime? _parseApiDate(String raw) {
     if (raw.trim().isEmpty || raw == 'null') return null;
     try {
-      // Keep API clock values exactly as sent (ignore timezone shifting).
       var normalized = raw.trim();
       normalized = normalized.replaceFirst(RegExp(r'(Z|[+-]\d{2}:\d{2})$'), '');
       return DateTime.parse(normalized);
@@ -1144,11 +1203,9 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       if (topLevelDateSent.isNotEmpty && topLevelDateSent != 'null') {
         return _formatDate(topLevelDateSent);
       }
-      // Fall back to routing creation date
       final created = data['date_created']?.toString() ?? '';
       if (created.isNotEmpty && created != 'null') return _formatDate(created);
     }
-    // Last resort: already-formatted string from the list item
     return widget.item['dateSent']?.toString() ?? '—';
   }
 
@@ -1168,6 +1225,75 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         '';
     if (fromItem.isNotEmpty && fromItem != 'null') return _formatDate(fromItem);
     return '—';
+  }
+
+  // ── Modern underline tab helper ─────────────────────────────────────────────
+  Widget _buildTab({required String label, required int index, int count = 0}) {
+    final isSelected = _selectedAttachmentTab == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedAttachmentTab = index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 11),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: isSelected
+                    ? const Color(0xFFCC0000)
+                    : Colors.transparent,
+                width: 2.5,
+              ),
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                index == 0 ? Icons.attach_file_rounded : Icons.link_rounded,
+                size: 13,
+                color: isSelected ? const Color(0xFFCC0000) : Colors.black38,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected ? const Color(0xFFCC0000) : Colors.black45,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              if (count > 0) ...[
+                const SizedBox(width: 5),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? const Color(0xFFCC0000)
+                        : const Color(0xFFE8E8E8),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: isSelected ? Colors.white : Colors.black45,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -1435,105 +1561,318 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
             ),
             const SizedBox(height: 16),
 
-            // ── Attachments ──────────────────────────────────────────────────
-            if (_getAttachmentFiles().isNotEmpty)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border.all(color: const Color(0xFFE8E8E8)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      "ATTACHMENTS",
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.5,
-                        color: Colors.black45,
+            // ── Attachments + Document Links ─────────────────────────────────
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: const Color(0xFFE8E8E8)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "SUPPORTING DOCUMENTS",
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.5,
+                      color: Colors.black45,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── Modern underline tabs ──────────────────────────────────
+                  Container(
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: Color(0xFFE8E8E8),
+                          width: 1.5,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    ..._getAttachmentFiles().map((attachment) {
-                      final name =
-                          attachment['original_name'] ??
-                          attachment['file_name'] ??
-                          'Document';
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: const Color(
-                                  0xFFCC0000,
-                                ).withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(4),
+                    child: Row(
+                      children: [
+                        _buildTab(
+                          label: "External Attachment",
+                          index: 0,
+                          count: _getAttachmentFiles().length,
+                        ),
+                        _buildTab(
+                          label: "Document Link",
+                          index: 1,
+                          count: _documentLinks.length,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // ── Tab content ────────────────────────────────────────────
+                  if (_selectedAttachmentTab == 0) ...[
+                    if (_getAttachmentFiles().isEmpty)
+                      const Text(
+                        'No attachments found.',
+                        style: TextStyle(fontSize: 11, color: Colors.black45),
+                      )
+                    else
+                      ..._getAttachmentFiles().map((attachment) {
+                        final name =
+                            attachment['original_name'] ??
+                            attachment['file_name'] ??
+                            'Document';
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: const Color(
+                                    0xFFCC0000,
+                                  ).withOpacity(0.08),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Icon(
+                                  Icons.picture_as_pdf_outlined,
+                                  color: Color(0xFFCC0000),
+                                  size: 20,
+                                ),
                               ),
-                              child: const Icon(
-                                Icons.picture_as_pdf_outlined,
-                                color: Color(0xFFCC0000),
-                                size: 20,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    name,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF1A1A1A),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      name,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF1A1A1A),
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    _getFileTypeDisplayName(name.toString()),
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.black38,
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      _getFileTypeDisplayName(name.toString()),
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.black38,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () => _viewAttachment(attachment),
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFCC0000),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Icon(
+                                    Icons.visibility_outlined,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                  ] else ...[
+                    if (_isLoadingDocumentLinks)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Color(0xFFCC0000),
+                          ),
+                        ),
+                      )
+                    else if (_documentLinks.isEmpty)
+                      const Text(
+                        'No document links found.',
+                        style: TextStyle(fontSize: 11, color: Colors.black45),
+                      )
+                    else
+                      ..._documentLinks.map((link) {
+                        final referenceNo =
+                            link['reference_no']
+                                    ?.toString()
+                                    .trim()
+                                    .isNotEmpty ==
+                                true
+                            ? link['reference_no'].toString()
+                            : 'No reference';
+                        final linkFiles = _getDocumentLinkFiles(link);
+
+                        // ── Bordered card per document link ────────────────
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: const Color(0xFFE8E8E8),
+                                width: 1,
+                              ),
+                              borderRadius: BorderRadius.circular(6),
+                              color: const Color(0xFFFAFAFA),
                             ),
-                            const SizedBox(width: 8),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                GestureDetector(
-                                  onTap: () => _viewAttachment(attachment),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFCC0000),
-                                      borderRadius: BorderRadius.circular(4),
+                                // Reference header
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 9,
+                                  ),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFF3F3F4),
+                                    border: Border(
+                                      bottom: BorderSide(
+                                        color: Color(0xFFE8E8E8),
+                                        width: 1,
+                                      ),
                                     ),
-                                    child: const Icon(
-                                      Icons.visibility_outlined,
-                                      color: Colors.white,
-                                      size: 16,
+                                    borderRadius: BorderRadius.only(
+                                      topLeft: Radius.circular(6),
+                                      topRight: Radius.circular(6),
                                     ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.link_rounded,
+                                        size: 13,
+                                        color: Color(0xFFCC0000),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        referenceNo,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF1A1A1A),
+                                          letterSpacing: 0.3,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                // Files list
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  child: Column(
+                                    children: linkFiles.asMap().entries.map((
+                                      entry,
+                                    ) {
+                                      final isLast =
+                                          entry.key == linkFiles.length - 1;
+                                      final file = entry.value;
+                                      final fileName =
+                                          file['original_name'] ??
+                                          file['file_name'] ??
+                                          'Document';
+                                      return Column(
+                                        children: [
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 6,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Container(
+                                                  width: 32,
+                                                  height: 32,
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(
+                                                      0xFFCC0000,
+                                                    ).withOpacity(0.08),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          4,
+                                                        ),
+                                                  ),
+                                                  child: const Icon(
+                                                    Icons
+                                                        .insert_drive_file_outlined,
+                                                    color: Color(0xFFCC0000),
+                                                    size: 16,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Text(
+                                                    fileName.toString(),
+                                                    style: const TextStyle(
+                                                      fontSize: 11,
+                                                      color: Color(0xFF1A1A1A),
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                GestureDetector(
+                                                  onTap: () =>
+                                                      _viewAttachment(file),
+                                                  child: Container(
+                                                    padding:
+                                                        const EdgeInsets.all(7),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(
+                                                        0xFFCC0000,
+                                                      ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            4,
+                                                          ),
+                                                    ),
+                                                    child: const Icon(
+                                                      Icons.visibility_outlined,
+                                                      color: Colors.white,
+                                                      size: 15,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          if (!isLast)
+                                            const Divider(
+                                              height: 1,
+                                              color: Color(0xFFEEEEEE),
+                                            ),
+                                        ],
+                                      );
+                                    }).toList(),
                                   ),
                                 ),
                               ],
                             ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
+                          ),
+                        );
+                      }).toList(),
                   ],
-                ),
+                ],
               ),
+            ),
             const SizedBox(height: 16),
 
             // ── Take Action (pending only) ────────────────────────────────────
@@ -2377,7 +2716,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     final responsivePadding = (_signatureHeight * 0.08).clamp(0.5, 2.0);
     final responsiveSpacing = (_signatureHeight * 0.06).clamp(2.0, 5.0);
 
-    //signature and metadata layout
     return Container(
       width: _signatureWidth,
       height: _signatureHeight,
@@ -2562,7 +2900,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         children: [
           Column(
             children: [
-              // ── Instruction banner ───────────────────────────────────────────
               if (_isSigningMode)
                 Container(
                   width: double.infinity,
@@ -2589,7 +2926,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                   ),
                 ),
 
-              // ── PDF + Signature overlay ──────────────────────────────────────
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
@@ -2604,7 +2940,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                     });
                     return Stack(
                       children: [
-                        // PDF viewer
                         Positioned.fill(
                           child: PDFView(
                             filePath: widget.pdfPath,
@@ -2625,7 +2960,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                           ),
                         ),
 
-                        // Page counter
                         if (_totalPages > 1)
                           Positioned(
                             top: 10,
@@ -2650,7 +2984,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                             ),
                           ),
 
-                        // ── Signature overlay (drag + 8-handle resize) ───────────
                         if (_isSigningMode)
                           Positioned(
                             left: _signaturePosition.dx - 12,
@@ -2661,7 +2994,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                               child: Stack(
                                 clipBehavior: Clip.none,
                                 children: [
-                                  // ── Body (drag to move) ──────────────────────
                                   Positioned(
                                     left: 12,
                                     top: 12,
@@ -2727,7 +3059,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                     ),
                                   ),
 
-                                  // ── Corner: Top-Left ─────────────────────────
                                   Positioned(
                                     left: 0,
                                     top: 0,
@@ -2761,7 +3092,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                     ),
                                   ),
 
-                                  // ── Corner: Top-Right ────────────────────────
                                   Positioned(
                                     right: 0,
                                     top: 0,
@@ -2794,7 +3124,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                     ),
                                   ),
 
-                                  // ── Corner: Bottom-Left ──────────────────────
                                   Positioned(
                                     left: 0,
                                     bottom: 0,
@@ -2826,7 +3155,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                     ),
                                   ),
 
-                                  // ── Corner: Bottom-Right ─────────────────────
                                   Positioned(
                                     right: 0,
                                     bottom: 0,
@@ -2862,7 +3190,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                 ),
               ),
 
-              // ── Confirm / Cancel buttons ─────────────────────────────────────
               if (_isSigningMode)
                 Container(
                   color: Colors.white,
@@ -2884,7 +3211,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                               borderRadius: BorderRadius.circular(4),
                             ),
                           ),
-                          // AFTER — always show the label, spinner is gone from button
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: const [
@@ -3003,9 +3329,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 
 class _ResizeHandle extends StatelessWidget {
   final GestureDragUpdateCallback onPanUpdate;
-
-  /// true  → thin edge bar (top/bottom/left/right)
-  /// false → 24×24 corner circle (default)
   final bool isEdge;
 
   const _ResizeHandle({required this.onPanUpdate, this.isEdge = false});
@@ -3076,7 +3399,8 @@ class _PulsingDotsLoaderState extends State<_PulsingDotsLoader>
 
   @override
   void dispose() {
-    for (final c in _controllers) c.dispose();
+    for (final c in _controllers)
+      _controllers[_controllers.indexOf(c)].dispose();
     super.dispose();
   }
 
