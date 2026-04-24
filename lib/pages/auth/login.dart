@@ -138,10 +138,15 @@ class _LoginScreenState extends State<LoginScreen> {
           result.data?['accessToken'] ??
           result.data?['access_token'] ??
           result.data?['token'];
+      final refreshToken =
+          result.data?['refreshToken'] ?? result.data?['refresh_token'];
 
       if (token != null && token.toString().isNotEmpty) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('access_token', token.toString());
+        if (refreshToken != null && refreshToken.toString().isNotEmpty) {
+          await prefs.setString('refresh_token', refreshToken.toString());
+        }
         if (result.data != null) {
           await prefs.setString('user_data', jsonEncode(result.data));
         }

@@ -129,6 +129,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
       // Deep search for token in any nested structure
       String? token = _extractToken(result.data);
+      final String? refreshToken = _extractRefreshToken(result.data);
       debugPrint('Extracted token: $token');
 
       if (token == null || token.isEmpty) {
@@ -147,6 +148,9 @@ class _OtpScreenState extends State<OtpScreen> {
       // 👇 Save token to SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('access_token', token);
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        await prefs.setString('refresh_token', refreshToken);
+      }
       debugPrint('✅ Token saved successfully!');
 
       // 👇 Single getMe call (removed duplicate)
@@ -227,6 +231,28 @@ class _OtpScreenState extends State<OtpScreen> {
     for (final entry in data.entries) {
       if (entry.value is Map<String, dynamic>) {
         for (final key in tokenKeys) {
+          final val = (entry.value as Map<String, dynamic>)[key];
+          if (val is String && val.isNotEmpty) return val;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  String? _extractRefreshToken(Map<String, dynamic>? data) {
+    if (data == null) return null;
+
+    const refreshTokenKeys = ['refreshToken', 'refresh_token'];
+
+    for (final key in refreshTokenKeys) {
+      final val = data[key];
+      if (val is String && val.isNotEmpty) return val;
+    }
+
+    for (final entry in data.entries) {
+      if (entry.value is Map<String, dynamic>) {
+        for (final key in refreshTokenKeys) {
           final val = (entry.value as Map<String, dynamic>)[key];
           if (val is String && val.isNotEmpty) return val;
         }

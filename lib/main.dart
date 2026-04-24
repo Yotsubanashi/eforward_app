@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:app_links/app_links.dart';
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'pages/auth/login.dart';
 import 'pages/auth/reset-password.dart';
 import 'pages/dashboard/dashboard.dart';
 import 'services/firebase_notification_service.dart';
 import 'services/app_lifecycle_service.dart';
+import 'services/auth_api.dart';
 import 'firebase_options.dart';
 
 // ✅ FIX: navigatorKey must be a global — NOT declared inside main()
@@ -88,9 +90,44 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<bool> _hasSavedSession() async {
+    final authApi = AuthApi();
     final prefs = await SharedPreferences.getInstance();
     final accessToken = prefs.getString('access_token')?.trim() ?? '';
-    return accessToken.isNotEmpty;
+    if (accessToken.isEmpty) {
+      authApi.dispose();
+      return false;
+    }
+
+    final meResult = await authApi.getMe(token: accessToken);
+    if (meResult.isSuccess) {
+      authApi.dispose();
+      return true;
+    }
+
+    // Access token might be expired, try refresh token once.
+    final refreshResult = await authApi.refreshWithStoredToken();
+    if (!refreshResult.isSuccess) {
+      authApi.dispose();
+      return false;
+    }
+
+    final refreshedAccessToken = prefs.getString('access_token')?.trim() ?? '';
+    if (refreshedAccessToken.isEmpty) {
+      authApi.dispose();
+      return false;
+    }
+
+    final meAfterRefresh = await authApi.getMe(token: refreshedAccessToken);
+    authApi.dispose();
+    if (meAfterRefresh.isSuccess && meAfterRefresh.data != null) {
+      await prefs.setString('user_data', jsonEncode(meAfterRefresh.data));
+      return true;
+    }
+
+    await prefs.remove('access_token');
+    await prefs.remove('refresh_token');
+    await prefs.remove('user_data');
+    return false;
   }
 
   @override

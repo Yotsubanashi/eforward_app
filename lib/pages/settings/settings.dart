@@ -363,6 +363,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('access_token');
+      await prefs.remove('refresh_token');
       await prefs.remove('user_data');
 
       NotificationsService().reset();

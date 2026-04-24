@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthApi {
   AuthApi({http.Client? client}) : _client = client ?? http.Client();
@@ -62,9 +63,8 @@ class AuthApi {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({}),
+        body: jsonEncode({'refreshToken': token}),
       );
 
       final dynamic decodedBody = response.body.isNotEmpty
@@ -104,6 +104,61 @@ class AuthApi {
         requiredOTP: false,
       );
     }
+  }
+
+  Future<AuthLoginResult> refreshWithStoredToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final storedRefreshToken = prefs.getString('refresh_token')?.trim() ?? '';
+
+    if (storedRefreshToken.isEmpty) {
+      await clearSession();
+      return const AuthLoginResult(
+        isSuccess: false,
+        statusCode: 401,
+        message: 'Session expired. Please login again.',
+      );
+    }
+
+    final refreshResult = await refresh(token: storedRefreshToken);
+
+    if (refreshResult.isSuccess) {
+      final newAccessToken =
+          refreshResult.data?['accessToken'] ??
+          refreshResult.data?['access_token'] ??
+          refreshResult.data?['token'];
+      final newRefreshToken =
+          refreshResult.data?['refreshToken'] ??
+          refreshResult.data?['refresh_token'];
+
+      if (newAccessToken is String && newAccessToken.trim().isNotEmpty) {
+        await prefs.setString('access_token', newAccessToken.trim());
+      }
+      if (newRefreshToken is String && newRefreshToken.trim().isNotEmpty) {
+        await prefs.setString('refresh_token', newRefreshToken.trim());
+      }
+
+      return refreshResult;
+    }
+
+    // If backend marks refresh token invalid/inactive/unauthorized,
+    // force local logout to keep session in sync with backend policy.
+    if (refreshResult.statusCode == 401 || refreshResult.statusCode == 403) {
+      await clearSession();
+      return const AuthLoginResult(
+        isSuccess: false,
+        statusCode: 401,
+        message: 'Session expired. Please login again.',
+      );
+    }
+
+    return refreshResult;
+  }
+
+  Future<void> clearSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('access_token');
+    await prefs.remove('refresh_token');
+    await prefs.remove('user_data');
   }
 
   Future<AuthLoginResult> resendOtp({required String email}) async {
