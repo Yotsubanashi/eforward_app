@@ -2162,20 +2162,20 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                 : _showRequestRevisionDialog,
                             icon: const Icon(
                               Icons.refresh_outlined,
-                              color: Colors.black,
+                              color: Colors.white,
                               size: 16,
                             ),
                             label: const Text(
                               "REQUEST REVISION",
                               style: TextStyle(
-                                color: Colors.black,
+                                color: Colors.white,
                                 fontSize: 10,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 0.5,
                               ),
                             ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
+                              backgroundColor: Colors.red,
                               elevation: 0,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
