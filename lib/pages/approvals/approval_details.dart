@@ -43,11 +43,14 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   String? _localPdfPath;
   String? _localExcelPath;
   bool _isSubmittingRevision = false;
+  bool _isSubmittingAttachmentRequest = false;
   int _selectedAttachmentTab = 0;
 
   Map<String, dynamic>? _detail;
   List<Map<String, dynamic>> _documentLinks = [];
   final TextEditingController _revisionRemarksController =
+      TextEditingController();
+  final TextEditingController _attachmentRemarksController =
       TextEditingController();
 
   static const String _baseUrl =
@@ -63,7 +66,156 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   @override
   void dispose() {
     _revisionRemarksController.dispose();
+    _attachmentRemarksController.dispose();
     super.dispose();
+  }
+
+  void _showRequestAttachmentDialog() {
+    _attachmentRemarksController.clear();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "REQUEST ATTACHMENT",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    RichText(
+                      text: const TextSpan(
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                        children: [
+                          TextSpan(text: "Remarks "),
+                          TextSpan(
+                            text: "*",
+                            style: TextStyle(
+                              color: Color(0xFFCC0000),
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _attachmentRemarksController,
+                      minLines: 4,
+                      maxLines: 6,
+                      decoration: InputDecoration(
+                        hintText: "Enter your attachment request remarks...",
+                        hintStyle: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.black38,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(4),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE8E8E8),
+                            width: 1,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(4),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFCC0000),
+                            width: 1.5,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.all(12),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Colors.black38),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            child: const Text(
+                              "CANCEL",
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1,
+                                color: Colors.black54,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _isSubmittingAttachmentRequest
+                                ? null
+                                : () => _submitRequestAttachment(context),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFCC0000),
+                              disabledBackgroundColor: const Color(
+                                0xFFCC0000,
+                              ).withOpacity(0.6),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            child: _isSubmittingAttachmentRequest
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text(
+                                    "SUBMIT",
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 1,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void _showRequestRevisionDialog() {
@@ -275,6 +427,55 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       }
     } catch (e) {
       setState(() => _isSubmittingRevision = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: const Color(0xFFCC0000),
+        ),
+      );
+    }
+  }
+
+  Future<void> _submitRequestAttachment(BuildContext dialogContext) async {
+    final remarks = _attachmentRemarksController.text.trim();
+    if (remarks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter remarks'),
+          backgroundColor: Color(0xFFCC0000),
+        ),
+      );
+      return;
+    }
+    setState(() => _isSubmittingAttachmentRequest = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token') ?? '';
+      final id = _getRoutingId();
+      if (token.isEmpty || id.isEmpty) {
+        throw Exception('Missing token or approval ID');
+      }
+
+      await ApprovalsApi().requestAttachment(
+        token: token,
+        routingId: id,
+        remarks: remarks,
+      );
+
+      if (!mounted) return;
+      Navigator.pop(dialogContext);
+      setState(() => _isSubmittingAttachmentRequest = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Attachment request sent successfully'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() => _isSubmittingAttachmentRequest = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error: $e'),
@@ -1954,7 +2155,9 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: _isSubmittingRevision
+                            onPressed:
+                                (_isSubmittingRevision ||
+                                    _isSubmittingAttachmentRequest)
                                 ? null
                                 : _showRequestRevisionDialog,
                             icon: const Icon(
@@ -1985,6 +2188,42 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed:
+                            (_isSubmittingRevision ||
+                                _isSubmittingAttachmentRequest)
+                            ? null
+                            : _showRequestAttachmentDialog,
+                        icon: const Icon(
+                          Icons.attach_file_outlined,
+                          color: Colors.black,
+                          size: 16,
+                        ),
+                        label: const Text(
+                          "REQUEST ATTACHMENT",
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),

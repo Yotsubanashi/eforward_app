@@ -1111,4 +1111,31 @@ class ApprovalsApi {
     }
     return [];
   }
+
+  Future<void> requestAttachment({
+    required String token,
+    required String routingId,
+    required String remarks,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/approvals/$routingId/request-attachment'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'remarks': remarks}),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      String message = 'Failed to submit attachment request';
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          message = decoded['message']?.toString() ?? message;
+        }
+      } catch (_) {}
+      throw Exception(message);
+    }
+  }
 }
