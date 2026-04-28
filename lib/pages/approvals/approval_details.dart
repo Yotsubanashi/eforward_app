@@ -2112,7 +2112,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                 ? null
                                 : _handleApproveTap,
                             icon: const Icon(
-                              Icons.check_circle,
+                              Icons.check,
                               color: Colors.white,
                               size: 16,
                             ),
@@ -2789,7 +2789,9 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       context: context,
       builder: (dialogContext) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           insetPadding: const EdgeInsets.symmetric(horizontal: 20),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
@@ -2820,10 +2822,16 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                   controller: _remarksController,
                   minLines: 4,
                   maxLines: 6,
-                  style: const TextStyle(fontSize: 13, color: Color(0xFF1A1A1A)),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF1A1A1A),
+                  ),
                   decoration: InputDecoration(
                     hintText: 'Type your optional remarks here...',
-                    hintStyle: const TextStyle(fontSize: 12, color: Colors.black38),
+                    hintStyle: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.black38,
+                    ),
                     filled: true,
                     fillColor: const Color(0xFFF6F7F9),
                     contentPadding: const EdgeInsets.all(12),
@@ -2867,7 +2875,9 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () {
-                          setState(() => _remarks = _remarksController.text.trim());
+                          setState(
+                            () => _remarks = _remarksController.text.trim(),
+                          );
                           Navigator.of(dialogContext).pop();
                         },
                         style: ElevatedButton.styleFrom(
@@ -3115,7 +3125,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                 ),
               ),
             ),
-          if (displayRemarks.isNotEmpty) SizedBox(height: responsiveSpacing * 0.35),
+          if (displayRemarks.isNotEmpty)
+            SizedBox(height: responsiveSpacing * 0.35),
           Expanded(
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -3636,11 +3647,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: const [
-                              Icon(
-                                Icons.check_circle_outline,
-                                color: Colors.white,
-                                size: 18,
-                              ),
+                              Icon(Icons.check, color: Colors.white, size: 18),
                               SizedBox(width: 10),
                               Text(
                                 "CONFIRM & APPROVE",
