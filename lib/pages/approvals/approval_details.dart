@@ -2154,26 +2154,12 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: ElevatedButton.icon(
+                          child: ElevatedButton(
                             onPressed:
                                 (_isSubmittingRevision ||
                                     _isSubmittingAttachmentRequest)
                                 ? null
                                 : _showRequestRevisionDialog,
-                            icon: const Icon(
-                              Icons.refresh_outlined,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                            label: const Text(
-                              "REQUEST REVISION",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const ui.Color.fromARGB(
                                 255,
@@ -2183,12 +2169,37 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                               ),
                               elevation: 0,
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
+                                horizontal: 12,
                                 vertical: 12,
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(4),
                               ),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.refresh_outlined,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                                SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    "REQUEST REVISION",
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    softWrap: false,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.2,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -2227,7 +2238,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(4),
                             side: const BorderSide(
-                              color: Colors.black,
+                              color: ui.Color.fromARGB(255, 199, 199, 199),
                               width: 1,
                             ),
                           ),
