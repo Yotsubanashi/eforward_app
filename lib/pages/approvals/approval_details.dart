@@ -2112,7 +2112,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                 ? null
                                 : _handleApproveTap,
                             icon: const Icon(
-                              Icons.check_circle_outlined,
+                              Icons.check_circle,
                               color: Colors.white,
                               size: 16,
                             ),
@@ -2137,9 +2137,9 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                     ),
                                   ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF28A745),
+                              backgroundColor: const Color(0xFF059669),
                               disabledBackgroundColor: const Color(
-                                0xFF28A745,
+                                0xFF059669,
                               ).withOpacity(0.5),
                               elevation: 0,
                               padding: const EdgeInsets.symmetric(
@@ -2175,7 +2175,12 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                               ),
                             ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
+                              backgroundColor: const ui.Color.fromARGB(
+                                255,
+                                199,
+                                41,
+                                30,
+                              ),
                               elevation: 0,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
@@ -2221,6 +2226,10 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                           ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(4),
+                            side: const BorderSide(
+                              color: Colors.black,
+                              width: 1,
+                            ),
                           ),
                         ),
                       ),
@@ -2493,6 +2502,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 
   int _currentPage = 0;
   int _totalPages = 1;
+  String _remarks = '';
+  final TextEditingController _remarksController = TextEditingController();
 
   static const double _pdfPageWidthPt = 595.0;
   static const double _pdfPageHeightPt = 842.0;
@@ -2542,6 +2553,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   @override
   void initState() {
     super.initState();
+    _remarksController.text = _remarks;
     _loadSignatureFromApi();
     _loadUserInfo();
     _loadWatermark();
@@ -2550,6 +2562,12 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         if (mounted) _enterSigningMode();
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _remarksController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadWatermark() async {
@@ -2766,6 +2784,119 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     });
   }
 
+  Future<void> _showInsertCommentDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(
+                      Icons.mode_comment_outlined,
+                      color: Color(0xFFCC0000),
+                      size: 18,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'Internal Remarks',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _remarksController,
+                  minLines: 4,
+                  maxLines: 6,
+                  style: const TextStyle(fontSize: 13, color: Color(0xFF1A1A1A)),
+                  decoration: InputDecoration(
+                    hintText: 'Type your optional remarks here...',
+                    hintStyle: const TextStyle(fontSize: 12, color: Colors.black38),
+                    filled: true,
+                    fillColor: const Color(0xFFF6F7F9),
+                    contentPadding: const EdgeInsets.all(12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFD9DCE1)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFD9DCE1)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFCC0000)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Color(0xFFD9DCE1)),
+                          padding: const EdgeInsets.symmetric(vertical: 11),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text(
+                          'Cancel',
+                          style: TextStyle(
+                            color: Color(0xFF1A1A1A),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          setState(() => _remarks = _remarksController.text.trim());
+                          Navigator.of(dialogContext).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFCC0000),
+                          padding: const EdgeInsets.symmetric(vertical: 11),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text(
+                          'Insert Comment',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<Uint8List?> _captureSignatureWidget() async {
     try {
       await Future.delayed(const Duration(milliseconds: 300));
@@ -2861,7 +2992,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       final request = http.MultipartRequest('POST', uri)
         ..headers['Authorization'] = 'Bearer $token'
         ..headers['Accept'] = 'application/json'
-        ..fields['remarks'] = ''
+        ..fields['remarks'] = _remarks
         ..fields['page'] = signaturePage.toString()
         ..fields['x'] = pdfX.toStringAsFixed(2)
         ..fields['y'] = pdfY.toStringAsFixed(2)
@@ -2949,107 +3080,141 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         widget.item['referenceNo']?.toString() ??
         widget.item['routing']?['reference_no']?.toString() ??
         '';
+    final trimmedRemarks = _remarks.trim();
+    final displayRemarks = trimmedRemarks.length > 28
+        ? '${trimmedRemarks.substring(0, 28)}...'
+        : trimmedRemarks;
 
     final responsiveFontSize = (_signatureHeight * 0.14).clamp(4.0, 12.0);
     final responsiveLabelFontSize = (_signatureHeight * 0.12).clamp(3.5, 10.0);
     final responsivePadding = (_signatureHeight * 0.08).clamp(0.5, 2.0);
     final responsiveSpacing = (_signatureHeight * 0.06).clamp(2.0, 5.0);
+    final remarksFontSize = (_signatureHeight * 0.12).clamp(6.0, 13.0);
 
     return Container(
       width: _signatureWidth,
       height: _signatureHeight,
       color: Colors.transparent,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: _signatureWidth * 0.45,
-            height: _signatureHeight,
-            child: Stack(
-              alignment: Alignment.center,
+          if (displayRemarks.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.only(
+                left: responsivePadding,
+                bottom: responsivePadding,
+              ),
+              child: Text(
+                'Remarks: $displayRemarks',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: remarksFontSize,
+                  fontWeight: FontWeight.w400,
+                  color: const Color(0xFF1A1A1A),
+                ),
+              ),
+            ),
+          if (displayRemarks.isNotEmpty) SizedBox(height: responsiveSpacing * 0.35),
+          Expanded(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                if (_signatureBytes != null)
-                  Image.memory(
-                    _signatureBytes!,
-                    fit: BoxFit.contain,
-                    width: _signatureWidth * 0.45,
-                  )
-                else if (_signatureText != null && _signatureText!.isNotEmpty)
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      _signatureText!,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontStyle: FontStyle.italic,
-                        color: Color(0xFF1A1A1A),
+                SizedBox(
+                  width: _signatureWidth * 0.45,
+                  height: _signatureHeight,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      if (_signatureBytes != null)
+                        Image.memory(
+                          _signatureBytes!,
+                          fit: BoxFit.contain,
+                          width: _signatureWidth * 0.45,
+                        )
+                      else if (_signatureText != null &&
+                          _signatureText!.isNotEmpty)
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            _signatureText!,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontStyle: FontStyle.italic,
+                              color: Color(0xFF1A1A1A),
+                            ),
+                          ),
+                        ),
+                      if (_watermarkBytes != null)
+                        Opacity(
+                          opacity: 0.15,
+                          child: Image.memory(
+                            _watermarkBytes!,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: const Color(0xFF1B5E20).withOpacity(0.35),
+                        width: 0.8,
+                      ),
+                    ),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: responsivePadding * 1.5,
+                      vertical: responsivePadding * 0.5,
+                    ),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _metaRow(
+                            'Digitally signed by:',
+                            _signerName,
+                            responsiveFontSize,
+                            responsiveLabelFontSize,
+                            responsiveSpacing,
+                          ),
+                          SizedBox(height: responsiveSpacing * 0.5),
+                          _metaRow(
+                            'Employee ID:',
+                            _signerEmployeeId,
+                            responsiveFontSize,
+                            responsiveLabelFontSize,
+                            responsiveSpacing,
+                          ),
+                          SizedBox(height: responsiveSpacing * 0.5),
+                          _metaRow(
+                            'Date:',
+                            dateStr,
+                            responsiveFontSize,
+                            responsiveLabelFontSize,
+                            responsiveSpacing,
+                          ),
+                          SizedBox(height: responsiveSpacing * 0.5),
+                          _metaRow(
+                            'Ref:',
+                            refNo,
+                            responsiveFontSize,
+                            responsiveLabelFontSize,
+                            responsiveSpacing,
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                if (_watermarkBytes != null)
-                  Opacity(
-                    opacity: 0.15,
-                    child: Image.memory(_watermarkBytes!, fit: BoxFit.contain),
-                  ),
+                ),
               ],
-            ),
-          ),
-
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: const Color(0xFF1B5E20).withOpacity(0.35),
-                  width: 0.8,
-                ),
-              ),
-              padding: EdgeInsets.symmetric(
-                horizontal: responsivePadding * 1.5,
-                vertical: responsivePadding * 0.5,
-              ),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _metaRow(
-                      'Digitally signed by:',
-                      _signerName,
-                      responsiveFontSize,
-                      responsiveLabelFontSize,
-                      responsiveSpacing,
-                    ),
-                    SizedBox(height: responsiveSpacing * 0.5),
-                    _metaRow(
-                      'Employee ID:',
-                      _signerEmployeeId,
-                      responsiveFontSize,
-                      responsiveLabelFontSize,
-                      responsiveSpacing,
-                    ),
-                    SizedBox(height: responsiveSpacing * 0.5),
-                    _metaRow(
-                      'Date:',
-                      dateStr,
-                      responsiveFontSize,
-                      responsiveLabelFontSize,
-                      responsiveSpacing,
-                    ),
-                    SizedBox(height: responsiveSpacing * 0.5),
-                    _metaRow(
-                      'Ref:',
-                      refNo,
-                      responsiveFontSize,
-                      responsiveLabelFontSize,
-                      responsiveSpacing,
-                    ),
-                  ],
-                ),
-              ),
             ),
           ),
         ],
@@ -3112,6 +3277,24 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           ),
         ),
         actions: [
+          if (_isSigningMode)
+            TextButton.icon(
+              onPressed: _showInsertCommentDialog,
+              icon: const Icon(
+                Icons.add_comment_outlined,
+                color: Colors.white,
+                size: 16,
+              ),
+              label: Text(
+                _remarks.isEmpty ? "INSERT COMMENT" : "EDIT COMMENT",
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.0,
+                ),
+              ),
+            ),
           if (!_isSigningMode && widget.enableSigning)
             Padding(
               padding: const EdgeInsets.only(right: 12),

@@ -507,8 +507,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   double _signatureWidth = 200;
   double _signatureHeight = 100;
 
-  final TextEditingController _remarksController = TextEditingController();
-
   @override
   void initState() {
     super.initState();
@@ -517,7 +515,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 
   @override
   void dispose() {
-    _remarksController.dispose();
     super.dispose();
   }
 
@@ -891,7 +888,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                 ],
               ),
             ),
-
           // PDF + signature overlay
           Expanded(
             child: LayoutBuilder(
