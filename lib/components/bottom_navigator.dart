@@ -29,6 +29,49 @@ class _BottomNavigatorState extends State<BottomNavigator> {
   final NotificationsService _notificationsService = NotificationsService();
   Timer? _timer;
 
+  Widget _buildNotificationIcon({
+    required int unreadCount,
+    required bool isActive,
+  }) {
+    final icon = Icon(
+      isActive ? Icons.notifications : Icons.notifications_outlined,
+    );
+
+    if (unreadCount <= 0) return icon;
+
+    final String label = unreadCount > 99 ? '99+' : unreadCount.toString();
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        icon,
+        Positioned(
+          right: -6,
+          top: -4,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFFCC0000),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.white, width: 1.5),
+            ),
+            constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                height: 1,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -158,76 +201,18 @@ class _BottomNavigatorState extends State<BottomNavigator> {
           icon: ValueListenableBuilder<int>(
             valueListenable: _notificationsService.unreadCountNotifier,
             builder: (context, unreadCount, _) {
-              return Stack(
-                children: [
-                  const Icon(Icons.notifications_outlined),
-                  if (unreadCount > 0)
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 2,
-                        ),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFCC0000),
-                          shape: BoxShape.circle,
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 18,
-                          minHeight: 18,
-                        ),
-                        child: Text(
-                          unreadCount > 99 ? '99+' : unreadCount.toString(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                ],
+              return _buildNotificationIcon(
+                unreadCount: unreadCount,
+                isActive: false,
               );
             },
           ),
           activeIcon: ValueListenableBuilder<int>(
             valueListenable: _notificationsService.unreadCountNotifier,
             builder: (context, unreadCount, _) {
-              return Stack(
-                children: [
-                  const Icon(Icons.notifications),
-                  if (unreadCount > 0)
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 2,
-                        ),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFCC0000),
-                          shape: BoxShape.circle,
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 18,
-                          minHeight: 18,
-                        ),
-                        child: Text(
-                          unreadCount > 99 ? '99+' : unreadCount.toString(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                ],
+              return _buildNotificationIcon(
+                unreadCount: unreadCount,
+                isActive: true,
               );
             },
           ),
