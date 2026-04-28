@@ -273,6 +273,47 @@ class _DashboardPageState extends State<DashboardPage> {
     return [];
   }
 
+  String _normalizeStatus(String? raw) {
+    final s = (raw ?? '').toUpperCase().trim();
+    if (s.isEmpty || s == 'NULL') return '';
+    if (s.startsWith('PEND') || s == 'PND') return 'PND';
+    if (s.startsWith('APP') || s == 'APV') return 'APV';
+    if (s.startsWith('REJ') || s == 'REJ') return 'REJ';
+    if (s == 'OPN' || s.startsWith('OPEN')) return 'OPN';
+    if (s.startsWith('CANCEL') || s == 'CNL') return 'CNL';
+    return s;
+  }
+
+  String _getStatusLabel(String status) {
+    switch (status.toUpperCase().trim()) {
+      case 'CNL':
+        return 'CANCELLED';
+      case 'APV':
+        return 'APPROVED';
+      case 'PND':
+        return 'PENDING';
+      case 'OPN':
+        return 'OPEN';
+      default:
+        return status.toUpperCase().trim();
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toUpperCase().trim()) {
+      case 'CNL':
+        return const Color(0xFFCC0000);
+      case 'APV':
+        return Colors.green;
+      case 'PND':
+        return Colors.orange;
+      case 'OPN':
+        return Colors.grey;
+      default:
+        return Colors.grey;
+    }
+  }
+
   Map<String, dynamic> _normalizeItem(Map<String, dynamic> raw) {
     final routing = raw['routing'] as Map<String, dynamic>? ?? {};
     final owner = routing['owner'] as Map<String, dynamic>? ?? {};
@@ -286,6 +327,11 @@ class _DashboardPageState extends State<DashboardPage> {
       lastName,
     ].where((p) => p.isNotEmpty).join(' ').trim();
 
+    String status = _normalizeStatus(routing['status']?.toString());
+    if (status.isEmpty) status = _normalizeStatus(raw['status']?.toString());
+    if (status.isEmpty) status = _normalizeStatus(raw['to_status']?.toString());
+    if (status.isEmpty) status = 'PND';
+
     return {
       ...raw,
       'id': raw['routing_id']?.toString() ?? '',
@@ -293,6 +339,7 @@ class _DashboardPageState extends State<DashboardPage> {
       'particulars': routing['particulars'] ?? '',
       'requester': requesterName.isNotEmpty ? requesterName : '—',
       'dateSent': _formatDateTime(raw['date_sent']?.toString()), // ✅ formatted
+      'status': status,
       'routing': routing,
       'owner': owner,
     };
@@ -542,6 +589,9 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildActivityCard(Map<String, dynamic> item) {
+    final status = item['status']?.toString() ?? 'PND';
+    final statusColor = _getStatusColor(status);
+
     return InkWell(
       onTap: () =>
           Navigator.push(
@@ -595,16 +645,16 @@ class _DashboardPageState extends State<DashboardPage> {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFCC0000).withOpacity(0.1),
+                      color: statusColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(3),
                     ),
-                    child: const Text(
-                      "PENDING",
+                    child: Text(
+                      _getStatusLabel(status),
                       style: TextStyle(
                         fontSize: 9,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 1,
-                        color: Color(0xFFCC0000),
+                        color: statusColor,
                       ),
                     ),
                   ),
