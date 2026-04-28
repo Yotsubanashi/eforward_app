@@ -11,6 +11,7 @@ import 'services/firebase_notification_service.dart';
 import 'services/app_lifecycle_service.dart';
 import 'services/auth_api.dart';
 import 'services/secure_unlock_service.dart';
+import 'services/app_version_service.dart';
 import 'firebase_options.dart';
 
 // ✅ FIX: navigatorKey must be a global — NOT declared inside main()
@@ -47,11 +48,42 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   final _appLinks = AppLinks();
   late final Future<bool> _hasSessionFuture = _hasSavedSession();
+  bool _versionGateShown = false;
 
   @override
   void initState() {
     super.initState();
     _initDeepLinks();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _enforceLatestVersionIfNeeded();
+    });
+  }
+
+  Future<void> _enforceLatestVersionIfNeeded() async {
+    if (_versionGateShown) return;
+
+    final svc = AppVersionService();
+    try {
+      final current = await svc.getInstalledVersion();
+      final remote = await svc.fetchLatestVersion();
+      if (!mounted || current == null || remote == null) return;
+
+      if (current < remote.latestVersion) {
+        _versionGateShown = true;
+        final pkg = await svc.getPackageName();
+        if (!mounted) return;
+        await showForceUpdateDialog(
+          context: context,
+          remote: remote,
+          current: current,
+          packageName: pkg,
+        );
+      }
+    } catch (e) {
+      debugPrint('Version gate failed: $e');
+    } finally {
+      svc.dispose();
+    }
   }
 
   void _initDeepLinks() {
