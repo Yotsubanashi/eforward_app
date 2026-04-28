@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:eforward_app/pages/approvals/approvals.dart';
 import 'package:flutter/material.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
+import 'package:eforward_app/config/app_env.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/services/secure_unlock_service.dart';
@@ -19,8 +20,7 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  static const String _baseUrl =
-      'https://eforward-api.ardentnetworks.com.ph/api';
+  String get _baseUrl => AppEnv.apiBaseUrl;
   static const String _biometricPromptSeenKey = 'biometric_prompt_seen';
   final int _selectedIndex = 0;
 

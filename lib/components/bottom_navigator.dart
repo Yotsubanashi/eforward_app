@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:eforward_app/config/app_env.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/pages/dashboard/dashboard.dart';
@@ -79,9 +80,7 @@ class _BottomNavigatorState extends State<BottomNavigator> {
         if (!hasSignature && token.isNotEmpty) {
           try {
             final response = await http.get(
-              Uri.parse(
-                'https://eforward-api.ardentnetworks.com.ph/api/upload/signature/image',
-              ),
+              Uri.parse('${AppEnv.apiBaseUrl}/upload/signature/image'),
               headers: {'Authorization': 'Bearer $token'},
             );
             if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {

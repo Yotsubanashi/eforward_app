@@ -1,13 +1,13 @@
 import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:eforward_app/config/app_env.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class FCMTokenService {
-  static const String _baseUrl =
-      'https://eforward-api.ardentnetworks.com.ph/api';
+  static String get _baseUrl => AppEnv.apiBaseUrl;
 
   /// Call this immediately after a successful login.
   static Future<bool> saveFCMTokenToBackend({

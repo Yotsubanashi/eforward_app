@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:eforward_app/config/app_env.dart';
 import 'package:eforward_app/pages/dashboard/dashboard.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -21,8 +22,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
-  static const String _baseUrl =
-      'https://eforward-api.ardentnetworks.com.ph/api';
+  String get _baseUrl => AppEnv.apiBaseUrl;
   static const int _pageLimit = 10;
 
   // ── Pending pagination ──────────────────────────────────────────────────

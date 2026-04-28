@@ -3,14 +3,14 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:eforward_app/config/app_env.dart';
 
 class AuthApi {
   AuthApi({http.Client? client}) : _client = client ?? http.Client();
 
   final http.Client _client;
 
-  static const String baseUrl =
-      'https://eforward-api.ardentnetworks.com.ph/api';
+  static String get baseUrl => AppEnv.apiBaseUrl;
 
   Future<AuthLoginResult> login({
     required String email,
@@ -80,7 +80,8 @@ class AuthApi {
         return AuthLoginResult(
           isSuccess: true,
           statusCode: response.statusCode,
-          message: _extractMessage(decodedBody) ?? 'Token refreshed successfully.',
+          message:
+              _extractMessage(decodedBody) ?? 'Token refreshed successfully.',
           data: bodyMap,
           requiredOTP: false,
         );

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:eforward_app/config/app_env.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,8 +18,7 @@ class NotificationsPage extends StatefulWidget {
 class _NotificationsPageState extends State<NotificationsPage>
     with WidgetsBindingObserver {
   final int _selectedIndex = 2;
-  static const String _baseUrl =
-      'https://eforward-api.ardentnetworks.com.ph/api';
+  String get _baseUrl => AppEnv.apiBaseUrl;
 
   late NotificationsService _notificationsService;
   final ScrollController _scrollController = ScrollController();

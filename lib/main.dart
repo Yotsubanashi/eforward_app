@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:app_links/app_links.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'pages/auth/login.dart';
@@ -19,6 +20,7 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env');
 
   // 1. Init Firebase first
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -68,7 +70,10 @@ class _MyAppState extends State<MyApp> {
             _handleDeepLink(uri);
           }
         })
-        .catchError((err) => debugPrint('Error getting initial link: $err'));
+        .catchError((err) {
+          debugPrint('Error getting initial link: $err');
+          return null;
+        });
   }
 
   void _handleDeepLink(Uri uri) {
@@ -76,7 +81,7 @@ class _MyAppState extends State<MyApp> {
     debugPrint('Path: ${uri.path}');
     debugPrint('Query params: ${uri.queryParameters}');
 
-    // Matches: https://eforward.ardentnetworks.com.ph/auth/reset-password?token=xxx
+    // Matches: {APP_BASE_URL}/auth/reset-password?token=xxx
     if (uri.path == '/auth/reset-password') {
       final token = uri.queryParameters['token'];
       debugPrint('Found token: $token');

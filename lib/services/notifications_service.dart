@@ -1,13 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:eforward_app/config/app_env.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class NotificationsService {
   static final NotificationsService _instance =
       NotificationsService._internal();
-  static const String _baseUrl =
-      'https://eforward-api.ardentnetworks.com.ph/api';
+  static String get _baseUrl => AppEnv.apiBaseUrl;
 
   // ValueNotifier to notify listeners when unread count changes
   final ValueNotifier<int> unreadCountNotifier = ValueNotifier<int>(0);

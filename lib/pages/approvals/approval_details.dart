@@ -16,6 +16,7 @@ import 'package:open_file/open_file.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:excel/excel.dart' hide TextSpan, Border;
 import 'package:spreadsheet_decoder/spreadsheet_decoder.dart';
+import 'package:eforward_app/config/app_env.dart';
 import 'package:eforward_app/services/approvals_api.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -53,8 +54,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   final TextEditingController _attachmentRemarksController =
       TextEditingController();
 
-  static const String _baseUrl =
-      'https://eforward-api.ardentnetworks.com.ph/api';
+  String get _baseUrl => AppEnv.apiBaseUrl;
 
   @override
   void initState() {
@@ -2677,9 +2677,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         return;
       }
       final response = await http.get(
-        Uri.parse(
-          'https://eforward-api.ardentnetworks.com.ph/api/upload/signature/image',
-        ),
+        Uri.parse('${AppEnv.apiBaseUrl}/upload/signature/image'),
         headers: {'Authorization': 'Bearer $token', 'Accept': '*/*'},
       );
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -3007,9 +3005,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       final pdfH = _toPdfHeight(_signatureHeight);
       final signaturePage = _currentPage + 1;
 
-      final uri = Uri.parse(
-        'https://eforward-api.ardentnetworks.com.ph/api/approvals/$id/approve',
-      );
+      final uri = Uri.parse('${AppEnv.apiBaseUrl}/approvals/$id/approve');
       final request = http.MultipartRequest('POST', uri)
         ..headers['Authorization'] = 'Bearer $token'
         ..headers['Accept'] = 'application/json'

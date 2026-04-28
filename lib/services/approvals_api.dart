@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
+import 'package:eforward_app/config/app_env.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
@@ -28,8 +29,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   // Detail data from API
   Map<String, dynamic>? _detail;
 
-  static const String _baseUrl =
-      'https://eforward-api.ardentnetworks.com.ph/api';
+  String get _baseUrl => AppEnv.apiBaseUrl;
 
   @override
   void initState() {
@@ -531,9 +531,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       }
 
       final response = await http.get(
-        Uri.parse(
-          'https://eforward-api.ardentnetworks.com.ph/api/upload/signature/image',
-        ),
+        Uri.parse('${AppEnv.apiBaseUrl}/upload/signature/image'),
         headers: {'Authorization': 'Bearer $token', 'Accept': '*/*'},
       );
 
@@ -640,9 +638,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 
       // ─── POST /approvals/:id/approve ─────────────────────────────────────
       // FormData: remarks, signatureImage, signaturePlacement
-      final uri = Uri.parse(
-        'https://eforward-api.ardentnetworks.com.ph/api/approvals/$id/approve',
-      );
+      final uri = Uri.parse('${AppEnv.apiBaseUrl}/approvals/$id/approve');
 
       final request = http.MultipartRequest('POST', uri)
         ..headers['Authorization'] = 'Bearer $token'
@@ -1080,8 +1076,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 }
 
 class ApprovalsApi {
-  static const String _baseUrl =
-      'https://eforward-api.ardentnetworks.com.ph/api';
+  static String get _baseUrl => AppEnv.apiBaseUrl;
 
   Future<List<Map<String, dynamic>>> getDocumentLinks({
     required String token,
@@ -1089,10 +1084,7 @@ class ApprovalsApi {
   }) async {
     final response = await http.get(
       Uri.parse('$_baseUrl/routing/$routingId/document-links'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Accept': 'application/json',
-      },
+      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
