@@ -207,21 +207,32 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       final datePart = raw.substring(0, 10).replaceAll('.', '-');
       final rest = raw.substring(10);
-      final normalized = datePart + rest;
-      final dt = DateTime.parse(normalized);
-      const months = [
-        'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-        'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
-      ];
-      final hour = dt.hour > 12
-          ? dt.hour - 12
-          : (dt.hour == 0 ? 12 : dt.hour);
-      final ampm = dt.hour >= 12 ? 'PM' : 'AM';
-      return '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
-          '${hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} $ampm';
+      // Strip timezone suffix so we treat the clock value as-is
+      final stripped = (datePart + rest).replaceFirst(
+        RegExp(r'(Z|[+-]\d{2}:\d{2})$'),
+        '',
+      );
+      final dt = DateTime.parse(stripped);
+      return _relativeDate(dt);
     } catch (_) {
       return raw;
     }
+  }
+
+  String _relativeDate(DateTime dt) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(dt.year, dt.month, dt.day);
+    final diff = today.difference(target).inDays;
+
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    if (diff < 7) return '$diff days ago';
+    if (diff < 14) return '1 week ago';
+    if (diff < 30) return '${(diff / 7).floor()} weeks ago';
+    if (diff < 60) return '1 month ago';
+    if (diff < 365) return '${(diff / 30).floor()} months ago';
+    return '${(diff / 365).floor()} year${(diff / 365).floor() > 1 ? 's' : ''} ago';
   }
 
   // ─── GET /approvals/pending ───────────────────────────────────────────────
@@ -591,8 +602,20 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildActivityCard(Map<String, dynamic> item) {
     final status = item['status']?.toString() ?? 'PND';
     final statusColor = _getStatusColor(status);
+    final statusLabel = _getStatusLabel(status);
+    final refNo = item['referenceNo']?.toString().isNotEmpty == true
+        ? item['referenceNo'].toString()
+        : item['id']?.toString() ?? '—';
+    final particulars = item['particulars']?.toString().isNotEmpty == true
+        ? item['particulars'].toString()
+        : '—';
+    final requester = item['requester']?.toString() ?? '—';
+    final dateSent = item['dateSent']?.toString().isNotEmpty == true
+        ? item['dateSent'].toString()
+        : '—';
 
     return InkWell(
+      borderRadius: BorderRadius.circular(8),
       onTap: () =>
           Navigator.push(
             context,
@@ -604,52 +627,61 @@ class _DashboardPageState extends State<DashboardPage> {
             if (mounted) _fetchPendingApprovals();
           }),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: Colors.white,
-          border: Border.all(color: const Color(0xFFE8E8E8)),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFEEEEEE)),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(width: 3, height: 40, color: const Color(0xFFCC0000)),
-            const SizedBox(width: 12),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            // ── Header: ref + status ──────────────────────────────────
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+                border: Border(bottom: BorderSide(color: Color(0xFFF0F0F0))),
+              ),
+              child: Row(
                 children: [
-                  Text(
-                    item['referenceNo']?.toString().isNotEmpty == true
-                        ? item['referenceNo'].toString()
-                        : item['id']?.toString() ?? '—',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1,
-                      color: Color(0xFF1A1A1A),
+                  Container(
+                    width: 3,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFCC0000),
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    item['particulars']?.toString().isNotEmpty == true
-                        ? item['particulars'].toString()
-                        : '—',
-                    style: const TextStyle(fontSize: 11, color: Colors.black45),
-                    overflow: TextOverflow.ellipsis,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      refNo,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.2,
+                        color: Color(0xFFCC0000),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 2,
+                      horizontal: 8,
+                      vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(3),
+                      color: statusColor.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: statusColor.withOpacity(0.20),
+                        width: 0.5,
+                      ),
                     ),
                     child: Text(
-                      _getStatusLabel(status),
+                      statusLabel,
                       style: TextStyle(
                         fontSize: 9,
                         fontWeight: FontWeight.w800,
@@ -662,27 +694,102 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             ),
 
-            // ✅ Right — using item['dateSent'] (formatted)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  item['dateSent']?.toString().isNotEmpty == true
-                      ? item['dateSent'].toString()
-                      : '—',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Colors.black38,
-                    letterSpacing: 0.3,
+            // ── Body: particulars + requester + date ──────────────────
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Left: particulars + requester
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          particulars,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1A1A1A),
+                            letterSpacing: 0.2,
+                            height: 1.4,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Container(
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF5F5F5),
+                                borderRadius: BorderRadius.circular(11),
+                                border: Border.all(
+                                  color: const Color(0xFFEEEEEE),
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.person_outline,
+                                size: 12,
+                                color: Color(0xFF999999),
+                              ),
+                            ),
+                            const SizedBox(width: 7),
+                            Expanded(
+                              child: Text(
+                                requester,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF555555),
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.2,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                const Icon(
-                  Icons.chevron_right,
-                  color: Colors.black26,
-                  size: 18,
-                ),
-              ],
+
+                  const SizedBox(width: 10),
+
+                  // Right: date + chevron
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.access_time_rounded,
+                            size: 11,
+                            color: Color(0xFFAAAAAA),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            dateSent,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFFAAAAAA),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 16,
+                        color: Color(0xFFCC0000),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),

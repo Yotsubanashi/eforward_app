@@ -388,28 +388,27 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     }
   }
 
+  String _relativeDate(DateTime dt) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(dt.year, dt.month, dt.day);
+    final diff = today.difference(target).inDays;
+
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    if (diff < 7) return '$diff days ago';
+    if (diff < 14) return '1 week ago';
+    if (diff < 30) return '${(diff / 7).floor()} weeks ago';
+    if (diff < 60) return '1 month ago';
+    if (diff < 365) return '${(diff / 30).floor()} months ago';
+    return '${(diff / 365).floor()} year${(diff / 365).floor() > 1 ? 's' : ''} ago';
+  }
+
   String _formatApiDate(String raw) {
     if (raw.isEmpty) return '';
     final dt = _parseApiDate(raw);
     if (dt == null) return raw;
-    const months = [
-      'JAN',
-      'FEB',
-      'MAR',
-      'APR',
-      'MAY',
-      'JUN',
-      'JUL',
-      'AUG',
-      'SEP',
-      'OCT',
-      'NOV',
-      'DEC',
-    ];
-    final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
-    final ampm = dt.hour >= 12 ? 'PM' : 'AM';
-    return '${months[dt.month - 1]} ${dt.day}, ${dt.year} | '
-        '${hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} $ampm';
+    return _relativeDate(dt);
   }
 
   Map<String, dynamic> _normalizeItem(Map<String, dynamic> raw) {
@@ -430,11 +429,11 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     final isHistoryItem = raw['history_id'] != null;
     final rawDate = isHistoryItem
         ? (routing['date_updated'] ?? raw['date_updated'] ?? raw['created_at'])
-              ?.toString() ??
-          ''
+                  ?.toString() ??
+              ''
         : (raw['date_sent'] ?? routing['date_sent'] ?? routing['date_created'])
-              ?.toString() ??
-          '';
+                  ?.toString() ??
+              '';
     final dateSent = _formatApiDate(rawDate);
 
     // ── STATUS RESOLUTION (priority order) ───────────────────────────────
@@ -991,6 +990,20 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     required bool isPending,
   }) {
     final status = item['status']?.toString() ?? 'PND';
+    final refNo = item['referenceNo']?.toString().isNotEmpty == true
+        ? item['referenceNo'].toString()
+        : item['id']?.toString() ?? '—';
+    final particulars = item['particulars']?.toString().isNotEmpty == true
+        ? item['particulars'].toString()
+        : '—';
+    final requester = item['requester']?.toString() ?? '—';
+    final dateSent = item['dateSent']?.toString().isNotEmpty == true
+        ? item['dateSent'].toString()
+        : '—';
+
+    final statusColor = _getStatusColor(status);
+    final statusLabel = _getStatusLabel(status);
+
     return GestureDetector(
       onTap: () async {
         await Navigator.push(
@@ -1001,122 +1014,201 @@ class _ApprovalsPageState extends State<ApprovalsPage>
           ),
         );
         await Future.delayed(const Duration(milliseconds: 800));
-        if (isPending) {
+        if (isPending)
           _fetchPending();
-        } else {
+        else
           _fetchHistory();
-        }
       },
       child: Opacity(
-        opacity: status == 'CNL' ? 0.55 : 1.0,
+        opacity: status == 'CNL' ? 0.5 : 1.0,
         child: Container(
-          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.white,
-            border: Border.all(color: const Color(0xFFE8E8E8)),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFEEEEEE)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Reference No + Status Badge
-              Row(
-                children: [
-                  Text(
-                    item['referenceNo']?.toString().isNotEmpty == true
-                        ? item['referenceNo'].toString()
-                        : item['id']?.toString() ?? '—',
-                    style: const TextStyle(
-                      fontSize: 10,
-                      color: Color(0xFFCC0000),
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(status).withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                    child: Text(
-                      _getStatusLabel(status),
-                      style: TextStyle(
-                        fontSize: 8,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8,
-                        color: _getStatusColor(status),
+              // ── Header ─────────────────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+                  border: Border(bottom: BorderSide(color: Color(0xFFF0F0F0))),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 3,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFCC0000),
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 10),
-
-              // Particulars
-              Text(
-                item['particulars']?.toString().isNotEmpty == true
-                    ? item['particulars'].toString()
-                    : '—',
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.5,
-                  color: Color(0xFF1A1A1A),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        refNo,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                          color: Color(0xFFCC0000),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: statusColor.withOpacity(0.20),
+                          width: 0.5,
+                        ),
+                      ),
+                      child: Text(
+                        statusLabel,
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1,
+                          color: statusColor,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
-              const SizedBox(height: 10),
-
-              // Requester
-              Row(
-                children: [
-                  const Icon(
-                    Icons.person_outline,
-                    size: 12,
-                    color: Colors.black38,
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      "REQUESTER: ${item['requester'] ?? '—'}",
+              // ── Body ───────────────────────────────────────────────────
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      particulars,
                       style: const TextStyle(
-                        fontSize: 10,
-                        color: Colors.black45,
-                        letterSpacing: 0.5,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1A1A1A),
+                        letterSpacing: 0.2,
+                        height: 1.4,
                       ),
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        // Requester
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF5F5F5),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: const Color(0xFFEEEEEE),
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.person_outline,
+                                  size: 13,
+                                  color: Color(0xFF999999),
+                                ),
+                              ),
+                              const SizedBox(width: 7),
+                              Expanded(
+                                child: Text(
+                                  requester,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF555555),
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.2,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Date
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.access_time_rounded,
+                              size: 11,
+                              color: Color(0xFFAAAAAA),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              dateSent,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFFAAAAAA),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
 
-              const SizedBox(height: 4),
-
-              // Date Sent
-              Row(
-                children: [
-                  const Icon(
-                    Icons.calendar_today_outlined,
-                    size: 12,
-                    color: Colors.black38,
+              // ── Footer ─────────────────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 9,
+                ),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(
+                    bottom: Radius.circular(8),
                   ),
-                  const SizedBox(width: 4),
-                  Text(
-                    item['dateSent']?.toString().isNotEmpty == true
-                        ? item['dateSent'].toString()
-                        : '—',
-                    style: const TextStyle(
-                      fontSize: 10,
-                      color: Colors.black45,
-                      letterSpacing: 0.5,
+                  border: Border(top: BorderSide(color: Color(0xFFF0F0F0))),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      isPending
+                          ? 'Tap to review & take action'
+                          : 'Tap to view details',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFFBBBBBB),
+                        letterSpacing: 0.3,
+                      ),
                     ),
-                  ),
-                ],
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      size: 16,
+                      color: Color(0xFFCC0000),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
