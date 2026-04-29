@@ -6,7 +6,6 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:pub_semver/pub_semver.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:eforward_app/config/app_env.dart';
@@ -17,8 +16,85 @@ class AppVersionInfo {
     required this.downloadUrl,
   });
 
-  final Version latestVersion;
+  final AppComparableVersion latestVersion;
   final Uri downloadUrl;
+}
+
+/// Compares `versionName` + `buildNumber` (the `+build` in pubspec).
+/// This lets us force updates by changing only build.
+class AppComparableVersion implements Comparable<AppComparableVersion> {
+  const AppComparableVersion({
+    required this.major,
+    required this.minor,
+    required this.patch,
+    required this.build,
+  });
+
+  final int major;
+  final int minor;
+  final int patch;
+  final int build;
+
+  static AppComparableVersion? tryParse(String input) {
+    final trimmed = input.trim();
+    if (trimmed.isEmpty) return null;
+
+    final normalized =
+        trimmed.startsWith('v') || trimmed.startsWith('V') ? trimmed.substring(1) : trimmed;
+    final plusParts = normalized.split('+');
+    final coreParts = plusParts.first.split('.');
+    if (coreParts.length < 3) return null;
+
+    final major = int.tryParse(coreParts[0]);
+    final minor = int.tryParse(coreParts[1]);
+    final patch = int.tryParse(coreParts[2]);
+    if (major == null || minor == null || patch == null) return null;
+
+    final build = plusParts.length > 1 ? int.tryParse(plusParts[1]) ?? 0 : 0;
+
+    return AppComparableVersion(
+      major: major,
+      minor: minor,
+      patch: patch,
+      build: build,
+    );
+  }
+
+  static AppComparableVersion fromVersionNameAndBuildNumber({
+    required String versionName,
+    required String buildNumber,
+  }) {
+    final v = versionName.trim();
+    final b = buildNumber.trim();
+    // BuildNumber is always numeric for Android.
+    return AppComparableVersion(
+      major: int.parse(v.split('.')[0]),
+      minor: int.parse(v.split('.')[1]),
+      patch: int.parse(v.split('.')[2]),
+      build: int.tryParse(b) ?? 0,
+    );
+  }
+
+  @override
+  int compareTo(AppComparableVersion other) {
+    if (major != other.major) return major.compareTo(other.major);
+    if (minor != other.minor) return minor.compareTo(other.minor);
+    if (patch != other.patch) return patch.compareTo(other.patch);
+    return build.compareTo(other.build);
+  }
+
+  bool operator <(AppComparableVersion other) => compareTo(other) < 0;
+  bool operator <=(AppComparableVersion other) => compareTo(other) <= 0;
+  bool operator >(AppComparableVersion other) => compareTo(other) > 0;
+  bool operator >=(AppComparableVersion other) => compareTo(other) >= 0;
+  @override
+  bool operator ==(Object other) =>
+      other is AppComparableVersion && compareTo(other) == 0;
+  @override
+  int get hashCode => Object.hash(major, minor, patch, build);
+
+  @override
+  String toString() => '$major.$minor.$patch+$build';
 }
 
 class AppVersionService {
@@ -42,18 +118,27 @@ class AppVersionService {
       final dynamic decoded =
           res.body.isNotEmpty ? jsonDecode(res.body) : null;
       if (decoded is! Map) return null;
+      final payload = decoded['data'] is Map ? decoded['data'] : decoded;
 
-      final latestStr = (decoded['latest_version'] ?? decoded['latestVersion'])
+      final latestStr = (payload['latest_version'] ??
+              payload['latestVersion'] ??
+              payload['mobile_version'] ??
+              payload['mobileVersion'])
           ?.toString()
           .trim();
-      final urlStr = (decoded['download_url'] ?? decoded['downloadUrl'])
+      final urlStr = (payload['download_url'] ??
+              payload['downloadUrl'] ??
+              payload['mobile_url'] ??
+              payload['mobileUrl'])
           ?.toString()
           .trim();
 
       if (latestStr == null || latestStr.isEmpty) return null;
       if (urlStr == null || urlStr.isEmpty) return null;
 
-      final latest = Version.parse(latestStr);
+      final latest = AppComparableVersion.tryParse(latestStr);
+      if (latest == null) return null;
+
       final url = Uri.tryParse(urlStr);
       if (url == null) return null;
 
@@ -64,12 +149,14 @@ class AppVersionService {
     }
   }
 
-  Future<Version?> getInstalledVersion() async {
+  Future<AppComparableVersion?> getInstalledVersion() async {
     try {
       final info = await PackageInfo.fromPlatform();
       final v = info.version.trim();
+      final build = info.buildNumber.trim();
       if (v.isEmpty) return null;
-      return Version.parse(v);
+      final version = '${v.split('+').first}+${build}';
+      return AppComparableVersion.tryParse(version);
     } catch (e) {
       debugPrint('getInstalledVersion failed: $e');
       return null;
@@ -96,8 +183,8 @@ class AppVersionService {
     await intent.launch();
   }
 
-  Future<void> launchDownload(Uri url) async {
-    await launchUrl(url, mode: LaunchMode.externalApplication);
+  Future<bool> launchDownload(Uri url) async {
+    return launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
   void dispose() {
@@ -108,7 +195,7 @@ class AppVersionService {
 Future<void> showForceUpdateDialog({
   required BuildContext context,
   required AppVersionInfo remote,
-  required Version current,
+  required AppComparableVersion current,
   required String? packageName,
 }) async {
   await showDialog<void>(
@@ -130,8 +217,18 @@ Future<void> showForceUpdateDialog({
               onPressed: () async {
                 try {
                   final svc = AppVersionService();
-                  await svc.launchDownload(remote.downloadUrl);
+                  final ok = await svc.launchDownload(remote.downloadUrl);
                   svc.dispose();
+                  if (!ok) {
+                    final messenger = ScaffoldMessenger.maybeOf(dialogContext);
+                    messenger?.showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Unable to open update link. Check the APK URL.',
+                        ),
+                      ),
+                    );
+                  }
                 } catch (e) {
                   debugPrint('Update launch failed: $e');
                 }
