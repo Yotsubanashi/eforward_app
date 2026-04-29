@@ -49,12 +49,19 @@ class _MyAppState extends State<MyApp> {
   final _appLinks = AppLinks();
   late final Future<bool> _hasSessionFuture = _hasSavedSession();
   bool _versionGateShown = false;
+  bool _versionGateScheduled = false;
 
   @override
   void initState() {
     super.initState();
     _initDeepLinks();
+  }
+
+  void _scheduleVersionGateAfterHome() {
+    if (_versionGateScheduled || _versionGateShown) return;
+    _versionGateScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       _enforceLatestVersionIfNeeded();
     });
   }
@@ -72,8 +79,14 @@ class _MyAppState extends State<MyApp> {
         _versionGateShown = true;
         final pkg = await svc.getPackageName();
         if (!mounted) return;
+        final dialogContext = navigatorKey.currentState?.overlay?.context;
+        if (dialogContext == null) {
+          _versionGateShown = false;
+          _versionGateScheduled = false;
+          return;
+        }
         await showForceUpdateDialog(
-          context: context,
+          context: dialogContext,
           remote: remote,
           current: current,
           packageName: pkg,
@@ -184,9 +197,11 @@ class _MyAppState extends State<MyApp> {
           }
 
           if (snapshot.data == true) {
+            _scheduleVersionGateAfterHome();
             return const DashboardPage();
           }
 
+          _scheduleVersionGateAfterHome();
           return const LoginScreen();
         },
       ),

@@ -111,65 +111,34 @@ Future<void> showForceUpdateDialog({
   required Version current,
   required String? packageName,
 }) async {
-  bool uninstallPressed = false;
-
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
     builder: (dialogContext) {
       return PopScope(
         canPop: false,
-        child: StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: const Text('Update Required'),
-              content: Text(
-                'Your app version is outdated.\n\n'
-                'Current: $current\n'
-                'Latest: ${remote.latestVersion}\n\n'
-                'Please follow these steps:\n'
-                '1) Uninstall the current app\n'
-                '2) Download the new APK\n'
-                '3) Install the new APK\n\n'
-                'Note: Download is enabled only after you press Uninstall.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: (!Platform.isAndroid || packageName == null)
-                      ? null
-                      : () async {
-                          uninstallPressed = true;
-                          setState(() {});
-                          try {
-                            final svc = AppVersionService();
-                            await svc.launchUninstallFlow(packageName: packageName);
-                            svc.dispose();
-                          } catch (e) {
-                            debugPrint('Uninstall launch failed: $e');
-                          }
-                        },
-                  child: const Text(
-                    'Uninstall Current App',
-                    style: TextStyle(color: Colors.red),
-                  ),
-                ),
-                TextButton(
-                  onPressed: uninstallPressed
-                      ? () async {
-                          try {
-                            final svc = AppVersionService();
-                            await svc.launchDownload(remote.downloadUrl);
-                            svc.dispose();
-                          } catch (e) {
-                            debugPrint('Download launch failed: $e');
-                          }
-                        }
-                      : null,
-                  child: const Text('Download New Version'),
-                ),
-              ],
-            );
-          },
+        child: AlertDialog(
+          title: const Text('Update Required'),
+          content: Text(
+            'Your app version is outdated.\n\n'
+            'Current: $current\n'
+            'Latest: ${remote.latestVersion}\n\n'
+            'Tap "Update Now" to download and install the latest version.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                try {
+                  final svc = AppVersionService();
+                  await svc.launchDownload(remote.downloadUrl);
+                  svc.dispose();
+                } catch (e) {
+                  debugPrint('Update launch failed: $e');
+                }
+              },
+              child: const Text('Update Now'),
+            ),
+          ],
         ),
       );
     },
