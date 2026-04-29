@@ -21,7 +21,8 @@ class AppVersionInfo {
 }
 
 /// Compares `versionName` + `buildNumber` (the `+build` in pubspec).
-/// This lets us force updates by changing only build.
+/// NOTE: For your current requirement we ignore `+build` and compare ONLY
+/// `major.minor.patch` (versionName).
 class AppComparableVersion implements Comparable<AppComparableVersion> {
   const AppComparableVersion({
     required this.major,
@@ -50,7 +51,8 @@ class AppComparableVersion implements Comparable<AppComparableVersion> {
     final patch = int.tryParse(coreParts[2]);
     if (major == null || minor == null || patch == null) return null;
 
-    final build = plusParts.length > 1 ? int.tryParse(plusParts[1]) ?? 0 : 0;
+    // Ignored for comparison.
+    const build = 0;
 
     return AppComparableVersion(
       major: major,
@@ -65,13 +67,12 @@ class AppComparableVersion implements Comparable<AppComparableVersion> {
     required String buildNumber,
   }) {
     final v = versionName.trim();
-    final b = buildNumber.trim();
-    // BuildNumber is always numeric for Android.
+    // buildNumber is intentionally ignored.
     return AppComparableVersion(
       major: int.parse(v.split('.')[0]),
       minor: int.parse(v.split('.')[1]),
       patch: int.parse(v.split('.')[2]),
-      build: int.tryParse(b) ?? 0,
+      build: 0,
     );
   }
 
@@ -80,7 +81,7 @@ class AppComparableVersion implements Comparable<AppComparableVersion> {
     if (major != other.major) return major.compareTo(other.major);
     if (minor != other.minor) return minor.compareTo(other.minor);
     if (patch != other.patch) return patch.compareTo(other.patch);
-    return build.compareTo(other.build);
+    return 0;
   }
 
   bool operator <(AppComparableVersion other) => compareTo(other) < 0;
@@ -94,7 +95,7 @@ class AppComparableVersion implements Comparable<AppComparableVersion> {
   int get hashCode => Object.hash(major, minor, patch, build);
 
   @override
-  String toString() => '$major.$minor.$patch+$build';
+  String toString() => '$major.$minor.$patch';
 }
 
 class AppVersionService {
@@ -153,10 +154,9 @@ class AppVersionService {
     try {
       final info = await PackageInfo.fromPlatform();
       final v = info.version.trim();
-      final build = info.buildNumber.trim();
       if (v.isEmpty) return null;
-      final version = '${v.split('+').first}+${build}';
-      return AppComparableVersion.tryParse(version);
+      // Compare ONLY the versionName; ignore buildNumber for dialog display.
+      return AppComparableVersion.tryParse(v.split('+').first);
     } catch (e) {
       debugPrint('getInstalledVersion failed: $e');
       return null;
