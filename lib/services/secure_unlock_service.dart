@@ -5,6 +5,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 class SecureUnlockService {
   static const String biometricEnabledKey = 'biometric_unlock_enabled';
   static final LocalAuthentication _localAuth = LocalAuthentication();
+  static const Set<String> _nonBlockingAuthErrorCodes = {
+    // No biometric template is enrolled on device.
+    'NotEnrolled',
+    'notEnrolled',
+    // No PIN/pattern/passcode is configured for device credentials.
+    'PasscodeNotSet',
+    'passcodeNotSet',
+    // Generic "no local auth available" style responses.
+    'NotAvailable',
+    'notAvailable',
+  };
 
   static Future<bool> isEnabled() async {
     final prefs = await SharedPreferences.getInstance();
@@ -42,7 +53,12 @@ class SecureUnlockService {
           useErrorDialogs: true,
         ),
       );
-    } on PlatformException {
+    } on PlatformException catch (e) {
+      // If there is no biometric/PIN configured on the device,
+      // don't block a valid username/password login.
+      if (_nonBlockingAuthErrorCodes.contains(e.code)) {
+        return true;
+      }
       return false;
     }
   }
