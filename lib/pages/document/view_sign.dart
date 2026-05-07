@@ -587,14 +587,15 @@ class _ViewSignPageState extends State<ViewSignPage>
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           const Text(
             "DIGITAL\nSIGNATURE",
             style: TextStyle(
-              fontSize: 30,
+              fontSize: 24, // Reduced from 30
               fontWeight: FontWeight.w900,
               letterSpacing: 0.5,
               height: 1.1,
@@ -602,16 +603,16 @@ class _ViewSignPageState extends State<ViewSignPage>
             ),
           ),
           Container(
-            margin: const EdgeInsets.only(top: 8, bottom: 10),
-            width: 40,
+            margin: const EdgeInsets.only(top: 6, bottom: 8),
+            width: 30, // Reduced from 40
             height: 3,
             color: const Color(0xFFCC0000),
           ),
           const Text(
-            "View your current signature below or tap the button to change it.",
-            style: TextStyle(fontSize: 12, color: Colors.black45, height: 1.6),
+            "View or update your legal identifier for secure documentation.",
+            style: TextStyle(fontSize: 11, color: Colors.black45, height: 1.4),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10), // Reduced from 16
         ],
       ),
     );
@@ -636,7 +637,7 @@ class _ViewSignPageState extends State<ViewSignPage>
                 child: _buildSavedSignaturePreview(),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             // Button to show/hide metadata
             GestureDetector(
               onTap: () => setState(() => _showMetadata = !_showMetadata),
@@ -660,11 +661,11 @@ class _ViewSignPageState extends State<ViewSignPage>
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            // Legal notice shown only in view mode
+            const SizedBox(height: 12),
+            // Legal notice shown only in view mode - more compact
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(12),
               decoration: const BoxDecoration(
                 color: Colors.white,
                 border: Border(
@@ -674,7 +675,7 @@ class _ViewSignPageState extends State<ViewSignPage>
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: const [
-                  Icon(Icons.info_outline, color: Color(0xFFCC0000), size: 16),
+                  Icon(Icons.info_outline, color: Color(0xFFCC0000), size: 14),
                   SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -683,19 +684,19 @@ class _ViewSignPageState extends State<ViewSignPage>
                         Text(
                           "LEGAL VALIDITY",
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 9,
                             fontWeight: FontWeight.w800,
-                            letterSpacing: 1.5,
+                            letterSpacing: 1.2,
                             color: Color(0xFF1A1A1A),
                           ),
                         ),
-                        SizedBox(height: 4),
+                        SizedBox(height: 2),
                         Text(
-                          "This signature will be cryptographically bound to your E-FORWARD identity. Ensure the signature is clear and legible for high-security verification protocols.",
+                          "This signature is cryptographically bound to your identity.",
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 10,
                             color: Colors.black54,
-                            height: 1.5,
+                            height: 1.3,
                           ),
                         ),
                       ],
@@ -704,7 +705,7 @@ class _ViewSignPageState extends State<ViewSignPage>
                 ],
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
           ],
         ),
       );
@@ -727,14 +728,14 @@ class _ViewSignPageState extends State<ViewSignPage>
               indicatorColor: const Color(0xFFCC0000),
               indicatorWeight: 2,
               labelStyle: const TextStyle(
-                fontSize: 11,
+                fontSize: 10, // Reduced from 11
                 fontWeight: FontWeight.w800,
-                letterSpacing: 1.5,
+                letterSpacing: 1.2,
               ),
               unselectedLabelStyle: const TextStyle(
-                fontSize: 11,
+                fontSize: 10,
                 fontWeight: FontWeight.w600,
-                letterSpacing: 1.5,
+                letterSpacing: 1.2,
               ),
               tabs: const [
                 Tab(text: "DRAW"),
@@ -743,7 +744,7 @@ class _ViewSignPageState extends State<ViewSignPage>
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8), // Reduced from 12
         // TabBarView fills all remaining vertical space
         Expanded(
           child: Padding(
@@ -764,10 +765,10 @@ class _ViewSignPageState extends State<ViewSignPage>
 
   Widget _buildBottomActions() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 12), // Reduced bottom padding
       child: SizedBox(
         width: double.infinity,
-        height: 50,
+        height: 46, // Reduced from 50
         child: ElevatedButton(
           onPressed: _isSaving
               ? null
@@ -784,8 +785,8 @@ class _ViewSignPageState extends State<ViewSignPage>
           ),
           child: _isSaving
               ? const SizedBox(
-                  width: 20,
-                  height: 20,
+                  width: 18,
+                  height: 18,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
                     color: Colors.white,
@@ -797,16 +798,16 @@ class _ViewSignPageState extends State<ViewSignPage>
                     Icon(
                       _isEditMode ? Icons.save_outlined : Icons.edit,
                       color: Colors.white,
-                      size: 18,
+                      size: 16,
                     ),
                     const SizedBox(width: 8),
                     Text(
                       _isEditMode ? "SAVE SIGNATURE" : "REPLACE SIGNATURE",
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 13,
+                        fontSize: 12,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: 2,
+                        letterSpacing: 1.5,
                       ),
                     ),
                   ],
