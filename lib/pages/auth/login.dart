@@ -150,11 +150,16 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         if (result.data != null) {
           await prefs.setString('user_data', jsonEncode(result.data));
+          
+          final user = result.data!['user'] is Map ? result.data!['user'] : result.data;
+          final userId = user['id']?.toString() ?? 
+                         user['employee_id']?.toString() ?? 
+                         user['employeeId']?.toString();
+          
+          if (userId != null) {
+            await FCMTokenService.registerToken(userId);
+          }
         }
-
-        await FCMTokenService.saveFCMTokenToBackend(
-          accessToken: token.toString(),
-        );
       }
 
       final isUnlocked = await SecureUnlockService.authenticateAfterLogin();

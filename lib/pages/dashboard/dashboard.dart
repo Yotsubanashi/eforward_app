@@ -132,9 +132,19 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _syncFCMToken() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final accessToken = prefs.getString('access_token') ?? '';
-      if (accessToken.isNotEmpty) {
-        await FCMTokenService.syncTokenIfNeeded(accessToken: accessToken);
+      final userDataStr = prefs.getString('user_data');
+      if (userDataStr != null) {
+        final userData = jsonDecode(userDataStr);
+        final user = userData['user'] is Map ? userData['user'] : userData;
+        final userId =
+            user['id']?.toString() ??
+            user['employee_id']?.toString() ??
+            user['employeeId']?.toString();
+
+        if (userId != null) {
+          await FCMTokenService.registerToken(userId);
+          debugPrint('✅ FCM token synced in Dashboard');
+        }
       }
     } catch (e) {
       debugPrint('Error syncing FCM token: $e');

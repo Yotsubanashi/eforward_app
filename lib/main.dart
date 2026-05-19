@@ -12,6 +12,7 @@ import 'services/app_lifecycle_service.dart';
 import 'services/auth_api.dart';
 import 'services/secure_unlock_service.dart';
 import 'services/app_version_service.dart';
+import 'services/fcm_token_service.dart';
 import 'firebase_options.dart';
 
 // ✅ FIX: navigatorKey must be a global — NOT declared inside main()
@@ -150,7 +151,17 @@ class _MyAppState extends State<MyApp> {
     }
 
     final meResult = await authApi.getMe(token: accessToken);
-    if (meResult.isSuccess) {
+    if (meResult.isSuccess && meResult.data != null) {
+      final userData = meResult.data!;
+      final user = userData['user'] is Map ? userData['user'] : userData;
+      final userId = user['id']?.toString() ?? 
+                     user['employee_id']?.toString() ?? 
+                     user['employeeId']?.toString();
+      
+      if (userId != null) {
+        FCMTokenService.registerToken(userId);
+      }
+
       final isUnlocked = await SecureUnlockService.authenticateAfterLogin();
       authApi.dispose();
       return isUnlocked;

@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/services/firebase_notification_service.dart';
 import 'package:eforward_app/services/fcm_token_service.dart';
@@ -122,12 +124,19 @@ class _NotificationTestPageState extends State<NotificationTestPage> {
                             ),
                             ElevatedButton(
                               onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Token copied to clipboard'),
-                                    duration: Duration(seconds: 2),
-                                  ),
-                                );
+                                if (_fcmToken != null) {
+                                  Clipboard.setData(
+                                    ClipboardData(text: _fcmToken!),
+                                  );
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Token copied to clipboard',
+                                      ),
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFFCC0000),
@@ -322,16 +331,19 @@ class _NotificationTestPageState extends State<NotificationTestPage> {
         return;
       }
 
-      final success = await FCMTokenService.saveFCMTokenToBackend(
-        accessToken: accessToken,
-      );
+      final userDataStr = prefs.getString('user_data');
+      if (userDataStr != null) {
+        final userData = jsonDecode(userDataStr);
+        final user = userData['user'] is Map ? userData['user'] : userData;
+        final userId =
+            user['id']?.toString() ??
+            user['employee_id']?.toString() ??
+            user['employeeId']?.toString();
 
-      if (!mounted) return;
-
-      if (success) {
-        debugPrint('✅ FCM token saved to backend successfully!');
-      } else {
-        debugPrint('❌ Failed to save token to backend');
+        if (userId != null) {
+          await FCMTokenService.registerToken(userId);
+          debugPrint('✅ FCM token registered successfully!');
+        }
       }
     } catch (e) {
       debugPrint('Error saving token: $e');
