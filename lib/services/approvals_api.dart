@@ -506,6 +506,9 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   Offset _signaturePosition = const Offset(80, 200);
   double _signatureWidth = 200;
   double _signatureHeight = 100;
+  double _viewportWidth = 1;
+  double _viewportHeight = 1;
+  int _currentPage = 0;
 
   @override
   void initState() {
@@ -644,8 +647,21 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         ..headers['Authorization'] = 'Bearer $token'
         ..headers['Accept'] = 'application/json'
         ..fields['remarks'] = ''
-        ..fields['signaturePlacement'] =
-            '${_signaturePosition.dx.toStringAsFixed(0)},${_signaturePosition.dy.toStringAsFixed(0)}';
+        ..fields['signaturePlacement'] = jsonEncode({
+          'sign_page': _currentPage + 1,
+          'sign_x': double.parse(
+            (_signaturePosition.dx / _viewportWidth).toStringAsFixed(4),
+          ),
+          'sign_y': double.parse(
+            (_signaturePosition.dy / _viewportHeight).toStringAsFixed(4),
+          ),
+          'sign_width': double.parse(
+            (_signatureWidth / _viewportWidth).toStringAsFixed(4),
+          ),
+          'sign_height': double.parse(
+            (_signatureHeight / _viewportHeight).toStringAsFixed(4),
+          ),
+        });
 
       // Attach signature image bytes if available
       if (_signatureBytes != null && _signatureBytes!.isNotEmpty) {
@@ -888,6 +904,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
+                _viewportWidth = constraints.maxWidth;
+                _viewportHeight = constraints.maxHeight;
                 return Stack(
                   children: [
                     // PDF viewer
@@ -900,6 +918,9 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                         pageFling: false,
                         backgroundColor: Colors.grey.shade200,
                         onError: (e) => debugPrint('PDF error: $e'),
+                        onPageChanged: (page, total) {
+                          _currentPage = page ?? 0;
+                        },
                       ),
                     ),
 
