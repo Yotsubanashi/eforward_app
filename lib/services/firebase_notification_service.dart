@@ -85,16 +85,6 @@ class FirebaseNotificationService {
         await _onNotificationTap(initial);
       }
 
-      // 8. ✅ Auto-save token whenever Firebase silently rotates it
-      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
-        debugPrint('🔄 FCM token rotated — syncing to backend...');
-        final prefs = await SharedPreferences.getInstance();
-        final accessToken = prefs.getString('access_token') ?? '';
-        if (accessToken.isNotEmpty) {
-          await FCMTokenService.saveFCMTokenToBackend(accessToken: accessToken);
-        }
-      });
-
       final token = await FirebaseMessaging.instance.getToken();
       debugPrint('📱 FCM token: $token');
       debugPrint('✅ Firebase Notifications ready');

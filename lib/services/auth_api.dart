@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
@@ -46,12 +48,62 @@ class AuthApi {
   }
 
   Future<AuthLoginResult> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Get employee_id from storage directly or parse from user_data
+    String? employeeId = prefs.getString('employee_id');
+    if (employeeId == null) {
+      final userDataStr = prefs.getString('user_data');
+      if (userDataStr != null) {
+        try {
+          final userData = jsonDecode(userDataStr);
+          final user = userData['user'] is Map ? userData['user'] : userData;
+          employeeId = user['id']?.toString() ?? 
+                       user['employee_id']?.toString() ?? 
+                       user['employeeId']?.toString();
+        } catch (e) {
+          debugPrint('Error parsing user_data for logout: $e');
+        }
+      }
+    }
+
+    final String? fcmToken = prefs.getString('fcm_token_cached');
+    final deviceInfo = await _getDeviceInfo();
+
+    final Map<String, dynamic> payload = {
+      'employee_id': employeeId,
+      'fcm_token': fcmToken,
+      'device_id': deviceInfo['deviceId'],
+      'device_model': deviceInfo['deviceModel'],
+      'platform': Platform.isIOS ? 'ios' : 'android',
+    };
+
+    debugPrint('Sending logout payload: ${jsonEncode(payload)}');
+
     return _post(
       endpoint: '/auth/logout',
-      body: {},
+      body: payload,
       successMessage: 'Logout successful.',
       failureMessage: 'Logout failed.',
     );
+  }
+
+  Future<Map<String, String>> _getDeviceInfo() async {
+    final deviceInfo = DeviceInfoPlugin();
+    if (Platform.isAndroid) {
+      final info = await deviceInfo.androidInfo;
+      return {
+        'deviceId': info.id,
+        'deviceModel': '${info.brand} ${info.model}',
+      };
+    } else if (Platform.isIOS) {
+      final info = await deviceInfo.iosInfo;
+      return {
+        'deviceId': info.identifierForVendor ?? 'unknown',
+        'deviceModel': info.utsname.machine,
+      };
+    }
+    return {'deviceId': 'unknown', 'deviceModel': 'unknown'};
   }
 
   Future<AuthLoginResult> refresh({required String token}) async {

@@ -10,7 +10,6 @@ import 'package:eforward_app/pages/approvals/approval_details.dart';
 
 class ApprovalsPage extends StatefulWidget {
   final int initialTabIndex;
-
   const ApprovalsPage({super.key, this.initialTabIndex = 0});
 
   @override
@@ -53,11 +52,10 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    final initialIndex = widget.initialTabIndex.clamp(0, 1);
     _tabController = TabController(
       length: 2,
       vsync: this,
-      initialIndex: initialIndex,
+      initialIndex: widget.initialTabIndex,
     );
     _tabController.addListener(() {
       if (_tabController.index == 1 &&
@@ -71,7 +69,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     _historyScrollController.addListener(_onHistoryScroll);
 
     _fetchPending();
-    if (initialIndex == 1) {
+    if (widget.initialTabIndex == 1) {
       _fetchHistory();
     }
   }

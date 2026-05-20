@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:eforward_app/components/loaders.dart';
 import '../../services/auth_api.dart'; // 👈 import API
 
 // ─── Signature Painter ───────────────────────────────────────────────────────
@@ -71,6 +72,7 @@ class _SignScreenState extends State<SignScreen>
   File? _uploadedImage;
 
   bool _isSaving = false;
+  bool _isSuccess = false;
 
   @override
   void initState() {
@@ -196,7 +198,7 @@ class _SignScreenState extends State<SignScreen>
       return;
     }
 
-    setState(() => _isSaving = true);
+    LoadingDialog.show(context, message: "SAVING SIGNATURE...");
 
     final prefs = await SharedPreferences.getInstance();
 
@@ -252,13 +254,25 @@ class _SignScreenState extends State<SignScreen>
     // 👇 Upload to API after saving locally
     await _uploadSignatureToApi(prefs, currentTab);
 
+    if (mounted) LoadingDialog.hide(context);
+
     // ── Clear image cache to ensure fresh data is fetched ──
     await Future.delayed(const Duration(milliseconds: 600));
     imageCache.clear();
     imageCache.clearLiveImages();
 
-    setState(() => _isSaving = false);
+    setState(() {
+      _isSaving = false;
+      _isSuccess = true;
+    });
 
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Signature saved"),
+        backgroundColor: Color(0xFF2E7D32),
+      ),
+    );
+    await Future.delayed(const Duration(milliseconds: 1500));
     if (mounted) {
       Navigator.pushReplacement(
         context,
@@ -267,249 +281,317 @@ class _SignScreenState extends State<SignScreen>
     }
   }
 
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F5E9),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.check_circle_outline,
+                  color: Color(0xFF2E7D32),
+                  size: 48,
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                "SUCCESSFUL",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.5,
+                  color: Color(0xFF1A1A1A),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                "Your digital signature has been successfully created and secured.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.black54,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context); // Pop dialog
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ViewSignPage()),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFCC0000),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    "DONE",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F5F7),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFF4F5F7),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back,
-            color: Color(0xFF1A1A1A),
-            size: 20,
-          ),
-          onPressed: () async {
-            final prefs = await SharedPreferences.getInstance();
-            final hasSignature = prefs.getBool('has_signature') ?? false;
-            if (mounted) {
-              if (hasSignature) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ViewSignPage()),
-                );
-              } else {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (_) => const DashboardPage()),
-                );
-              }
-            }
-          },
-        ),
-        title: const Text(
-          "SIGNATURE",
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 2,
-            color: Color(0xFF1A1A1A),
-          ),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Row(
-              children: const [
-                Icon(Icons.shield_outlined, color: Color(0xFFCC0000), size: 16),
-                SizedBox(width: 4),
-                Text(
-                  "E-FORWARD",
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.5,
-                    color: Color(0xFFCC0000),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "DIGITAL\nSIGNATURE",
-                  style: TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.5,
-                    height: 1.1,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                ),
-                Container(
-                  margin: const EdgeInsets.only(top: 8, bottom: 12),
-                  width: 40,
-                  height: 3,
-                  color: const Color(0xFFCC0000),
-                ),
-                const Text(
-                  "Institutional-grade verification for secure documentation. Create, type, or upload your legal identifier below.",
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.black45,
-                    height: 1.6,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Tab Bar
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Container(
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: Color(0xFFE8E8E8))),
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: const Color(0xFFF4F5F7),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFFF4F5F7),
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(
+                Icons.arrow_back,
+                color: Color(0xFF1A1A1A),
+                size: 20,
               ),
-              child: TabBar(
-                controller: _tabController,
-                labelColor: const Color(0xFFCC0000),
-                unselectedLabelColor: Colors.black38,
-                indicatorColor: const Color(0xFFCC0000),
-                indicatorWeight: 2,
-                labelStyle: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.5,
-                ),
-                unselectedLabelStyle: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.5,
-                ),
-                tabs: const [
-                  Tab(text: "DRAW"),
-                  Tab(text: "UPLOAD"),
-                ],
+              onPressed: () async {
+                final prefs = await SharedPreferences.getInstance();
+                final hasSignature = prefs.getBool('has_signature') ?? false;
+                if (mounted) {
+                  if (hasSignature) {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ViewSignPage()),
+                    );
+                  } else {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => const DashboardPage()),
+                    );
+                  }
+                }
+              },
+            ),
+            title: const Text(
+              "SIGNATURE",
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 2,
+                color: Color(0xFF1A1A1A),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-
-          // Tab Content
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: TabBarView(
-                controller: _tabController,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [_buildDrawTab(), _buildUploadTab()],
-              ),
-            ),
-          ),
-
-          // Action buttons and Legal notice
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-            child: Column(
-              children: [
-                // Save Button
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _isSaving ? null : _saveSignature,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFCC0000),
-                      disabledBackgroundColor:
-                          const Color(0xFFCC0000).withOpacity(0.6),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: Row(
+                  children: const [
+                    Icon(Icons.shield_outlined, color: Color(0xFFCC0000), size: 16),
+                    SizedBox(width: 4),
+                    Text(
+                      "E-FORWARD",
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.5,
+                        color: Color(0xFFCC0000),
                       ),
-                      elevation: 0,
                     ),
-                    child: _isSaving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: const [
-                              Icon(
-                                Icons.draw_outlined,
-                                color: Colors.white,
-                                size: 18,
-                              ),
-                              SizedBox(width: 8),
-                              Text(
-                                "SAVE SIGNATURE",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 2,
-                                ),
-                              ),
-                            ],
-                          ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 12),
+              ),
+            ],
+          ),
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "DIGITAL\nSIGNATURE",
+                      style: TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                        height: 1.1,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                    ),
+                    Container(
+                      margin: const EdgeInsets.only(top: 8, bottom: 12),
+                      width: 40,
+                      height: 3,
+                      color: const Color(0xFFCC0000),
+                    ),
+                    const Text(
+                      "Institutional-grade verification for secure documentation. Create, type, or upload your legal identifier below.",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.black45,
+                        height: 1.6,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
 
-                // Legal Validity Notice - made more compact
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
+              // Tab Bar
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
                   decoration: const BoxDecoration(
-                    color: Colors.white,
-                    border: Border(
-                      left: BorderSide(color: Color(0xFFCC0000), width: 3),
-                    ),
+                    border: Border(bottom: BorderSide(color: Color(0xFFE8E8E8))),
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Icon(Icons.info_outline, color: Color(0xFFCC0000), size: 16),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "LEGAL VALIDITY",
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.2,
-                                color: Color(0xFF1A1A1A),
-                              ),
-                            ),
-                            SizedBox(height: 2),
-                            Text(
-                              "This signature will be cryptographically bound to your E-FORWARD identity.",
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.black54,
-                                height: 1.3,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                  child: TabBar(
+                    controller: _tabController,
+                    labelColor: const Color(0xFFCC0000),
+                    unselectedLabelColor: Colors.black38,
+                    indicatorColor: const Color(0xFFCC0000),
+                    indicatorWeight: 2,
+                    labelStyle: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.5,
+                    ),
+                    unselectedLabelStyle: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.5,
+                    ),
+                    tabs: const [
+                      Tab(text: "DRAW"),
+                      Tab(text: "UPLOAD"),
                     ],
                   ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 12),
+
+              // Tab Content
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: TabBarView(
+                    controller: _tabController,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [_buildDrawTab(), _buildUploadTab()],
+                  ),
+                ),
+              ),
+
+              // Action buttons and Legal notice
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                child: Column(
+                  children: [
+                    // Save Button
+                    Center(
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: _saveSignature,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFCC0000),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          child: const Text(
+                            "SAVE SIGNATURE",
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Legal Validity Notice - made more compact
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        border: Border(
+                          left: BorderSide(color: Color(0xFFCC0000), width: 3),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Icon(Icons.info_outline, color: Color(0xFFCC0000), size: 16),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "LEGAL VALIDITY",
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.2,
+                                    color: Color(0xFF1A1A1A),
+                                  ),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  "This signature will be cryptographically bound to your E-FORWARD identity.",
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.black54,
+                                    height: 1.3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

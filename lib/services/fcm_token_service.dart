@@ -1,44 +1,41 @@
 import 'dart:io';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/material.dart';
-import 'package:eforward_app/config/app_env.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:eforward_app/config/app_env.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class FCMTokenService {
   static String get _baseUrl => AppEnv.apiBaseUrl;
+  static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
 
-  /// Call this immediately after a successful login.
-  static Future<bool> saveFCMTokenToBackend({
-    required String accessToken,
-  }) async {
+  /// Registers the current device FCM token to your SQL Backend.
+  /// This supports multiple devices per employee_id.
+  static Future<void> registerToken(String employeeId) async {
     try {
-      debugPrint('📱 Saving FCM token to backend...');
+      if (employeeId.isEmpty) return;
 
-      String? fcmToken;
-      try {
-        fcmToken = await FirebaseMessaging.instance.getToken();
-      } catch (e) {
-        debugPrint('⚠️ Warning: Could not retrieve FCM token: $e');
-        debugPrint(
-          '   This usually means Google Play Services is not installed on your emulator.',
-        );
-        debugPrint(
-          '   The app will continue but will not receive push notifications.',
-        );
-        return false;
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token') ?? '';
+      
+      String? token = await _messaging.getToken();
+      if (token == null) {
+        debugPrint('❌ Could not get FCM token');
+        return;
       }
 
-      if (fcmToken == null || fcmToken.isEmpty) {
-        debugPrint('❌ FCM token is null or empty');
-        return false;
-      }
-
-      debugPrint('🔑 FCM Token: $fcmToken');
-
-      // ✅ FIX: detect platform instead of hardcoding 'android'
-      final deviceType = Platform.isIOS ? 'ios' : 'android';
+      final deviceInfo = await _getDeviceInfo();
+      
+      // JSON Payload na match sa SQL Columns natin
+      final Map<String, dynamic> payload = {
+        'employee_id': employeeId,
+        'fcm_token': token,
+        'device_id': deviceInfo['deviceId'],
+        'device_model': deviceInfo['deviceModel'],
+        'platform': Platform.isIOS ? 'ios' : 'android',
+      };
 
       final response = await http.post(
         Uri.parse('$_baseUrl/users/fcm-token'),
@@ -47,85 +44,75 @@ class FCMTokenService {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: jsonEncode({'fcm_token': fcmToken, 'device_type': deviceType}),
-      );
-
-      debugPrint(
-        '📡 Token save response: ${response.statusCode} ${response.body}',
+        body: jsonEncode(payload),
       );
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        debugPrint('✅ FCM token saved to backend successfully');
-        // Cache locally so we can detect token rotation on next launch
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('last_saved_fcm_token', fcmToken);
-        return true;
+        debugPrint('✅ FCM Token saved to SQL (Multi-Device) for: $employeeId');
       } else {
-        debugPrint(
-          '⚠️ Backend returned ${response.statusCode}: ${response.body}',
-        );
-        return false;
+        debugPrint('⚠️ SQL Backend Error (${response.statusCode}): ${response.body}');
       }
+
+      // Listen for token refreshes (auto-update if Google changes the token)
+      _messaging.onTokenRefresh.listen((newToken) async {
+        await registerToken(employeeId);
+      });
     } catch (e) {
-      debugPrint('❌ Error saving FCM token: $e');
-      return false;
+      debugPrint('❌ Error syncing FCM token to SQL: $e');
     }
   }
 
-  /// Call from home page initState — re-syncs if the token rotated while
-  /// the user was logged out.
-  static Future<void> syncTokenIfNeeded({required String accessToken}) async {
+  /// Removes only the current device's token from SQL on logout.
+  static Future<void> removeToken(String employeeId) async {
     try {
-      String? currentToken;
-      try {
-        currentToken = await FirebaseMessaging.instance.getToken();
-      } catch (e) {
-        debugPrint('⚠️ Could not sync token: $e');
-        return;
-      }
-
-      if (currentToken == null) return;
+      if (employeeId.isEmpty) return;
 
       final prefs = await SharedPreferences.getInstance();
-      final savedToken = prefs.getString('last_saved_fcm_token') ?? '';
+      final accessToken = prefs.getString('access_token') ?? '';
 
-      if (currentToken != savedToken) {
-        debugPrint('🔄 Token changed — re-syncing to backend...');
-        await saveFCMTokenToBackend(accessToken: accessToken);
-      } else {
-        debugPrint('✅ FCM token already in sync');
+      String? token = await _messaging.getToken();
+      if (token != null) {
+        // I-delete lang ang entry na match ang employee_id AT fcm_token
+        final response = await http.delete(
+          Uri.parse('$_baseUrl/users/fcm-token'),
+          headers: {
+            'Authorization': 'Bearer $accessToken',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode({
+            'employee_id': employeeId,
+            'fcm_token': token,
+          }),
+        );
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          debugPrint('🗑️ Device token removed from SQL Backend');
+        }
+
+        // Invalidate on device level
+        await _messaging.deleteToken();
       }
     } catch (e) {
-      debugPrint('Error syncing token: $e');
+      debugPrint('❌ Error during token removal: $e');
     }
   }
 
-  /// Get current FCM token (for display / debug).
-  static Future<String?> getFCMToken() async {
-    try {
-      return await FirebaseMessaging.instance.getToken();
-    } catch (e) {
-      debugPrint('Error getting FCM token: $e');
-      return null;
+  static Future<Map<String, String>> _getDeviceInfo() async {
+    final deviceInfo = DeviceInfoPlugin();
+    if (Platform.isAndroid) {
+      final info = await deviceInfo.androidInfo;
+      return {
+        'deviceId': info.id,
+        'deviceModel': '${info.brand} ${info.model}',
+      };
+    } else if (Platform.isIOS) {
+      final info = await deviceInfo.iosInfo;
+      return {
+        'deviceId': info.identifierForVendor ?? 'unknown',
+        'deviceModel': info.utsname.machine,
+      };
     }
-  }
-
-  /// Force-rotate token and re-save. Use after re-login on a different account.
-  static Future<bool> refreshFCMToken({required String accessToken}) async {
-    try {
-      debugPrint('🔄 Refreshing FCM token...');
-      await FirebaseMessaging.instance.deleteToken();
-      await Future.delayed(const Duration(milliseconds: 500));
-      return await saveFCMTokenToBackend(accessToken: accessToken);
-    } catch (e) {
-      debugPrint('Error refreshing FCM token: $e');
-      return false;
-    }
-  }
-
-  /// Call on logout so we do not reuse a stale token on next login.
-  static Future<void> clearSavedToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('last_saved_fcm_token');
+    return {'deviceId': 'unknown', 'deviceModel': 'unknown'};
   }
 }

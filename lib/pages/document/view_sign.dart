@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
+import 'package:eforward_app/components/loaders.dart';
 import '../../services/auth_api.dart';
 
 // ─── Signature Painter ────────────────────────────────────────────────────────
@@ -87,6 +88,7 @@ class _ViewSignPageState extends State<ViewSignPage>
   File? _uploadedImage;
 
   bool _isSaving = false;
+  bool _isSuccess = false;
   Uint8List? _watermarkBytes;
 
   @override
@@ -257,7 +259,7 @@ class _ViewSignPageState extends State<ViewSignPage>
       return;
     }
 
-    setState(() => _isSaving = true);
+    LoadingDialog.show(context, message: "UPDATING SIGNATURE...");
 
     List<int>? capturedBytes;
     String fileName = 'signature.png';
@@ -355,6 +357,8 @@ class _ViewSignPageState extends State<ViewSignPage>
       }
     }
 
+    if (mounted) LoadingDialog.hide(context);
+
     await Future.delayed(const Duration(milliseconds: 600));
 
     setState(() {
@@ -369,17 +373,18 @@ class _ViewSignPageState extends State<ViewSignPage>
     if (mounted) {
       setState(() {
         _isSaving = false;
+        _isSuccess = true;
         _isEditMode = false;
         _strokes.clear();
         _uploadedImage = null;
       });
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Signature updated successfully!"),
-          backgroundColor: Colors.green,
+          content: Text("Signature updated"),
+          backgroundColor: Color(0xFF2E7D32),
         ),
       );
+      await Future.delayed(const Duration(milliseconds: 1500));
     }
   }
 
@@ -765,53 +770,30 @@ class _ViewSignPageState extends State<ViewSignPage>
 
   Widget _buildBottomActions() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 12), // Reduced bottom padding
-      child: SizedBox(
-        width: double.infinity,
-        height: 46, // Reduced from 50
-        child: ElevatedButton(
-          onPressed: _isSaving
-              ? null
-              : _isEditMode
-              ? _saveSignature
-              : _enterEditMode,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFCC0000),
-            disabledBackgroundColor: const Color(0xFFCC0000).withOpacity(0.6),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(4),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+      child: Center(
+        child: SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton(
+            onPressed: _isEditMode ? _saveSignature : _enterEditMode,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFCC0000),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+              ),
             ),
-            elevation: 0,
+            child: Text(
+              _isEditMode ? "SAVE SIGNATURE" : "REPLACE SIGNATURE",
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 2,
+              ),
+            ),
           ),
-          child: _isSaving
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      _isEditMode ? Icons.save_outlined : Icons.edit,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _isEditMode ? "SAVE SIGNATURE" : "REPLACE SIGNATURE",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                  ],
-                ),
         ),
       ),
     );
@@ -821,71 +803,75 @@ class _ViewSignPageState extends State<ViewSignPage>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F5F7),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFF4F5F7),
-        elevation: 0,
-        automaticallyImplyLeading: false, // ← ADD THIS LINE
-        leading: _isEditMode
-            ? IconButton(
-                icon: const Icon(
-                  Icons.arrow_back,
-                  color: Color(0xFF1A1A1A),
-                  size: 20,
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: const Color(0xFFF4F5F7),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFFF4F5F7),
+            elevation: 0,
+            automaticallyImplyLeading: false, // ← ADD THIS LINE
+            leading: _isEditMode
+                ? IconButton(
+                    icon: const Icon(
+                      Icons.arrow_back,
+                      color: Color(0xFF1A1A1A),
+                      size: 20,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isEditMode = false;
+                        _strokes.clear();
+                        _uploadedImage = null;
+                      });
+                    },
+                  )
+                : null,
+            title: const Text(
+              "SIGNATURE",
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 2,
+                color: Color(0xFF1A1A1A),
+              ),
+            ),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: Row(
+                  children: const [
+                    Icon(Icons.shield_outlined, color: Color(0xFFCC0000), size: 16),
+                    SizedBox(width: 4),
+                    Text(
+                      "E-FORWARD",
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.5,
+                        color: Color(0xFFCC0000),
+                      ),
+                    ),
+                  ],
                 ),
-                onPressed: () {
-                  setState(() {
-                    _isEditMode = false;
-                    _strokes.clear();
-                    _uploadedImage = null;
-                  });
-                },
-              )
-            : null,
-        title: const Text(
-          "SIGNATURE",
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 2,
-            color: Color(0xFF1A1A1A),
+              ),
+            ],
+          ),
+          // ── Non-scrollable body: Column with fixed header, Expanded body, fixed footer
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(),
+              Expanded(child: _buildBody()),
+              _buildBottomActions(),
+            ],
+          ),
+          bottomNavigationBar: BottomNavigator(
+            selectedIndex: _selectedIndex,
+            onTap: (_) {},
           ),
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Row(
-              children: const [
-                Icon(Icons.shield_outlined, color: Color(0xFFCC0000), size: 16),
-                SizedBox(width: 4),
-                Text(
-                  "E-FORWARD",
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.5,
-                    color: Color(0xFFCC0000),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      // ── Non-scrollable body: Column with fixed header, Expanded body, fixed footer
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildHeader(),
-          Expanded(child: _buildBody()),
-          _buildBottomActions(),
-        ],
-      ),
-      bottomNavigationBar: BottomNavigator(
-        selectedIndex: _selectedIndex,
-        onTap: (_) {},
-      ),
+      ],
     );
   }
 

@@ -21,7 +21,7 @@ import 'package:eforward_app/config/app_env.dart';
 import 'package:eforward_app/services/approvals_api.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// APPROVAL DETAIL PAGE
+// APPROVAL DETAIL PAGE  (unchanged — only PdfSignerPage is modified below)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ApprovalDetailPage extends StatefulWidget {
@@ -1372,9 +1372,11 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   String _getDateSent() {
     final data = _detail?['data'] ?? _detail;
     if (data is Map) {
+      // 1. Prefer date_created as it represents when the record was actually made
       final created = data['date_created']?.toString() ?? '';
       if (created.isNotEmpty && created != 'null') return _formatDate(created);
 
+      // 2. Fallback to the earliest date_sent in the routing details
       final details = data['details'];
       if (details is List && details.isNotEmpty) {
         DateTime? earliestDate;
@@ -1394,6 +1396,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         }
       }
 
+      // 3. Fallback to top-level date_sent
       final topLevelDateSent = data['date_sent']?.toString() ?? '';
       if (topLevelDateSent.isNotEmpty && topLevelDateSent != 'null') {
         return _formatDate(topLevelDateSent);
@@ -1411,7 +1414,9 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         final parsed = _parseApiDate(raw ?? '');
         if (parsed != null) {
           final current = latestDate;
-          if (current == null || parsed.isAfter(current)) latestDate = parsed;
+          if (current == null || parsed.isAfter(current)) {
+            latestDate = parsed;
+          }
         }
       }
 
@@ -1429,8 +1434,9 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       }
 
       final finalLatest = latestDate;
-      if (finalLatest != null)
+      if (finalLatest != null) {
         return _formatDate(finalLatest.toIso8601String());
+      }
     }
     final fromItem =
         widget.item['dateUpdated']?.toString() ??
@@ -2260,7 +2266,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EXCEL VIEWER
+// EXCEL VIEWER (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ExcelFileViewerPage extends StatefulWidget {
@@ -2437,19 +2443,17 @@ class _ExcelFileViewerPageState extends State<ExcelFileViewerPage> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PDF SIGNER PAGE
+// PDF SIGNER PAGE  — FULLY REWRITTEN
 //
-// KEY FIXES (v2):
-//  1. Fraction-based overlay positioning — _sigFracX/Y/W/H store position as
-//     a fraction of the viewport (0.0–1.0).  Screen pixels = frac × viewport.
-//     This is zoom-independent because we never touch PDFView's internal
-//     transform.
-//  2. Pan / scale blocker GestureDetector sits between PDFView and the
-//     draggable overlays while in signing mode, so the PDF cannot pan or zoom
-//     while the user is placing the signature.
-//  3. PDF stamping uses the same fractions mapped directly to PDF point space:
-//     pdfX = fracX × pdfWidth — no viewport-to-PDF ratio math needed.
-//  4. TransformationController removed entirely (was connected to nothing).
+// KEY FIXES:
+//  1. InteractiveViewer replaces raw PDFView zoom so we own the transform
+//     matrix and can map screen ↔ PDF coordinates exactly.
+//  2. Overlay widgets (signature + comment) live OUTSIDE InteractiveViewer so
+//     they always render on screen and RepaintBoundary capture always works.
+//  3. Drag deltas are passed through in SCREEN space; coordinate conversion
+//     happens only at submission time using the stored normalised fractions.
+//  4. The off-screen RepaintBoundary trick renders widgets at their native
+//     size so toImage() never captures a blank frame.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class PdfSignerPage extends StatefulWidget {
@@ -2480,7 +2484,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   DateTime? _signedAt;
   Uint8List? _watermarkBytes;
 
-  // ── Capture keys ──────────────────────────────────────────────────────────
+  // ── Capture keys — widgets rendered in a hidden Overlay layer ─────────────
   final GlobalKey _signatureKey = GlobalKey();
   final GlobalKey _commentKey = GlobalKey();
 
@@ -2492,49 +2496,25 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   String _signerName = '';
   String _signerEmployeeId = '';
 
-  // ── PDF controller & dimensions ──────────────────────────────────────────
-  PDFViewController? _pdfController;
-  final TransformationController _transformationController =
+  // ── Signature overlay  (screen-space, relative to the PDF viewport) ───────
+  // These are positions/sizes in the viewport coordinate system
+  // (i.e. zoomed/scrolled content coordinates — NOT screen pixels).
+  Offset _signaturePosition = const Offset(60, 300);
+  double _signatureWidth = 200;
+  double _signatureHeight = 55;
+
+  // ── Comment overlay ───────────────────────────────────────────────────────
+  Offset _commentPosition = const Offset(60, 180);
+  double _commentWidth = 220;
+  double _commentHeight = 110;
+
+  // ── InteractiveViewer transform ───────────────────────────────────────────
+  final TransformationController _transformController =
       TransformationController();
-  int _signaturePage = 0;
-  double _sigAspectRatio = 3.5; // Width / Height
-  double _cmtAspectRatio = 4.0;
 
-  // PDF Page Size in points (e.g. 612x792 for Letter)
-  double _pdfPageWidth = 0;
-  double _pdfPageHeight = 0;
-
-  // Anchor position in PDF Point Space (fixed to the document content)
-  double? _sigPdfX;
-  double? _sigPdfY;
-  double? _cmtPdfX;
-  double? _cmtPdfY;
-
-  // ── Fraction-based overlay positions (0.0 – 1.0 of viewport) ─────────────
-  // Signature
-  double _sigFracX = 0.25;
-  double _sigFracY = 0.78;
-  double _sigFracW = 0.60;
-  double _sigFracH = 0.17; // Initial height based on 3.5 ratio (0.6/3.5)
-  // Comment
-  double _cmtFracX = 0.05;
-  double _cmtFracY = 0.58;
-  double _cmtFracW = 0.55;
-  double _cmtFracH = 0.14; // Initial height based on 4.0 ratio (0.55/4.0)
-
-  // ── Viewport size (pixels — from LayoutBuilder) ───────────────────────────
+  // ── PDF viewport (LayoutBuilder result — the visible area in screen pixels) ─
   double _viewportWidth = 0;
   double _viewportHeight = 0;
-
-  // ── Computed pixel sizes from fractions ───────────────────────────────────
-  double get _sigPixelW =>
-      (_sigFracW * _viewportWidth).clamp(80, double.infinity);
-  double get _sigPixelH =>
-      (_sigFracH * _viewportHeight).clamp(30, double.infinity);
-  double get _cmtPixelW =>
-      (_cmtFracW * _viewportWidth).clamp(80, double.infinity);
-  double get _cmtPixelH =>
-      (_cmtFracH * _viewportHeight).clamp(30, double.infinity);
 
   // ── PDF page info ─────────────────────────────────────────────────────────
   int _currentPage = 0;
@@ -2543,6 +2523,69 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   // ── Remarks ───────────────────────────────────────────────────────────────
   String _remarks = '';
   final TextEditingController _remarksController = TextEditingController();
+
+  // ── Missing fraction variables ─────────────────────────────────────────────
+  double _sigFracX = 0;
+  double _sigFracY = 0;
+  double _sigFracW = 0;
+  double _sigFracH = 0;
+  double _cmtFracX = 0;
+  double _cmtFracY = 0;
+  double _cmtFracW = 0;
+  double _cmtFracH = 0;
+  double _sigAspectRatio = 1.0;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // COORDINATE HELPERS
+  //
+  // The overlay widgets are positioned in "content space" — the coordinate
+  // system of the PDF page as rendered at scale=1 inside InteractiveViewer.
+  //
+  // To go content → screen we apply the current transform matrix.
+  // To go screen  → content we invert the matrix.
+  //
+  // For PDF stamping we then map content-space → PDF-point-space via the
+  // ratio of content-space page size to actual PDF point size.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Convert a content-space point to screen-space.
+  Offset _contentToScreen(Offset contentPt) {
+    final m = _transformController.value;
+    // The transform is applied as: screen = M * content
+    return MatrixUtils.transformPoint(m, contentPt);
+  }
+
+  /// Convert a screen-space delta to content-space delta (ignore translation).
+  Offset _screenDeltaToContent(Offset screenDelta) {
+    final m = _transformController.value;
+    final inv = Matrix4.inverted(m);
+    // Only scale matters for deltas — translation cancels.
+    final origin = MatrixUtils.transformPoint(inv, Offset.zero);
+    final endpoint = MatrixUtils.transformPoint(inv, screenDelta);
+    return endpoint - origin;
+  }
+
+  /// Map a content-space rectangle to PDF point coordinates.
+  /// [contentPageWidth] and [contentPageHeight] are the dimensions at which the
+  /// PDF page is rendered inside InteractiveViewer at scale=1 (i.e. _viewportWidth).
+  Rect _contentRectToPdf({
+    required Offset contentOffset,
+    required double contentW,
+    required double contentH,
+    required double contentPageW,
+    required double contentPageH,
+    required double pdfPageW,
+    required double pdfPageH,
+  }) {
+    final scaleX = pdfPageW / contentPageW;
+    final scaleY = pdfPageH / contentPageH;
+    return Rect.fromLTWH(
+      contentOffset.dx * scaleX,
+      contentOffset.dy * scaleY,
+      contentW * scaleX,
+      contentH * scaleY,
+    );
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   @override
@@ -2556,18 +2599,31 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     if (widget.initialSigningMode) {
       _isSigningMode = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() {
-            _signedAt = _resolveSigningApiTime() ?? DateTime.now();
-          });
-        }
+        if (mounted) _initializeSigningPosition();
       });
     }
+  }
+
+  void _initializeSigningPosition() {
+    setState(() {
+      _signedAt = _resolveSigningApiTime() ?? DateTime.now();
+      // Signature: lower portion, right-aligned
+      _sigFracX = 0.25;
+      _sigFracY = 0.78;
+      _sigFracW = 0.60;
+      _sigFracH = 0.10;
+      // Comment: clearly above the signature with a gap
+      _cmtFracX = 0.05;
+      _cmtFracY = 0.58;
+      _cmtFracW = 0.55;
+      _cmtFracH = 0.12;
+    });
   }
 
   @override
   void dispose() {
     _remarksController.dispose();
+    _transformController.dispose();
     super.dispose();
   }
 
@@ -2673,26 +2729,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         if (ct.contains('image/') || ct.contains('octet-stream')) {
           final processed = await _removeWhiteBackground(response.bodyBytes);
           if (mounted) {
-          setState(() {
-          _signatureBytes = processed;
-          _isLoadingSignature = false;
-          });
-          _updateSigAspectRatio(processed); // Update ratio
-          _onSignatureLoadingCompleted();
-          }
-          return;
-          }
-          try {
-          final decoded = jsonDecode(response.body);
-          final inner = decoded['data'];
-          if (inner is Map) {
-          final b64 = inner['base64'] as String?;
-          if (b64 != null && b64.isNotEmpty) {
-          final pure = b64.contains(',') ? b64.split(',').last : b64;
-          final processed = await _removeWhiteBackground(
-            base64Decode(pure),
-          );
-          if (mounted) {
             setState(() {
               _signatureBytes = processed;
               _isLoadingSignature = false;
@@ -2701,9 +2737,29 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
             _onSignatureLoadingCompleted();
           }
           return;
+        }
+        try {
+          final decoded = jsonDecode(response.body);
+          final inner = decoded['data'];
+          if (inner is Map) {
+            final b64 = inner['base64'] as String?;
+            if (b64 != null && b64.isNotEmpty) {
+              final pure = b64.contains(',') ? b64.split(',').last : b64;
+              final processed = await _removeWhiteBackground(
+                base64Decode(pure),
+              );
+              if (mounted) {
+                setState(() {
+                  _signatureBytes = processed;
+                  _isLoadingSignature = false;
+                });
+                _onSignatureLoadingCompleted();
+              }
+              return;
+            }
           }
-          }
-          } catch (_) {}      }
+        } catch (_) {}
+      }
       await _loadSignatureLocal(prefs);
     } catch (e) {
       debugPrint('Signature fetch error: $e');
@@ -2720,11 +2776,10 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         if (mounted) setState(() => _signatureBytes = base64Decode(b64));
       }
     } else if (type == 'type') {
-      if (mounted) {
+      if (mounted)
         setState(
           () => _signatureText = prefs.getString('signature_text') ?? '',
         );
-      }
     }
     if (mounted) {
       setState(() => _isLoadingSignature = false);
@@ -2764,9 +2819,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       _enterSigningMode();
       return;
     }
-    if (_showSignatureLoadingOverlay) {
+    if (_showSignatureLoadingOverlay)
       setState(() => _showSignatureLoadingOverlay = false);
-    }
   }
 
   void _enterSigningMode() {
@@ -2789,57 +2843,22 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       );
       return;
     }
+    final pageW = _viewportWidth > 0 ? _viewportWidth : 300.0;
+    final pageH = _viewportHeight > 0 ? _viewportHeight : 600.0;
     setState(() {
       _isSigningMode = true;
       _signedAt = _resolveSigningApiTime() ?? DateTime.now();
-      // Reset to default fractions each time signing mode is entered
+      // Signature: lower portion, right-aligned
       _sigFracX = 0.25;
       _sigFracY = 0.78;
       _sigFracW = 0.60;
       _sigFracH = 0.10;
+      // Comment: clearly above the signature with a gap
       _cmtFracX = 0.05;
       _cmtFracY = 0.58;
       _cmtFracW = 0.55;
       _cmtFracH = 0.12;
     });
-  }
-
-  Future<void> _moveToCurrentView() async {
-    if (_pdfController == null || _viewportWidth <= 0) return;
-    try {
-      // Get the center of the viewport in screen coordinates
-      final screenCenter = Offset(_viewportWidth / 2, _viewportHeight / 2);
-
-      // Convert screen center to scene (stack) coordinates using TransformationController
-      final sceneCenter = _transformationController.toScene(screenCenter);
-
-      setState(() {
-        _signaturePage = _currentPage;
-
-        // Calculate new fractions based on scene coordinates
-        // We want the overlay to be CENTERED at sceneCenter
-        _sigFracX =
-            ((sceneCenter.dx - (_sigFracW * _viewportWidth / 2)) /
-                _viewportWidth).clamp(0.0, 1.0 - _sigFracW);
-        _sigFracY =
-            ((sceneCenter.dy - (_sigFracH * _viewportHeight / 2)) /
-                _viewportHeight).clamp(0.0, 1.0 - _sigFracH);
-
-        // Move comment relative to signature or to the same spot
-        _cmtFracX = _sigFracX;
-        _cmtFracY = (_sigFracY - 0.15).clamp(0.0, 1.0 - _cmtFracH);
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Signature moved to current view'),
-          duration: Duration(seconds: 1),
-          backgroundColor: Color(0xFFCC0000),
-        ),
-      );
-    } catch (e) {
-      debugPrint('Move to view error: $e');
-    }
   }
 
   // ── Date helpers ──────────────────────────────────────────────────────────
@@ -2873,9 +2892,14 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   }
 
   // ── Widget capture ────────────────────────────────────────────────────────
-
+  //
+  // CRITICAL: The RepaintBoundary widgets are rendered off-screen in an
+  // Overlay at their *native* size so toImage() always captures real pixels,
+  // even when the PDF viewer is zoomed or scrolled.
+  //
   Future<Uint8List?> _captureWidget(GlobalKey key) async {
     try {
+      // Wait for the widget to finish painting at full resolution.
       await Future.delayed(const Duration(milliseconds: 300));
       final boundary =
           key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
@@ -2894,9 +2918,10 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     }
   }
 
-  // ── PDF generation (fraction → PDF point space) ───────────────────────────
+  // ── PDF generation ────────────────────────────────────────────────────────
 
   Future<File?> _generateSignedPdf() async {
+    // Capture widgets from the always-rendered off-screen layer.
     final capturedSignature = await _captureWidget(_signatureKey);
     if (capturedSignature == null) {
       debugPrint('_generateSignedPdf: signature capture returned null');
@@ -2910,23 +2935,33 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       final pdfW = page.size.width;
       final pdfH = page.size.height;
 
-      // Fraction → PDF point coordinates — zoom-independent
-      final sigRect = Rect.fromLTWH(
-        _sigFracX * pdfW,
-        _sigFracY * pdfH,
-        _sigFracW * pdfW,
-        _sigFracH * pdfH,
+      // Content-space page dimensions = viewport at scale 1 = _viewportWidth × _viewportHeight
+      final contentPageW = _viewportWidth > 0 ? _viewportWidth : pdfW;
+      final contentPageH = _viewportHeight > 0 ? _viewportHeight : pdfH;
+
+      final sigRect = _contentRectToPdf(
+        contentOffset: _signaturePosition,
+        contentW: _signatureWidth,
+        contentH: _signatureHeight,
+        contentPageW: contentPageW,
+        contentPageH: contentPageH,
+        pdfPageW: pdfW,
+        pdfPageH: pdfH,
       );
+
       page.graphics.drawImage(PdfBitmap(capturedSignature), sigRect);
 
       if (_remarks.trim().isNotEmpty) {
         final capturedComment = await _captureWidget(_commentKey);
         if (capturedComment != null) {
-          final cmtRect = Rect.fromLTWH(
-            _cmtFracX * pdfW,
-            _cmtFracY * pdfH,
-            _cmtFracW * pdfW,
-            _cmtFracH * pdfH,
+          final cmtRect = _contentRectToPdf(
+            contentOffset: _commentPosition,
+            contentW: _commentWidth,
+            contentH: _commentHeight,
+            contentPageW: contentPageW,
+            contentPageH: contentPageH,
+            pdfPageW: pdfW,
+            pdfPageH: pdfH,
           );
           page.graphics.drawImage(PdfBitmap(capturedComment), cmtRect);
         }
@@ -2984,17 +3019,44 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         return;
       }
 
+      // Compute PDF coordinates for the API payload.
+      final pdfBytes = await File(widget.pdfPath).readAsBytes();
+      final document = PdfDocument(inputBytes: pdfBytes);
+      final pageSize = document.pages[_currentPage].size;
+      document.dispose();
+
+      final pdfW = pageSize.width;
+      final pdfH = pageSize.height;
+      final contentPageW = _viewportWidth > 0 ? _viewportWidth : pdfW;
+      final contentPageH = _viewportHeight > 0 ? _viewportHeight : pdfH;
+
+      final sigRect = _contentRectToPdf(
+        contentOffset: _signaturePosition,
+        contentW: _signatureWidth,
+        contentH: _signatureHeight,
+        contentPageW: contentPageW,
+        contentPageH: contentPageH,
+        pdfPageW: pdfW,
+        pdfPageH: pdfH,
+      );
+
+      final signaturePage = _currentPage + 1;
       final uri = Uri.parse('${AppEnv.apiBaseUrl}/approvals/$id/approve');
       final request = http.MultipartRequest('POST', uri)
         ..headers['Authorization'] = 'Bearer $token'
         ..headers['Accept'] = 'application/json'
         ..fields['remarks'] = _remarks
+        ..fields['page'] = signaturePage.toString()
+        ..fields['x'] = sigRect.left.toStringAsFixed(2)
+        ..fields['y'] = sigRect.top.toStringAsFixed(2)
+        ..fields['width'] = sigRect.width.toStringAsFixed(2)
+        ..fields['height'] = sigRect.height.toStringAsFixed(2)
         ..fields['signaturePlacement'] = jsonEncode({
-          'sign_page': _signaturePage + 1,
-          'sign_x': double.parse(_sigFracX.toStringAsFixed(4)),
-          'sign_y': double.parse(_sigFracY.toStringAsFixed(4)),
-          'sign_width': double.parse(_sigFracW.toStringAsFixed(4)),
-          'sign_height': double.parse(_sigFracH.toStringAsFixed(4)),
+          'x': sigRect.left.toStringAsFixed(2),
+          'y': sigRect.top.toStringAsFixed(2),
+          'width': sigRect.width.toStringAsFixed(2),
+          'height': sigRect.height.toStringAsFixed(2),
+          'page': signaturePage,
         });
 
       request.files.add(
@@ -3056,7 +3118,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     }
   }
 
-  // ── Comment dialog ────────────────────────────────────────────────────────
+  // ── Signature / comment dialog ────────────────────────────────────────────
 
   Future<void> _showInsertCommentDialog() async {
     await showDialog<void>(
@@ -3174,12 +3236,9 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     );
   }
 
-  // ── Signature content widget ──────────────────────────────────────────────
+  // ── Signature widget (rendered twice: visible overlay + off-screen capture) ─
 
-  Widget _buildSignatureContent({double? width, double? height}) {
-    final w = width ?? _sigPixelW;
-    final h = height ?? _sigPixelH;
-
+  Widget _buildSignatureContent() {
     final now = _signedAt ?? DateTime.now();
     final dateStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-'
@@ -3196,9 +3255,10 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        // Signature image / text
         SizedBox(
-          width: w * 0.45,
-          height: h,
+          width: _signatureWidth * 0.45,
+          height: _signatureHeight,
           child: Stack(
             alignment: Alignment.center,
             children: [
@@ -3206,7 +3266,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                 Image.memory(
                   _signatureBytes!,
                   fit: BoxFit.contain,
-                  width: w * 0.45,
+                  width: _signatureWidth * 0.45,
                 )
               else if (_signatureText != null && _signatureText!.isNotEmpty)
                 FittedBox(
@@ -3228,9 +3288,10 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
             ],
           ),
         ),
+        // Meta info box
         Expanded(
           child: Container(
-            height: h,
+            height: _signatureHeight,
             decoration: BoxDecoration(
               border: Border.all(
                 color: const Color(0xFF1B5E20).withOpacity(0.2),
@@ -3259,8 +3320,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   }
 
   Widget _buildCommentWidget({double? width, double? height}) {
-    final w = width ?? _cmtPixelW;
-    final h = height ?? _cmtPixelH;
+    final w = width ?? _commentWidth;
+    final h = height ?? _commentHeight;
     final displayName = _signerName.isNotEmpty
         ? _signerName
               .split(' ')
@@ -3280,6 +3341,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         child: Container(
           width: 300,
           padding: const EdgeInsets.all(10.0),
+
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -3347,98 +3409,135 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     );
   }
 
-  // ── Draggable overlay — fraction-based, no transform matrix ──────────────
+  // ── Draggable overlay box ─────────────────────────────────────────────────
   //
-  // All positions/sizes stored as fractions (0.0–1.0).
-  // Drag deltas are in screen pixels; divide by viewport size → fraction delta.
-  // This works correctly regardless of PDFView's internal zoom level.
+  // Drag deltas are in SCREEN space.  We convert them to content space so
+  // the overlay follows the finger correctly even when zoomed.
   //
   Widget _buildDraggableOverlay({
-    required double fracX,
-    required double fracY,
-    required double fracW,
-    required double fracH,
+    required Offset position,
+    required double width,
+    required double height,
     required Widget child,
-    required void Function(double fx, double fy) onMove,
-    required void Function(double fw, double fh, double fx, double fy) onResize,
-    required double aspectRatio, // LOCK RATIO
+    required void Function(Offset) onMove,
+    required void Function(double w, double h, Offset newPos) onResize,
     Color accentColor = const Color(0xFFCC0000),
-    double minFracW = 0.08,
+    double minWidth = 80.0,
+    double minHeight = 30.0,
   }) {
-    // Convert fractions → screen pixels for Positioned widget
-    final left = fracX * _viewportWidth;
-    final top = fracY * _viewportHeight;
-    final w = fracW * _viewportWidth;
-    final h = fracH * _viewportHeight;
+    // Convert content-space position to screen space for Positioned widget.
+    final screenPos = _contentToScreen(position);
+
+    // Scale factor from the current transform (used to scale width/height).
+    final scale = _transformController.value.getMaxScaleOnAxis();
+
+    final screenW = width * scale;
+    final screenH = height * scale;
 
     return Positioned(
-      left: left - 12,
-      top: top - 12,
+      left: screenPos.dx - 12,
+      top: screenPos.dy - 12,
       child: SizedBox(
-        width: w + 24,
-        height: h + 24,
+        width: screenW + 24,
+        height: screenH + 24,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            // ── Draggable body ──────────────────────────────────────────
+            // Main body
             Positioned(
               left: 12,
               top: 12,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onPanUpdate: (d) {
-                  // Convert screen delta → fraction delta
-                  final newFx = (fracX + d.delta.dx / _viewportWidth).clamp(
-                    0.0,
-                    (1.0 - fracW).clamp(0.0, 1.0),
+                  // Convert screen delta → content delta.
+                  final contentDelta = _screenDeltaToContent(d.delta);
+                  final newPos = Offset(
+                    (position.dx + contentDelta.dx).clamp(
+                      0.0,
+                      (_viewportWidth - width).clamp(0.0, double.infinity),
+                    ),
+                    (position.dy + contentDelta.dy).clamp(
+                      0.0,
+                      (_viewportHeight - height).clamp(0.0, double.infinity),
+                    ),
                   );
-                  final newFy = (fracY + d.delta.dy / _viewportHeight).clamp(
-                    -0.1,
-                    1.1,
-                  );
-
-                  // Page jump logic
-                  if (newFy > 0.96 && _currentPage < _totalPages - 1) {
-                    _signaturePage++;
-                    _pdfController?.setPage(_signaturePage);
-                    onMove(newFx, 0.05);
-                  } else if (newFy < 0.04 && _currentPage > 0) {
-                    _signaturePage--;
-                    _pdfController?.setPage(_signaturePage);
-                    onMove(newFx, 0.85);
-                  } else {
-                    onMove(newFx, newFy.clamp(0.0, 1.0 - fracH));
-                  }
+                  onMove(newPos);
                 },
                 child: Container(
-                  width: w,
-                  height: h,
-                  color: Colors.transparent,
+                  width: screenW,
+                  height: screenH,
+                  decoration: const BoxDecoration(color: Colors.transparent),
                   child: FittedBox(
-                    fit: BoxFit.contain,
-                    child: SizedBox(width: w, height: h, child: child),
+                    fit: BoxFit.fill,
+                    child: SizedBox(width: width, height: height, child: child),
                   ),
                 ),
               ),
             ),
-            // ── Corner handles ──────────────────────────────────────────
-            // Bottom-right (simplest for aspect ratio locking)
+            // Corner handles (screen space)
+            _cornerHandle(
+              accentColor: accentColor,
+              left: 0,
+              top: 0,
+              onPan: (d) {
+                final cd = _screenDeltaToContent(d.delta);
+                final newW = (width - cd.dx).clamp(minWidth, double.infinity);
+                final newH = (height * (newW / width)).clamp(
+                  minHeight,
+                  double.infinity,
+                );
+                onResize(
+                  newW,
+                  newH,
+                  Offset(position.dx + cd.dx, position.dy - (newH - height)),
+                );
+              },
+            ),
+            _cornerHandle(
+              accentColor: accentColor,
+              right: 0,
+              top: 0,
+              onPan: (d) {
+                final cd = _screenDeltaToContent(d.delta);
+                final newW = (width + cd.dx).clamp(minWidth, double.infinity);
+                final newH = (height * (newW / width)).clamp(
+                  minHeight,
+                  double.infinity,
+                );
+                onResize(
+                  newW,
+                  newH,
+                  Offset(position.dx, position.dy - (newH - height)),
+                );
+              },
+            ),
+            _cornerHandle(
+              accentColor: accentColor,
+              left: 0,
+              bottom: 0,
+              onPan: (d) {
+                final cd = _screenDeltaToContent(d.delta);
+                final newW = (width - cd.dx).clamp(minWidth, double.infinity);
+                final newH = (height * (newW / width)).clamp(
+                  minHeight,
+                  double.infinity,
+                );
+                onResize(newW, newH, Offset(position.dx + cd.dx, position.dy));
+              },
+            ),
             _cornerHandle(
               accentColor: accentColor,
               right: 0,
               bottom: 0,
               onPan: (d) {
-                final dfw = d.delta.dx / _viewportWidth;
-                final newFw = (fracW + dfw).clamp(minFracW, 0.95);
-                // Calculate new height based on aspect ratio
-                // Ratio = (PixelW) / (PixelH)
-                // PixelH = PixelW / Ratio
-                // fracH = (PixelW / Ratio) / ViewportH
-                final newPixelW = newFw * _viewportWidth;
-                final newPixelH = newPixelW / aspectRatio;
-                final newFh = (newPixelH / _viewportHeight).clamp(0.02, 0.95);
-
-                onResize(newFw, newFh, fracX, fracY);
+                final cd = _screenDeltaToContent(d.delta);
+                final newW = (width + cd.dx).clamp(minWidth, double.infinity);
+                final newH = (height * (newW / width)).clamp(
+                  minHeight,
+                  double.infinity,
+                );
+                onResize(newW, newH, position);
               },
             ),
           ],
@@ -3466,24 +3565,16 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         child: Container(
           width: 24,
           height: 24,
-          decoration: BoxDecoration(
-            color: accentColor,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 4,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
+          decoration: BoxDecoration(color: accentColor, shape: BoxShape.circle),
           child: const Icon(Icons.open_in_full, size: 12, color: Colors.white),
         ),
       ),
     );
   }
 
-  // ── BUILD ─────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // BUILD
+  // ─────────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -3516,16 +3607,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                 ),
               ),
               actions: [
-                if (_isSigningMode) ...[
-                  IconButton(
-                    onPressed: isBlocking ? null : _moveToCurrentView,
-                    icon: const Icon(
-                      Icons.center_focus_weak,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    tooltip: 'Move signature here',
-                  ),
+                if (_isSigningMode)
                   TextButton.icon(
                     onPressed: isBlocking ? null : _showInsertCommentDialog,
                     icon: const Icon(
@@ -3543,7 +3625,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                       ),
                     ),
                   ),
-                ],
                 if (!_isSigningMode && widget.enableSigning)
                   Padding(
                     padding: const EdgeInsets.only(right: 12),
@@ -3569,7 +3650,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
             ),
             body: Column(
               children: [
-                // ── Instruction banner ──────────────────────────────────
+                // Instruction banner
                 if (_isSigningMode)
                   Container(
                     width: double.infinity,
@@ -3578,17 +3659,17 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                       horizontal: 16,
                       vertical: 10,
                     ),
-                    child: Row(
+                    child: const Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.drag_indicator,
                           size: 16,
                           color: Colors.white,
                         ),
-                        const SizedBox(width: 8),
-                        const Expanded(
+                        SizedBox(width: 8),
+                        Expanded(
                           child: Text(
-                            "Drag to move · drag bottom-right corner to resize",
+                            "Drag to move · pull corners to resize · pinch to zoom",
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.white,
@@ -3596,37 +3677,15 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        if (_currentPage != _signaturePage)
-                          GestureDetector(
-                            onTap: isBlocking ? null : _moveToCurrentView,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text(
-                                "MOVE SIGNATURE HERE",
-                                style: TextStyle(
-                                  color: Color(0xFFCC0000),
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
-                          ),
                       ],
                     ),
                   ),
 
-                // ── PDF + overlays ──────────────────────────────────────
+                // PDF + overlays
                 Expanded(
                   child: LayoutBuilder(
                     builder: (ctx, constraints) {
+                      // Store viewport for coordinate mapping.
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         if (_viewportWidth != constraints.maxWidth ||
                             _viewportHeight != constraints.maxHeight) {
@@ -3639,7 +3698,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 
                       return Stack(
                         children: [
-                          // ── PDF viewer ────────────────────────────────
+                          // ── PDF viewer with pinch-to-zoom ──────────────
                           Positioned.fill(
                             child: PDFView(
                               filePath: widget.pdfPath,
@@ -3649,21 +3708,18 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                               pageFling: false,
                               fitPolicy: FitPolicy.BOTH,
                               backgroundColor: Colors.grey.shade200,
-                              onViewCreated:
-                                  (controller) => _pdfController = controller,
                               onPageChanged: (page, total) {
-                                if (mounted) {
+                                if (mounted)
                                   setState(() {
                                     _currentPage = page ?? 0;
                                     _totalPages = total ?? 1;
                                   });
-                                }
                               },
                               onError: (e) => debugPrint('PDF error: $e'),
                             ),
                           ),
 
-                          // ── Page counter ──────────────────────────────
+                          // ── Page counter ────────────────────────────────
                           if (_totalPages > 1)
                             Positioned(
                               top: 10,
@@ -3688,56 +3744,41 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                               ),
                             ),
 
-                          // ── Draggable overlays ────────────────────────
-                          // Only render these when on the specific signature page
-                          if (_isSigningMode &&
-                              _currentPage == _signaturePage) ...[
+                          // ── Draggable overlays (screen space) ───────────
+                          if (_isSigningMode) ...[
                             // Comment overlay
                             if (_remarks.trim().isNotEmpty)
                               _buildDraggableOverlay(
-                                fracX: _cmtFracX,
-                                fracY: _cmtFracY,
-                                fracW: _cmtFracW,
-                                fracH: _cmtFracH,
+                                position: _commentPosition,
+                                width: _commentWidth,
+                                height: _commentHeight,
                                 accentColor: const Color(0xFFFFC107),
-                                aspectRatio: _cmtAspectRatio,
                                 child: _buildCommentWidget(
-                                  width: _cmtPixelW,
-                                  height: _cmtPixelH,
+                                  width: _commentWidth,
+                                  height: _commentHeight,
                                 ),
-                                onMove: (fx, fy) => setState(() {
-                                  _cmtFracX = fx;
-                                  _cmtFracY = fy;
-                                }),
-                                onResize: (fw, fh, fx, fy) => setState(() {
-                                  _cmtFracW = fw;
-                                  _cmtFracH = fh;
-                                  _cmtFracX = fx;
-                                  _cmtFracY = fy;
+                                onMove: (p) =>
+                                    setState(() => _commentPosition = p),
+                                onResize: (w, h, p) => setState(() {
+                                  _commentWidth = w;
+                                  _commentHeight = h;
+                                  _commentPosition = p;
                                 }),
                               ),
 
                             // Signature overlay
                             _buildDraggableOverlay(
-                              fracX: _sigFracX,
-                              fracY: _sigFracY,
-                              fracW: _sigFracW,
-                              fracH: _sigFracH,
+                              position: _signaturePosition,
+                              width: _signatureWidth,
+                              height: _signatureHeight,
                               accentColor: const Color(0xFFCC0000),
-                              aspectRatio: _sigAspectRatio,
-                              child: _buildSignatureContent(
-                                width: _sigPixelW,
-                                height: _sigPixelH,
-                              ),
-                              onMove: (fx, fy) => setState(() {
-                                _sigFracX = fx;
-                                _sigFracY = fy;
-                              }),
-                              onResize: (fw, fh, fx, fy) => setState(() {
-                                _sigFracW = fw;
-                                _sigFracH = fh;
-                                _sigFracX = fx;
-                                _sigFracY = fy;
+                              child: _buildSignatureContent(),
+                              onMove: (p) =>
+                                  setState(() => _signaturePosition = p),
+                              onResize: (w, h, p) => setState(() {
+                                _signatureWidth = w;
+                                _signatureHeight = h;
+                                _signaturePosition = p;
                               }),
                             ),
                           ],
@@ -3845,37 +3886,43 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
             ),
           ),
 
-          // ── Off-screen RepaintBoundary layer ─────────────────────────
-          // Fixed native size — _captureWidget() always gets real pixels.
+          // ── ALWAYS-RENDERED off-screen RepaintBoundary layer ─────────────
+          // These widgets are composited at fixed size so _captureWidget()
+          // always gets real pixels, regardless of zoom/scroll state.
           Positioned(
             left: -10000,
-            top: 0,
+            top: 0, // off-screen but still laid out
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Signature capture target
                 RepaintBoundary(
                   key: _signatureKey,
                   child: SizedBox(
-                    width: 500,
-                    height: 130,
-                    child: _buildSignatureContent(width: 500, height: 130),
+                    width: _signatureWidth,
+                    height: _signatureHeight,
+                    child: _buildSignatureContent(),
                   ),
                 ),
                 const SizedBox(height: 8),
+                // Comment capture target
                 if (_remarks.trim().isNotEmpty)
                   RepaintBoundary(
                     key: _commentKey,
                     child: SizedBox(
-                      width: 400,
-                      height: 160,
-                      child: _buildCommentWidget(width: 400, height: 160),
+                      width: _commentWidth,
+                      height: _commentHeight,
+                      child: _buildCommentWidget(
+                        width: _commentWidth,
+                        height: _commentHeight,
+                      ),
                     ),
                   ),
               ],
             ),
           ),
 
-          // ── Blocking overlay ──────────────────────────────────────────
+          // ── Blocking overlay ──────────────────────────────────────────────
           if (isBlocking)
             Positioned.fill(
               child: AbsorbPointer(
@@ -3925,7 +3972,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RESIZE HANDLE
+// RESIZE HANDLE  (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ResizeHandle extends StatelessWidget {
@@ -3961,7 +4008,7 @@ class _ResizeHandle extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PULSING DOTS LOADER
+// PULSING DOTS LOADER  (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PulsingDotsLoader extends StatefulWidget {

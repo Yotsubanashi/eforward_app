@@ -166,10 +166,19 @@ class _OtpScreenState extends State<OtpScreen> {
         // 👇 Save userData to SharedPreferences so BottomNavigator can restore it
         if (userResult.data != null) {
           await prefs.setString('user_data', jsonEncode(userResult.data));
-        }
 
-        // 👇 Save FCM token to backend for push notifications
-        await FCMTokenService.saveFCMTokenToBackend(accessToken: token);
+          final user = userResult.data!['user'] is Map
+              ? userResult.data!['user']
+              : userResult.data;
+          final userId =
+              user['id']?.toString() ??
+              user['employee_id']?.toString() ??
+              user['employeeId']?.toString();
+
+          if (userId != null) {
+            await FCMTokenService.registerToken(userId);
+          }
+        }
 
         Navigator.pushReplacement(
           context,

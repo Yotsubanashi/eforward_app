@@ -4,10 +4,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/pages/auth/change_password.dart';
 import 'package:eforward_app/pages/auth/login.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
+import 'package:eforward_app/pages/notifications/notification_settings.dart';
 import 'package:eforward_app/services/auth_api.dart';
+import 'package:eforward_app/components/loaders.dart';
 import 'package:eforward_app/services/fcm_token_service.dart';
 import 'package:eforward_app/services/notifications_service.dart';
 import 'package:eforward_app/services/secure_unlock_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -122,11 +125,78 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  void _showSuccessDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFCC0000).withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child:
+                    const Icon(Icons.check, color: Color(0xFFCC0000), size: 32),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                "SUCCESSFUL",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 2,
+                  color: Color(0xFF1A1A1A),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.black54, height: 1.5),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFCC0000),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    "CONTINUE",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showEditProfileSheet() {
     final firstNameController = TextEditingController(text: _firstName);
     final middleNameController = TextEditingController(text: _middleName);
     final lastNameController = TextEditingController(text: _lastName);
     bool isSaving = false;
+    bool isSuccess = false;
 
     showModalBottomSheet(
       context: context,
@@ -136,91 +206,92 @@ class _SettingsPageState extends State<SettingsPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
       ),
       builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => Padding(
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 24,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        builder: (context, setSheetState) => Stack(
+          children: [
+            Padding(
+              padding: EdgeInsets.only(
+                left: 24,
+                right: 24,
+                top: 24,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    "EDIT PROFILE",
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.5,
-                      color: Color(0xFF1A1A1A),
+                  // Header
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "EDIT PROFILE",
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.5,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: const Icon(
+                          Icons.close,
+                          size: 18,
+                          color: Colors.black45,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Initials Avatar
+                  Center(
+                    child: CircleAvatar(
+                      radius: 45,
+                      backgroundColor: Colors.black,
+                      child: Text(
+                        _initials.isNotEmpty ? _initials : '?',
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: 2,
+                        ),
+                      ),
                     ),
                   ),
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: const Icon(
-                      Icons.close,
-                      size: 18,
-                      color: Colors.black45,
-                    ),
-                  ),
-                ],
-              ),
 
-              const SizedBox(height: 24),
+                  const SizedBox(height: 20),
 
-              // Initials Avatar
-              Center(
-                child: CircleAvatar(
-                  radius: 45,
-                  backgroundColor: Colors.black,
-                  child: Text(
-                    _initials.isNotEmpty ? _initials : '?',
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: 2,
-                    ),
-                  ),
-                ),
-              ),
+                  // Editable name fields
+                  _buildSheetField("FIRST NAME", firstNameController),
+                  const SizedBox(height: 16),
+                  _buildSheetField("MIDDLE NAME", middleNameController),
+                  const SizedBox(height: 16),
+                  _buildSheetField("LAST NAME", lastNameController),
+                  const SizedBox(height: 16),
 
-              const SizedBox(height: 20),
+                  // Read-only fields
+                  _buildReadOnlyField("EMAIL ADDRESS", _email),
+                  const SizedBox(height: 16),
+                  _buildReadOnlyField("EMPLOYEE ID", _employeeId),
+                  const SizedBox(height: 16),
+                  _buildReadOnlyField("ROLE", _role),
+                  const SizedBox(height: 28),
 
-              // Editable name fields
-              _buildSheetField("FIRST NAME", firstNameController),
-              const SizedBox(height: 16),
-              _buildSheetField("MIDDLE NAME", middleNameController),
-              const SizedBox(height: 16),
-              _buildSheetField("LAST NAME", lastNameController),
-              const SizedBox(height: 16),
-
-              // Read-only fields
-              _buildReadOnlyField("EMAIL ADDRESS", _email),
-              const SizedBox(height: 16),
-              _buildReadOnlyField("EMPLOYEE ID", _employeeId),
-              const SizedBox(height: 16),
-              _buildReadOnlyField("ROLE", _role),
-              const SizedBox(height: 28),
-
-              // Save button
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
+                  // Save button
+                  Center(
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: () async {
                           final newFirst = firstNameController.text.trim();
                           final newMiddle = middleNameController.text.trim();
                           final newLast = lastNameController.text.trim();
 
-                          setSheetState(() => isSaving = true);
+                          LoadingDialog.show(context, message: "SAVING CHANGES...");
 
                           final prefs = await SharedPreferences.getInstance();
                           final token = prefs.getString('access_token') ?? '';
@@ -230,13 +301,12 @@ class _SettingsPageState extends State<SettingsPage> {
                             token: token,
                             employeeId: _employeeId,
                             fname: newFirst.isNotEmpty ? newFirst : _firstName,
-                            mname: newMiddle.isNotEmpty
-                                ? newMiddle
-                                : _middleName,
+                            mname:
+                                newMiddle.isNotEmpty ? newMiddle : _middleName,
                             lname: newLast.isNotEmpty ? newLast : _lastName,
                           );
 
-                          setSheetState(() => isSaving = false);
+                          if (mounted) LoadingDialog.hide(context);
 
                           if (result.isSuccess) {
                             if (newFirst.isNotEmpty) _firstName = newFirst;
@@ -264,53 +334,52 @@ class _SettingsPageState extends State<SettingsPage> {
                               }
                             }
 
-                            setState(() {});
-                            Navigator.pop(context);
-
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Profile updated successfully.'),
-                                backgroundColor: Color(0xFF2E7D32),
-                              ),
-                            );
+                            if (mounted) {
+                              setState(() {});
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    "Your profile has been updated successfully.",
+                                  ),
+                                  backgroundColor: Color(0xFF2E7D32),
+                                ),
+                              );
+                            }
                           } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(result.message),
-                                backgroundColor: const Color(0xFFCC0000),
-                              ),
-                            );
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(result.message),
+                                  backgroundColor: const Color(0xFFCC0000),
+                                ),
+                              );
+                            }
                           }
                         },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFCC0000),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  child: isSaving
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFCC0000),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
                           ),
-                        )
-                      : const Text(
+                        ),
+                        child: const Text(
                           "SAVE CHANGES",
                           style: TextStyle(
-                            color: Colors.white,
                             fontSize: 13,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 2,
                           ),
                         ),
-                ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -391,9 +460,26 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _logout() async {
     try {
-      await FCMTokenService.clearSavedToken();
-
       final prefs = await SharedPreferences.getInstance();
+      final userDataStr = prefs.getString('user_data');
+
+      if (userDataStr != null) {
+        final userData = jsonDecode(userDataStr);
+        final user = userData['user'] is Map ? userData['user'] : userData;
+        final userId =
+            user['id']?.toString() ??
+            user['employee_id']?.toString() ??
+            user['employeeId']?.toString();
+
+        if (userId != null) {
+          await FCMTokenService.removeToken(userId);
+        }
+      }
+
+      // 2. Sign out from Firebase Auth
+      await FirebaseAuth.instance.signOut();
+
+      // 3. Clear local session
       await prefs.remove('access_token');
       await prefs.remove('refresh_token');
       await prefs.remove('user_data');
@@ -596,6 +682,24 @@ class _SettingsPageState extends State<SettingsPage> {
               onTap: () => _onToggleBiometricUnlock(!_biometricUnlockEnabled),
             ),
 
+            // const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+            // _buildMenuItem(
+            //   context,
+            //   icon: Icons.notifications_active_outlined,
+            //   iconColor: const Color(0xFFCC0000),
+            //   label: "TESTING",
+            //   title: "PUSH NOTIFICATION TEST",
+            //   trailing: const Icon(
+            //     Icons.chevron_right,
+            //     color: Color(0xFFAAAAAA),
+            //     size: 20,
+            //   ),
+            //   onTap: () => Navigator.push(
+            //     context,
+            //     MaterialPageRoute(builder: (_) => const NotificationTestPage()),
+            //   ),
+            // ),
             const Divider(height: 1, color: Color(0xFFEEEEEE)),
 
             // Logout
