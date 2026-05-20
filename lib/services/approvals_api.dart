@@ -506,9 +506,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   Offset _signaturePosition = const Offset(80, 200);
   double _signatureWidth = 200;
   double _signatureHeight = 100;
-  double _viewportWidth = 1;
-  double _viewportHeight = 1;
-  int _currentPage = 0;
 
   @override
   void initState() {
@@ -643,24 +640,32 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       // FormData: remarks, signatureImage, signaturePlacement
       final uri = Uri.parse('${AppEnv.apiBaseUrl}/approvals/$id/approve');
 
+      final viewportW = MediaQuery.sizeOf(context).width;
+      final viewportH = MediaQuery.sizeOf(context).height;
+      final signPage = 1;
+      final signX = viewportW > 0
+          ? (_signaturePosition.dx / viewportW).clamp(0.0, 1.0)
+          : 0.0;
+      final signY = viewportH > 0
+          ? (_signaturePosition.dy / viewportH).clamp(0.0, 1.0)
+          : 0.0;
+      final signW = viewportW > 0
+          ? (_signatureWidth / viewportW).clamp(0.0, 1.0)
+          : 0.0;
+      final signH = viewportH > 0
+          ? (_signatureHeight / viewportH).clamp(0.0, 1.0)
+          : 0.0;
+
       final request = http.MultipartRequest('POST', uri)
         ..headers['Authorization'] = 'Bearer $token'
         ..headers['Accept'] = 'application/json'
         ..fields['remarks'] = ''
         ..fields['signaturePlacement'] = jsonEncode({
-          'sign_page': _currentPage + 1,
-          'sign_x': double.parse(
-            (_signaturePosition.dx / _viewportWidth).toStringAsFixed(4),
-          ),
-          'sign_y': double.parse(
-            (_signaturePosition.dy / _viewportHeight).toStringAsFixed(4),
-          ),
-          'sign_width': double.parse(
-            (_signatureWidth / _viewportWidth).toStringAsFixed(4),
-          ),
-          'sign_height': double.parse(
-            (_signatureHeight / _viewportHeight).toStringAsFixed(4),
-          ),
+          'sign_page': signPage,
+          'sign_x': double.parse(signX.toStringAsFixed(4)),
+          'sign_y': double.parse(signY.toStringAsFixed(4)),
+          'sign_width': double.parse(signW.toStringAsFixed(4)),
+          'sign_height': double.parse(signH.toStringAsFixed(4)),
         });
 
       // Attach signature image bytes if available
@@ -904,8 +909,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                _viewportWidth = constraints.maxWidth;
-                _viewportHeight = constraints.maxHeight;
                 return Stack(
                   children: [
                     // PDF viewer
@@ -918,9 +921,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                         pageFling: false,
                         backgroundColor: Colors.grey.shade200,
                         onError: (e) => debugPrint('PDF error: $e'),
-                        onPageChanged: (page, total) {
-                          _currentPage = page ?? 0;
-                        },
                       ),
                     ),
 
