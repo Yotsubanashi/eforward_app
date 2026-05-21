@@ -42,6 +42,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   bool _isLoadingPdf = false;
   bool _isLoadingDetail = true;
   bool _isLoadingDocumentLinks = false;
+  bool _documentNotFound = false;
   String? _localPdfPath;
   String? _localExcelPath;
   bool _isSubmittingRevision = false;
@@ -524,16 +525,20 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         }
       } else {
         if (mounted) {
-          setState(() => _isLoadingDetail = false);
-          await _loadPdfLocal();
+          setState(() {
+            _isLoadingDetail = false;
+            _isLoadingPdf = false;
+          });
           await _fetchDocumentLinks();
         }
       }
     } catch (e) {
       debugPrint('Approval detail error: $e');
       if (mounted) {
-        setState(() => _isLoadingDetail = false);
-        await _loadPdfLocal();
+        setState(() {
+          _isLoadingDetail = false;
+          _isLoadingPdf = false;
+        });
         await _fetchDocumentLinks();
       }
     }
@@ -585,13 +590,21 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   }
 
   Future<void> _loadPdfFromApi(dynamic detailData) async {
-    setState(() => _isLoadingPdf = true);
+    setState(() {
+      _isLoadingPdf = true;
+      _documentNotFound = false;
+    });
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token') ?? '';
       final fileId = _extractFileId(detailData);
       if (fileId == null || fileId.isEmpty) {
-        await _loadPdfLocal();
+        if (mounted) {
+          setState(() {
+            _isLoadingPdf = false;
+            _documentNotFound = true;
+          });
+        }
         return;
       }
 
@@ -620,11 +633,21 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           });
         }
       } else {
-        await _loadPdfLocal();
+        if (mounted) {
+          setState(() {
+            _isLoadingPdf = false;
+            _documentNotFound = true;
+          });
+        }
       }
     } catch (e) {
       debugPrint('Document fetch error: $e');
-      await _loadPdfLocal();
+      if (mounted) {
+        setState(() {
+          _isLoadingPdf = false;
+          _documentNotFound = true;
+        });
+      }
     }
   }
 
@@ -752,23 +775,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       }
     }
     return null;
-  }
-
-  Future<void> _loadPdfLocal() async {
-    try {
-      final byteData = await rootBundle.load('assets/documents/sample.pdf');
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/sample.pdf');
-      await file.writeAsBytes(byteData.buffer.asUint8List());
-      if (mounted) {
-        setState(() {
-          _localPdfPath = file.path;
-          _isLoadingPdf = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isLoadingPdf = false);
-    }
   }
 
   Future<Directory?> _getDownloadsDirectory() async {
@@ -1689,54 +1695,96 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFCC0000).withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Icon(
-                          Icons.picture_as_pdf_outlined,
+                  if (_isLoadingPdf)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
                           color: Color(0xFFCC0000),
-                          size: 22,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          fileName,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1A1A1A),
-                          ),
-                          softWrap: true,
-                          overflow: TextOverflow.visible,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: _localPdfPath != null ? _openMainDocument : null,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
+                    )
+                  else if (_documentNotFound)
+                    Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
                           decoration: BoxDecoration(
-                            color: _localPdfPath != null
-                                ? const Color(0xFFCC0000)
-                                : Colors.black12,
+                            color: Colors.black12,
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: const Icon(
-                            Icons.visibility_outlined,
-                            color: Colors.white,
-                            size: 16,
+                            Icons.error_outline,
+                            color: Colors.black38,
+                            size: 22,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            "Document Not Found (404)",
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.black38,
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFCC0000).withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Icon(
+                            Icons.picture_as_pdf_outlined,
+                            color: Color(0xFFCC0000),
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            fileName,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1A1A1A),
+                            ),
+                            softWrap: true,
+                            overflow: TextOverflow.visible,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap:
+                              _localPdfPath != null ? _openMainDocument : null,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color:
+                                  _localPdfPath != null
+                                      ? const Color(0xFFCC0000)
+                                      : Colors.black12,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Icon(
+                              Icons.visibility_outlined,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),
@@ -2514,8 +2562,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   // Signature
   double _sigFracX = 0.25;
   double _sigFracY = 0.78;
-  double _sigFracW = 0.60;
-  double _sigFracH = 0.17; // Initial height based on 3.5 ratio (0.6/3.5)
+  double _sigFracW = 0.40;
+  double _sigFracH = 0.11; // Initial height based on 3.5 ratio (0.4/3.5)
   // Comment
   double _cmtFracX = 0.05;
   double _cmtFracY = 0.58;
@@ -2673,26 +2721,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         if (ct.contains('image/') || ct.contains('octet-stream')) {
           final processed = await _removeWhiteBackground(response.bodyBytes);
           if (mounted) {
-          setState(() {
-          _signatureBytes = processed;
-          _isLoadingSignature = false;
-          });
-          _updateSigAspectRatio(processed); // Update ratio
-          _onSignatureLoadingCompleted();
-          }
-          return;
-          }
-          try {
-          final decoded = jsonDecode(response.body);
-          final inner = decoded['data'];
-          if (inner is Map) {
-          final b64 = inner['base64'] as String?;
-          if (b64 != null && b64.isNotEmpty) {
-          final pure = b64.contains(',') ? b64.split(',').last : b64;
-          final processed = await _removeWhiteBackground(
-            base64Decode(pure),
-          );
-          if (mounted) {
             setState(() {
               _signatureBytes = processed;
               _isLoadingSignature = false;
@@ -2701,9 +2729,30 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
             _onSignatureLoadingCompleted();
           }
           return;
+        }
+        try {
+          final decoded = jsonDecode(response.body);
+          final inner = decoded['data'];
+          if (inner is Map) {
+            final b64 = inner['base64'] as String?;
+            if (b64 != null && b64.isNotEmpty) {
+              final pure = b64.contains(',') ? b64.split(',').last : b64;
+              final processed = await _removeWhiteBackground(
+                base64Decode(pure),
+              );
+              if (mounted) {
+                setState(() {
+                  _signatureBytes = processed;
+                  _isLoadingSignature = false;
+                });
+                _updateSigAspectRatio(processed); // Update ratio
+                _onSignatureLoadingCompleted();
+              }
+              return;
+            }
           }
-          }
-          } catch (_) {}      }
+        } catch (_) {}
+      }
       await _loadSignatureLocal(prefs);
     } catch (e) {
       debugPrint('Signature fetch error: $e');
@@ -2795,8 +2844,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       // Reset to default fractions each time signing mode is entered
       _sigFracX = 0.25;
       _sigFracY = 0.78;
-      _sigFracW = 0.60;
-      _sigFracH = 0.10;
+      _sigFracW = 0.40;
+      _sigFracH = 0.11;
       _cmtFracX = 0.05;
       _cmtFracY = 0.58;
       _cmtFracW = 0.55;
@@ -2820,10 +2869,12 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         // We want the overlay to be CENTERED at sceneCenter
         _sigFracX =
             ((sceneCenter.dx - (_sigFracW * _viewportWidth / 2)) /
-                _viewportWidth).clamp(0.0, 1.0 - _sigFracW);
+                    _viewportWidth)
+                .clamp(0.0, 1.0 - _sigFracW);
         _sigFracY =
             ((sceneCenter.dy - (_sigFracH * _viewportHeight / 2)) /
-                _viewportHeight).clamp(0.0, 1.0 - _sigFracH);
+                    _viewportHeight)
+                .clamp(0.0, 1.0 - _sigFracH);
 
         // Move comment relative to signature or to the same spot
         _cmtFracX = _sigFracX;
@@ -3198,33 +3249,46 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         SizedBox(
-          width: w * 0.45,
+          width: w * 0.45, // Responsive width (45% of total width)
           height: h,
           child: Stack(
-            alignment: Alignment.center,
+            alignment: Alignment.center, // Center internally as requested
             children: [
               if (_signatureBytes != null)
                 Image.memory(
                   _signatureBytes!,
                   fit: BoxFit.contain,
                   width: w * 0.45,
+                  height: h,
+                  alignment: Alignment.center,
                 )
               else if (_signatureText != null && _signatureText!.isNotEmpty)
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    _signatureText!,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontStyle: FontStyle.italic,
-                      color: Color(0xFF1A1A1A),
+                SizedBox(
+                  width: w * 0.45,
+                  height: h,
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    alignment: Alignment.center,
+                    child: Text(
+                      _signatureText!,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontStyle: FontStyle.italic,
+                        color: Color(0xFF1A1A1A),
+                      ),
                     ),
                   ),
                 ),
               if (_watermarkBytes != null)
                 Opacity(
                   opacity: 0.15,
-                  child: Image.memory(_watermarkBytes!, fit: BoxFit.contain),
+                  child: Image.memory(
+                    _watermarkBytes!,
+                    fit: BoxFit.contain,
+                    width: w * 0.45,
+                    height: h,
+                    alignment: Alignment.center,
+                  ),
                 ),
             ],
           ),
@@ -3238,7 +3302,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                 width: 0.6,
               ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
             child: FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
@@ -3332,7 +3396,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       maxLines: 1,
       text: TextSpan(
         style: const TextStyle(
-          fontSize: 8,
+          fontSize: 10,
           fontWeight: FontWeight.w600,
           color: Color(0xFF1A1A1A),
           height: 1.1,
@@ -3341,7 +3405,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           TextSpan(text: '$label '),
           TextSpan(
             text: value,
-            style: const TextStyle(fontSize: 9, fontWeight: FontWeight.normal),
+            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.normal),
           ),
         ],
       ),
@@ -3650,8 +3714,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                               pageFling: false,
                               fitPolicy: FitPolicy.BOTH,
                               backgroundColor: Colors.grey.shade200,
-                              onViewCreated:
-                                  (controller) => _pdfController = controller,
+                              onViewCreated: (controller) =>
+                                  _pdfController = controller,
                               onPageChanged: (page, total) {
                                 if (mounted) {
                                   setState(() {
