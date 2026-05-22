@@ -2506,10 +2506,10 @@ class _ExcelFileViewerPageState extends State<ExcelFileViewerPage> {
 // The signature RepaintBoundary is always rendered at these pixel dimensions.
 // The aspect ratio is derived from these — never from the live image size.
 // ─────────────────────────────────────────────────────────────────────────────
-const double _kCaptureWidth = 500.0;
-const double _kCaptureHeight = 130.0;
+const double _kCaptureWidth = 380.0;
+const double _kCaptureHeight = 110.0;
 // True aspect ratio of the signature composite widget (image + metadata Row)
-const double _kSigAspectRatio = _kCaptureWidth / _kCaptureHeight; // ≈ 3.846
+const double _kSigAspectRatio = _kCaptureWidth / _kCaptureHeight; // ≈ 3.454
 
 const double _kCmtCaptureWidth = 400.0;
 const double _kCmtCaptureHeight = 160.0;
@@ -2932,7 +2932,18 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       final dpr = WidgetsBinding.instance.window.devicePixelRatio;
       final ratio = (dpr * 3).clamp(6.0, 12.0);
       final image = await boundary.toImage(pixelRatio: ratio);
-      final bd = await image.toByteData(format: ui.ImageByteFormat.png);
+
+      final recorder = ui.PictureRecorder();
+      final canvas = ui.Canvas(
+        recorder,
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      );
+      canvas.drawColor(Colors.transparent, ui.BlendMode.clear);
+      final paint = ui.Paint()..blendMode = ui.BlendMode.src;
+      canvas.drawImage(image, ui.Offset.zero, paint);
+      final pic = recorder.endRecording();
+      final transparent = await pic.toImage(image.width, image.height);
+      final bd = await transparent.toByteData(format: ui.ImageByteFormat.png);
       return bd?.buffer.asUint8List();
     } catch (e) {
       debugPrint('Capture error: $e');
@@ -3255,9 +3266,9 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         mainAxisSize: MainAxisSize.max, // ← was min, caused overflow
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Signature image — 48% of total width
+          // Signature image — 33% of total width
           Flexible(
-            flex: 48,
+            flex: 33,
             child: SizedBox(
               height: h,
               child: Stack(
@@ -3297,18 +3308,12 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               ),
             ),
           ),
-          // Metadata — 52% of total width
+          // Metadata — 67% of total width
           Flexible(
-            flex: 52,
+            flex: 67,
             child: SizedBox(
               height: h,
               child: Container(
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: const Color(0xFF1B5E20).withOpacity(0.2),
-                    width: 0.6,
-                  ),
-                ),
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: FittedBox(
                   fit: BoxFit.contain,
@@ -3930,9 +3935,10 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               children: [
                 RepaintBoundary(
                   key: _signatureKey,
-                  child: SizedBox(
+                  child: Container(
                     width: _kCaptureWidth,
                     height: _kCaptureHeight,
+                    color: Colors.transparent,
                     child: _buildSignatureContent(
                       width: _kCaptureWidth,
                       height: _kCaptureHeight,
