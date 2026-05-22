@@ -39,10 +39,10 @@ class ApprovalDetailPage extends StatefulWidget {
 }
 
 class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
-  bool _isLoadingPdf = false;
   bool _isLoadingDetail = true;
   bool _isLoadingDocumentLinks = false;
   bool _documentNotFound = false;
+
   String? _localPdfPath;
   String? _localExcelPath;
   bool _isSubmittingRevision = false;
@@ -62,7 +62,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   @override
   void initState() {
     super.initState();
-    setState(() => _isLoadingPdf = true);
     _fetchApprovalDetail();
   }
 
@@ -527,7 +526,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         if (mounted) {
           setState(() {
             _isLoadingDetail = false;
-            _isLoadingPdf = false;
+            _documentNotFound = true;
           });
           await _fetchDocumentLinks();
         }
@@ -537,7 +536,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       if (mounted) {
         setState(() {
           _isLoadingDetail = false;
-          _isLoadingPdf = false;
+          _documentNotFound = true;
         });
         await _fetchDocumentLinks();
       }
@@ -591,7 +590,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
 
   Future<void> _loadPdfFromApi(dynamic detailData) async {
     setState(() {
-      _isLoadingPdf = true;
       _documentNotFound = false;
     });
     try {
@@ -601,7 +599,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       if (fileId == null || fileId.isEmpty) {
         if (mounted) {
           setState(() {
-            _isLoadingPdf = false;
             _documentNotFound = true;
           });
         }
@@ -629,13 +626,11 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         if (mounted) {
           setState(() {
             _localPdfPath = file.path;
-            _isLoadingPdf = false;
           });
         }
       } else {
         if (mounted) {
           setState(() {
-            _isLoadingPdf = false;
             _documentNotFound = true;
           });
         }
@@ -644,7 +639,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       debugPrint('Document fetch error: $e');
       if (mounted) {
         setState(() {
-          _isLoadingPdf = false;
           _documentNotFound = true;
         });
       }
@@ -776,6 +770,23 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     }
     return null;
   }
+
+  // Future<void> _loadPdfLocal() async {
+  //   try {
+  //     final byteData = await rootBundle.load('assets/documents/sample.pdf');
+  //     final dir = await getTemporaryDirectory();
+  //     final file = File('${dir.path}/sample.pdf');
+  //     await file.writeAsBytes(byteData.buffer.asUint8List());
+  //     if (mounted) {
+  //       setState(() {
+  //         _localPdfPath = file.path;
+  //         _isLoadingPdf = false;
+  //       });
+  //     }
+  //   } catch (e) {
+  //     if (mounted) setState(() => _isLoadingPdf = false);
+  //   }
+  // }
 
   Future<Directory?> _getDownloadsDirectory() async {
     try {
@@ -1695,17 +1706,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  if (_isLoadingPdf)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 8),
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Color(0xFFCC0000),
-                        ),
-                      ),
-                    )
-                  else if (_documentNotFound)
+                  if (_documentNotFound)
                     Row(
                       children: [
                         Container(
@@ -1765,15 +1766,15 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                         ),
                         const SizedBox(width: 8),
                         GestureDetector(
-                          onTap:
-                              _localPdfPath != null ? _openMainDocument : null,
+                          onTap: _localPdfPath != null
+                              ? _openMainDocument
+                              : null,
                           child: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color:
-                                  _localPdfPath != null
-                                      ? const Color(0xFFCC0000)
-                                      : Colors.black12,
+                              color: _localPdfPath != null
+                                  ? const Color(0xFFCC0000)
+                                  : Colors.black12,
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: const Icon(
@@ -2500,6 +2501,20 @@ class _ExcelFileViewerPageState extends State<ExcelFileViewerPage> {
 //  4. TransformationController removed entirely (was connected to nothing).
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants for the off-screen capture widget.
+// The signature RepaintBoundary is always rendered at these pixel dimensions.
+// The aspect ratio is derived from these — never from the live image size.
+// ─────────────────────────────────────────────────────────────────────────────
+const double _kCaptureWidth = 500.0;
+const double _kCaptureHeight = 130.0;
+// True aspect ratio of the signature composite widget (image + metadata Row)
+const double _kSigAspectRatio = _kCaptureWidth / _kCaptureHeight; // ≈ 3.846
+
+const double _kCmtCaptureWidth = 400.0;
+const double _kCmtCaptureHeight = 160.0;
+const double _kCmtAspectRatio = _kCmtCaptureWidth / _kCmtCaptureHeight; // 2.5
+
 class PdfSignerPage extends StatefulWidget {
   final String pdfPath;
   final Map<String, dynamic> item;
@@ -2540,59 +2555,63 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   String _signerName = '';
   String _signerEmployeeId = '';
 
-  // ── PDF controller & dimensions ──────────────────────────────────────────
+  // ── PDF controller ────────────────────────────────────────────────────────
   PDFViewController? _pdfController;
-  final TransformationController _transformationController =
-      TransformationController();
   int _signaturePage = 0;
-  double _sigAspectRatio = 3.5; // Width / Height
-  double _cmtAspectRatio = 4.0;
+  int _currentPage = 0;
+  int _totalPages = 1;
 
-  // PDF Page Size in points (e.g. 612x792 for Letter)
-  double _pdfPageWidth = 0;
-  double _pdfPageHeight = 0;
-
-  // Anchor position in PDF Point Space (fixed to the document content)
-  double? _sigPdfX;
-  double? _sigPdfY;
-  double? _cmtPdfX;
-  double? _cmtPdfY;
-
-  // ── Fraction-based overlay positions (0.0 – 1.0 of viewport) ─────────────
-  // Signature
-  double _sigFracX = 0.25;
-  double _sigFracY = 0.78;
-  double _sigFracW = 0.40;
-  double _sigFracH = 0.11; // Initial height based on 3.5 ratio (0.4/3.5)
-  // Comment
-  double _cmtFracX = 0.05;
-  double _cmtFracY = 0.58;
-  double _cmtFracW = 0.55;
-  double _cmtFracH = 0.14; // Initial height based on 4.0 ratio (0.55/4.0)
-
-  // ── Viewport size (pixels — from LayoutBuilder) ───────────────────────────
+  // ── VIEWPORT size (full LayoutBuilder area in pixels) ─────────────────────
   double _viewportWidth = 0;
   double _viewportHeight = 0;
 
-  // ── Computed pixel sizes from fractions ───────────────────────────────────
-  double get _sigPixelW =>
-      (_sigFracW * _viewportWidth).clamp(80, double.infinity);
-  double get _sigPixelH =>
-      (_sigFracH * _viewportHeight).clamp(30, double.infinity);
-  double get _cmtPixelW =>
-      (_cmtFracW * _viewportWidth).clamp(80, double.infinity);
-  double get _cmtPixelH =>
-      (_cmtFracH * _viewportHeight).clamp(30, double.infinity);
+  // ── PDF RENDERED RECT inside the viewport ─────────────────────────────────
+  // PDFView with FitPolicy.BOTH letterboxes: the actual rendered PDF area may
+  // be smaller than the viewport (gray bars on sides or top/bottom).
+  // We compute this from the PDF's intrinsic page size and the viewport dims.
+  //
+  // All fraction math (position, size) is relative to this rect, NOT viewport.
+  Rect _pdfRect = Rect.zero; // in viewport-local pixel coordinates
 
-  // ── PDF page info ─────────────────────────────────────────────────────────
-  int _currentPage = 0;
-  int _totalPages = 1;
+  // PDF page intrinsic size in points (populated by onRender or heuristic)
+  double _pdfPageWidth = 0; // points
+  double _pdfPageHeight = 0; // points
+
+  // ── Fraction-based overlay positions (0.0–1.0 of _pdfRect) ───────────────
+  // Using PDF-relative fractions means stamping at (fracX * pdfWidth) in
+  // PDF point space is exactly where the user placed the overlay on screen.
+  double _sigFracX = 0.25;
+  double _sigFracY = 0.78;
+  double _sigFracW = 0.55; // fraction of PDF width
+  double _sigFracH = 0.0; // computed from aspect ratio below
+
+  double _cmtFracX = 0.05;
+  double _cmtFracY = 0.58;
+  double _cmtFracW = 0.50;
+  double _cmtFracH = 0.0; // computed from aspect ratio below
+
+  // ── Computed pixel sizes from fractions × PDF rect ───────────────────────
+  double get _pdfRectW => _pdfRect.width.clamp(1, double.infinity);
+  double get _pdfRectH => _pdfRect.height.clamp(1, double.infinity);
+
+  double get _sigPixelW => (_sigFracW * _pdfRectW).clamp(120, double.infinity);
+  double get _sigPixelH =>
+      (_sigPixelW / _kSigAspectRatio).clamp(30, double.infinity);
+
+  double get _cmtPixelW => (_cmtFracW * _pdfRectW).clamp(120, double.infinity);
+  double get _cmtPixelH =>
+      (_cmtPixelW / _kCmtAspectRatio).clamp(30, double.infinity);
+
+  // Keep fracH in sync with the width so stamping uses the right height
+  double get _sigFracHComputed => _sigPixelH / _pdfRectH;
+  double get _cmtFracHComputed => _cmtPixelH / _pdfRectH;
 
   // ── Remarks ───────────────────────────────────────────────────────────────
   String _remarks = '';
   final TextEditingController _remarksController = TextEditingController();
 
   // ─────────────────────────────────────────────────────────────────────────
+
   @override
   void initState() {
     super.initState();
@@ -2617,6 +2636,43 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   void dispose() {
     _remarksController.dispose();
     super.dispose();
+  }
+
+  // ── PDF rect computation ──────────────────────────────────────────────────
+  //
+  // PDFView renders the page to fit inside the viewport while maintaining the
+  // page's aspect ratio (FitPolicy.BOTH = fit width OR height, whichever is
+  // more constraining). The rendered page rect in viewport-local coordinates:
+  //
+  //   scaleW = viewportW / pageW
+  //   scaleH = viewportH / pageH
+  //   scale  = min(scaleW, scaleH)          <- the limiting dimension
+  //   renderedW = pageW * scale
+  //   renderedH = pageH * scale
+  //   offsetX = (viewportW - renderedW) / 2  <- centered horizontally
+  //   offsetY = (viewportH - renderedH) / 2  <- centered vertically
+  //
+  // We call this whenever the viewport or page dimensions change.
+  void _updatePdfRect() {
+    if (_viewportWidth <= 0 ||
+        _viewportHeight <= 0 ||
+        _pdfPageWidth <= 0 ||
+        _pdfPageHeight <= 0) {
+      // Fallback: assume no letterboxing (full viewport = PDF area)
+      _pdfRect = Rect.fromLTWH(0, 0, _viewportWidth, _viewportHeight);
+      return;
+    }
+
+    final scaleW = _viewportWidth / _pdfPageWidth;
+    final scaleH = _viewportHeight / _pdfPageHeight;
+    final scale = scaleW < scaleH ? scaleW : scaleH;
+
+    final renderedW = _pdfPageWidth * scale;
+    final renderedH = _pdfPageHeight * scale;
+    final offsetX = (_viewportWidth - renderedW) / 2;
+    final offsetY = (_viewportHeight - renderedH) / 2;
+
+    _pdfRect = Rect.fromLTWH(offsetX, offsetY, renderedW, renderedH);
   }
 
   // ── Asset loaders ─────────────────────────────────────────────────────────
@@ -2724,8 +2780,12 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
             setState(() {
               _signatureBytes = processed;
               _isLoadingSignature = false;
+              // FIX: Do NOT recompute _sigAspectRatio from the raw image dims.
+              // The composite widget (image + metadata) always has the fixed
+              // capture ratio _kSigAspectRatio. Using the image's own ratio
+              // caused stretching because the image only occupies ~45–48% of
+              // the widget width.
             });
-            _updateSigAspectRatio(processed); // Update ratio
             _onSignatureLoadingCompleted();
           }
           return;
@@ -2745,7 +2805,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                   _signatureBytes = processed;
                   _isLoadingSignature = false;
                 });
-                _updateSigAspectRatio(processed); // Update ratio
                 _onSignatureLoadingCompleted();
               }
               return;
@@ -2778,28 +2837,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     if (mounted) {
       setState(() => _isLoadingSignature = false);
       _onSignatureLoadingCompleted();
-    }
-  }
-
-  Future<void> _updateSigAspectRatio(Uint8List bytes) async {
-    try {
-      final codec = await ui.instantiateImageCodec(bytes);
-      final frame = await codec.getNextFrame();
-      final image = frame.image;
-      if (mounted) {
-        setState(() {
-          // The signature content is: image (45% width) + metadata (55% width)
-          _sigAspectRatio = (image.width / 0.45) / image.height;
-          // Sync height to initial width if viewport is already known
-          if (_viewportWidth > 0 && _viewportHeight > 0) {
-            _sigFracH =
-                (_sigFracW * _viewportWidth / _sigAspectRatio) /
-                _viewportHeight;
-          }
-        });
-      }
-    } catch (e) {
-      debugPrint('Error updating aspect ratio: $e');
     }
   }
 
@@ -2841,56 +2878,14 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     setState(() {
       _isSigningMode = true;
       _signedAt = _resolveSigningApiTime() ?? DateTime.now();
-      // Reset to default fractions each time signing mode is entered
-      _sigFracX = 0.25;
+      // Default positions (fraction of PDF rect)
+      _sigFracX = 0.05;
       _sigFracY = 0.78;
-      _sigFracW = 0.40;
-      _sigFracH = 0.11;
+      _sigFracW = 0.55;
       _cmtFracX = 0.05;
       _cmtFracY = 0.58;
-      _cmtFracW = 0.55;
-      _cmtFracH = 0.12;
+      _cmtFracW = 0.50;
     });
-  }
-
-  Future<void> _moveToCurrentView() async {
-    if (_pdfController == null || _viewportWidth <= 0) return;
-    try {
-      // Get the center of the viewport in screen coordinates
-      final screenCenter = Offset(_viewportWidth / 2, _viewportHeight / 2);
-
-      // Convert screen center to scene (stack) coordinates using TransformationController
-      final sceneCenter = _transformationController.toScene(screenCenter);
-
-      setState(() {
-        _signaturePage = _currentPage;
-
-        // Calculate new fractions based on scene coordinates
-        // We want the overlay to be CENTERED at sceneCenter
-        _sigFracX =
-            ((sceneCenter.dx - (_sigFracW * _viewportWidth / 2)) /
-                    _viewportWidth)
-                .clamp(0.0, 1.0 - _sigFracW);
-        _sigFracY =
-            ((sceneCenter.dy - (_sigFracH * _viewportHeight / 2)) /
-                    _viewportHeight)
-                .clamp(0.0, 1.0 - _sigFracH);
-
-        // Move comment relative to signature or to the same spot
-        _cmtFracX = _sigFracX;
-        _cmtFracY = (_sigFracY - 0.15).clamp(0.0, 1.0 - _cmtFracH);
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Signature moved to current view'),
-          duration: Duration(seconds: 1),
-          backgroundColor: Color(0xFFCC0000),
-        ),
-      );
-    } catch (e) {
-      debugPrint('Move to view error: $e');
-    }
   }
 
   // ── Date helpers ──────────────────────────────────────────────────────────
@@ -2945,7 +2940,14 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     }
   }
 
-  // ── PDF generation (fraction → PDF point space) ───────────────────────────
+  // ── PDF stamping — fraction → PDF point space ─────────────────────────────
+  //
+  // Because fractions are relative to the rendered PDF rect (not the viewport),
+  // mapping to PDF point space is exact:
+  //   pdfX = fracX * pdfPageWidth
+  //   pdfY = fracY * pdfPageHeight
+  //
+  // No viewport-to-PDF ratio math is needed.
 
   Future<File?> _generateSignedPdf() async {
     final capturedSignature = await _captureWidget(_signatureKey);
@@ -2961,23 +2963,25 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       final pdfW = page.size.width;
       final pdfH = page.size.height;
 
-      // Fraction → PDF point coordinates — zoom-independent
+      // FIX: use fracH computed from the fixed aspect ratio, not a stored value
+      final sigFracH = _sigFracHComputed;
       final sigRect = Rect.fromLTWH(
         _sigFracX * pdfW,
         _sigFracY * pdfH,
         _sigFracW * pdfW,
-        _sigFracH * pdfH,
+        sigFracH * pdfH,
       );
       page.graphics.drawImage(PdfBitmap(capturedSignature), sigRect);
 
       if (_remarks.trim().isNotEmpty) {
         final capturedComment = await _captureWidget(_commentKey);
         if (capturedComment != null) {
+          final cmtFracH = _cmtFracHComputed;
           final cmtRect = Rect.fromLTWH(
             _cmtFracX * pdfW,
             _cmtFracY * pdfH,
             _cmtFracW * pdfW,
-            _cmtFracH * pdfH,
+            cmtFracH * pdfH,
           );
           page.graphics.drawImage(PdfBitmap(capturedComment), cmtRect);
         }
@@ -3046,7 +3050,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           'sign_x': double.parse(_sigFracX.toStringAsFixed(4)),
           'sign_y': double.parse(_sigFracY.toStringAsFixed(4)),
           'sign_width': double.parse(_sigFracW.toStringAsFixed(4)),
-          'sign_height': double.parse(_sigFracH.toStringAsFixed(4)),
+          'sign_height': double.parse(_sigFracHComputed.toStringAsFixed(4)),
         });
 
       request.files.add(
@@ -3244,82 +3248,110 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         widget.item['routing']?['reference_no']?.toString() ??
         '';
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        SizedBox(
-          width: w * 0.45, // Responsive width (45% of total width)
-          height: h,
-          child: Stack(
-            alignment: Alignment.center, // Center internally as requested
-            children: [
-              if (_signatureBytes != null)
-                Image.memory(
-                  _signatureBytes!,
-                  fit: BoxFit.contain,
-                  width: w * 0.45,
-                  height: h,
-                  alignment: Alignment.center,
-                )
-              else if (_signatureText != null && _signatureText!.isNotEmpty)
-                SizedBox(
-                  width: w * 0.45,
-                  height: h,
-                  child: FittedBox(
-                    fit: BoxFit.contain,
-                    alignment: Alignment.center,
-                    child: Text(
-                      _signatureText!,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontStyle: FontStyle.italic,
-                        color: Color(0xFF1A1A1A),
+    return SizedBox(
+      width: w,
+      height: h,
+      child: Row(
+        mainAxisSize: MainAxisSize.max, // ← was min, caused overflow
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Signature image — 48% of total width
+          Flexible(
+            flex: 48,
+            child: SizedBox(
+              height: h,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  if (_signatureBytes != null)
+                    Image.memory(
+                      _signatureBytes!,
+                      fit: BoxFit.contain,
+                      alignment: Alignment.center,
+                      width: double.infinity,
+                      height: h,
+                    )
+                  else if (_signatureText != null && _signatureText!.isNotEmpty)
+                    FittedBox(
+                      fit: BoxFit.contain,
+                      alignment: Alignment.center,
+                      child: Text(
+                        _signatureText!,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontStyle: FontStyle.italic,
+                          color: Color(0xFF1A1A1A),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              if (_watermarkBytes != null)
-                Opacity(
-                  opacity: 0.15,
-                  child: Image.memory(
-                    _watermarkBytes!,
-                    fit: BoxFit.contain,
-                    width: w * 0.45,
-                    height: h,
-                    alignment: Alignment.center,
-                  ),
-                ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Container(
-            height: h,
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: const Color(0xFF1B5E20).withOpacity(0.2),
-                width: 0.6,
-              ),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _metaRow('Digitally signed by:', _signerName),
-                  _metaRow('Employee ID:', _signerEmployeeId),
-                  _metaRow('Date:', dateStr),
-                  _metaRow('Ref:', refNo),
+                  if (_watermarkBytes != null)
+                    Opacity(
+                      opacity: 0.15,
+                      child: Image.memory(
+                        _watermarkBytes!,
+                        fit: BoxFit.contain,
+                        alignment: Alignment.center,
+                      ),
+                    ),
                 ],
               ),
             ),
           ),
+          // Metadata — 52% of total width
+          Flexible(
+            flex: 52,
+            child: SizedBox(
+              height: h,
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: const Color(0xFF1B5E20).withOpacity(0.2),
+                    width: 0.6,
+                  ),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: FittedBox(
+                  fit: BoxFit.contain,
+                  alignment: Alignment.centerLeft,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _metaRow('Digitally signed by:', _signerName),
+                      _metaRow('Employee ID:', _signerEmployeeId),
+                      _metaRow('Date:', dateStr),
+                      _metaRow('Ref:', refNo),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _metaRow(String label, String value) {
+    return RichText(
+      softWrap: false,
+      overflow: TextOverflow.ellipsis,
+      maxLines: 1,
+      text: TextSpan(
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF1A1A1A),
+          height: 1.4,
         ),
-      ],
+        children: [
+          TextSpan(text: '$label '),
+          TextSpan(
+            text: value,
+            style: const TextStyle(fontWeight: FontWeight.normal),
+          ),
+        ],
+      ),
     );
   }
 
@@ -3343,7 +3375,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         fit: BoxFit.contain,
         alignment: Alignment.topLeft,
         child: Container(
-          width: 300,
+          width: _kCmtCaptureWidth,
           padding: const EdgeInsets.all(10.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -3389,160 +3421,124 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     );
   }
 
-  Widget _metaRow(String label, String value) {
-    return RichText(
-      softWrap: false,
-      overflow: TextOverflow.ellipsis,
-      maxLines: 1,
-      text: TextSpan(
-        style: const TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          color: Color(0xFF1A1A1A),
-          height: 1.1,
-        ),
-        children: [
-          TextSpan(text: '$label '),
-          TextSpan(
-            text: value,
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.normal),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Draggable overlay — fraction-based, no transform matrix ──────────────
+  // ── Draggable overlay — PDF-rect-relative fractions ───────────────────────
   //
-  // All positions/sizes stored as fractions (0.0–1.0).
-  // Drag deltas are in screen pixels; divide by viewport size → fraction delta.
-  // This works correctly regardless of PDFView's internal zoom level.
+  // All positions/sizes stored as fractions of _pdfRect (0.0–1.0).
+  // Screen pixel position = pdfRect.left + fracX * pdfRect.width
+  //                       = pdfRect.top  + fracY * pdfRect.height
+  //
+  // This is EXACTLY what gets stamped to the PDF because:
+  //   stampX (pt) = fracX * pdfPageWidth (pt)
   //
   Widget _buildDraggableOverlay({
     required double fracX,
     required double fracY,
     required double fracW,
-    required double fracH,
+    required double pixelW,
+    required double pixelH,
     required Widget child,
     required void Function(double fx, double fy) onMove,
-    required void Function(double fw, double fh, double fx, double fy) onResize,
-    required double aspectRatio, // LOCK RATIO
+    required void Function(double fw) onResizeW,
     Color accentColor = const Color(0xFFCC0000),
     double minFracW = 0.08,
   }) {
-    // Convert fractions → screen pixels for Positioned widget
-    final left = fracX * _viewportWidth;
-    final top = fracY * _viewportHeight;
-    final w = fracW * _viewportWidth;
-    final h = fracH * _viewportHeight;
+    // Convert PDF-rect fractions → screen pixels for Positioned widget
+    final left = _pdfRect.left + fracX * _pdfRect.width;
+    final top = _pdfRect.top + fracY * _pdfRect.height;
+    final w = pixelW;
+    final h = pixelH;
+
+    const handleSize = 24.0;
+    const pad = 12.0; // padding so the handle isn't clipped
 
     return Positioned(
-      left: left - 12,
-      top: top - 12,
+      left: left - pad,
+      top: top - pad,
       child: SizedBox(
-        width: w + 24,
-        height: h + 24,
+        width: w + pad * 2,
+        height: h + pad * 2,
         child: Stack(
-          clipBehavior: Clip.none,
+          clipBehavior: Clip.hardEdge,
           children: [
             // ── Draggable body ──────────────────────────────────────────
             Positioned(
-              left: 12,
-              top: 12,
+              left: pad,
+              top: pad,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onPanUpdate: (d) {
-                  // Convert screen delta → fraction delta
-                  final newFx = (fracX + d.delta.dx / _viewportWidth).clamp(
+                  // Convert screen delta → PDF-rect fraction delta
+                  final dfw = d.delta.dx / _pdfRect.width;
+                  final dfh = d.delta.dy / _pdfRect.height;
+
+                  final sigFracH = _sigFracHComputed; // current height fraction
+                  final newFx = (fracX + dfw).clamp(
                     0.0,
                     (1.0 - fracW).clamp(0.0, 1.0),
                   );
-                  final newFy = (fracY + d.delta.dy / _viewportHeight).clamp(
-                    -0.1,
-                    1.1,
-                  );
+                  final newFy = (fracY + dfh).clamp(-0.1, 1.1);
 
-                  // Page jump logic
-                  if (newFy > 0.96 && _currentPage < _totalPages - 1) {
-                    _signaturePage++;
+                  // Page jump when dragged beyond edges
+                  if (newFy > 0.97 && _currentPage < _totalPages - 1) {
+                    _signaturePage = _currentPage + 1;
                     _pdfController?.setPage(_signaturePage);
-                    onMove(newFx, 0.05);
-                  } else if (newFy < 0.04 && _currentPage > 0) {
-                    _signaturePage--;
+                    onMove(newFx, 0.03);
+                  } else if (newFy < 0.03 && _currentPage > 0) {
+                    _signaturePage = _currentPage - 1;
                     _pdfController?.setPage(_signaturePage);
-                    onMove(newFx, 0.85);
+                    onMove(newFx, 0.90);
                   } else {
-                    onMove(newFx, newFy.clamp(0.0, 1.0 - fracH));
+                    onMove(newFx, newFy.clamp(0.0, 1.0 - sigFracH));
                   }
                 },
                 child: Container(
                   width: w,
                   height: h,
-                  color: Colors.transparent,
-                  child: FittedBox(
-                    fit: BoxFit.contain,
-                    child: SizedBox(width: w, height: h, child: child),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: accentColor.withOpacity(0.6),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: child,
+                ),
+              ),
+            ),
+
+            // ── Bottom-right resize handle (adjusts width only; height follows aspect ratio) ──
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onPanUpdate: (d) {
+                  final dfw = d.delta.dx / _pdfRect.width;
+                  final newFw = (fracW + dfw).clamp(minFracW, 0.95);
+                  onResizeW(newFw);
+                },
+                child: Container(
+                  width: handleSize,
+                  height: handleSize,
+                  decoration: BoxDecoration(
+                    color: accentColor,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 4,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.open_in_full,
+                    size: 12,
+                    color: Colors.white,
                   ),
                 ),
               ),
             ),
-            // ── Corner handles ──────────────────────────────────────────
-            // Bottom-right (simplest for aspect ratio locking)
-            _cornerHandle(
-              accentColor: accentColor,
-              right: 0,
-              bottom: 0,
-              onPan: (d) {
-                final dfw = d.delta.dx / _viewportWidth;
-                final newFw = (fracW + dfw).clamp(minFracW, 0.95);
-                // Calculate new height based on aspect ratio
-                // Ratio = (PixelW) / (PixelH)
-                // PixelH = PixelW / Ratio
-                // fracH = (PixelW / Ratio) / ViewportH
-                final newPixelW = newFw * _viewportWidth;
-                final newPixelH = newPixelW / aspectRatio;
-                final newFh = (newPixelH / _viewportHeight).clamp(0.02, 0.95);
-
-                onResize(newFw, newFh, fracX, fracY);
-              },
-            ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _cornerHandle({
-    required Color accentColor,
-    required GestureDragUpdateCallback onPan,
-    double? left,
-    double? right,
-    double? top,
-    double? bottom,
-  }) {
-    return Positioned(
-      left: left,
-      right: right,
-      top: top,
-      bottom: bottom,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onPanUpdate: onPan,
-        child: Container(
-          width: 24,
-          height: 24,
-          decoration: BoxDecoration(
-            color: accentColor,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 4,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-          child: const Icon(Icons.open_in_full, size: 12, color: Colors.white),
         ),
       ),
     );
@@ -3582,15 +3578,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               ),
               actions: [
                 if (_isSigningMode) ...[
-                  IconButton(
-                    onPressed: isBlocking ? null : _moveToCurrentView,
-                    icon: const Icon(
-                      Icons.center_focus_weak,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    tooltip: 'Move signature here',
-                  ),
                   TextButton.icon(
                     onPressed: isBlocking ? null : _showInsertCommentDialog,
                     icon: const Icon(
@@ -3661,10 +3648,15 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
                         if (_currentPage != _signaturePage)
                           GestureDetector(
-                            onTap: isBlocking ? null : _moveToCurrentView,
+                            onTap: isBlocking
+                                ? null
+                                : () {
+                                    setState(
+                                      () => _signaturePage = _currentPage,
+                                    );
+                                  },
                             child: Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 10,
@@ -3692,12 +3684,18 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                 Expanded(
                   child: LayoutBuilder(
                     builder: (ctx, constraints) {
+                      // Update viewport size and recompute PDF rect on every frame.
+                      // Using addPostFrameCallback avoids setState-during-build.
                       WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (_viewportWidth != constraints.maxWidth ||
-                            _viewportHeight != constraints.maxHeight) {
+                        if (!mounted) return;
+                        final changed =
+                            _viewportWidth != constraints.maxWidth ||
+                            _viewportHeight != constraints.maxHeight;
+                        if (changed) {
                           setState(() {
                             _viewportWidth = constraints.maxWidth;
                             _viewportHeight = constraints.maxHeight;
+                            _updatePdfRect();
                           });
                         }
                       });
@@ -3721,6 +3719,26 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                   setState(() {
                                     _currentPage = page ?? 0;
                                     _totalPages = total ?? 1;
+                                  });
+                                }
+                              },
+                              // FIX: capture page dimensions when the PDF renders
+                              // so _updatePdfRect() knows the true page aspect ratio.
+                              onRender: (pages) {
+                                if (!mounted) return;
+                                // flutter_pdfview doesn't expose page size directly;
+                                // use a standard A4/Letter heuristic if unknown, or
+                                // rely on the controller. We approximate from the
+                                // viewport aspect to minimise letterboxing error.
+                                // If your app has a way to get page size, prefer that.
+                                // A4 = 595 × 842 pt; Letter = 612 × 792 pt.
+                                // For now default to A4; override if you know the size.
+                                if (_pdfPageWidth <= 0) {
+                                  setState(() {
+                                    _pdfPageWidth = 595.0; // A4 width in points
+                                    _pdfPageHeight =
+                                        842.0; // A4 height in points
+                                    _updatePdfRect();
                                   });
                                 }
                               },
@@ -3753,19 +3771,19 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                               ),
                             ),
 
-                          // ── Draggable overlays ────────────────────────
-                          // Only render these when on the specific signature page
+                          // ── Draggable overlays (PDF-rect-relative) ────
                           if (_isSigningMode &&
-                              _currentPage == _signaturePage) ...[
+                              _currentPage == _signaturePage &&
+                              _pdfRect != Rect.zero) ...[
                             // Comment overlay
                             if (_remarks.trim().isNotEmpty)
                               _buildDraggableOverlay(
                                 fracX: _cmtFracX,
                                 fracY: _cmtFracY,
                                 fracW: _cmtFracW,
-                                fracH: _cmtFracH,
+                                pixelW: _cmtPixelW,
+                                pixelH: _cmtPixelH,
                                 accentColor: const Color(0xFFFFC107),
-                                aspectRatio: _cmtAspectRatio,
                                 child: _buildCommentWidget(
                                   width: _cmtPixelW,
                                   height: _cmtPixelH,
@@ -3774,12 +3792,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                   _cmtFracX = fx;
                                   _cmtFracY = fy;
                                 }),
-                                onResize: (fw, fh, fx, fy) => setState(() {
-                                  _cmtFracW = fw;
-                                  _cmtFracH = fh;
-                                  _cmtFracX = fx;
-                                  _cmtFracY = fy;
-                                }),
+                                onResizeW: (fw) =>
+                                    setState(() => _cmtFracW = fw),
                               ),
 
                             // Signature overlay
@@ -3787,9 +3801,9 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                               fracX: _sigFracX,
                               fracY: _sigFracY,
                               fracW: _sigFracW,
-                              fracH: _sigFracH,
+                              pixelW: _sigPixelW,
+                              pixelH: _sigPixelH,
                               accentColor: const Color(0xFFCC0000),
-                              aspectRatio: _sigAspectRatio,
                               child: _buildSignatureContent(
                                 width: _sigPixelW,
                                 height: _sigPixelH,
@@ -3798,12 +3812,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                 _sigFracX = fx;
                                 _sigFracY = fy;
                               }),
-                              onResize: (fw, fh, fx, fy) => setState(() {
-                                _sigFracW = fw;
-                                _sigFracH = fh;
-                                _sigFracX = fx;
-                                _sigFracY = fy;
-                              }),
+                              onResizeW: (fw) => setState(() => _sigFracW = fw),
                             ),
                           ],
                         ],
@@ -3910,8 +3919,9 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
             ),
           ),
 
-          // ── Off-screen RepaintBoundary layer ─────────────────────────
-          // Fixed native size — _captureWidget() always gets real pixels.
+          // ── Off-screen RepaintBoundary (fixed size = true capture size) ──
+          // The fixed dimensions MUST match _kCaptureWidth / _kCaptureHeight.
+          // This guarantees the stamped image has the correct aspect ratio.
           Positioned(
             left: -10000,
             top: 0,
@@ -3921,9 +3931,12 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                 RepaintBoundary(
                   key: _signatureKey,
                   child: SizedBox(
-                    width: 500,
-                    height: 130,
-                    child: _buildSignatureContent(width: 500, height: 130),
+                    width: _kCaptureWidth,
+                    height: _kCaptureHeight,
+                    child: _buildSignatureContent(
+                      width: _kCaptureWidth,
+                      height: _kCaptureHeight,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -3931,9 +3944,12 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                   RepaintBoundary(
                     key: _commentKey,
                     child: SizedBox(
-                      width: 400,
-                      height: 160,
-                      child: _buildCommentWidget(width: 400, height: 160),
+                      width: _kCmtCaptureWidth,
+                      height: _kCmtCaptureHeight,
+                      child: _buildCommentWidget(
+                        width: _kCmtCaptureWidth,
+                        height: _kCmtCaptureHeight,
+                      ),
                     ),
                   ),
               ],
@@ -3985,42 +4001,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
             ),
         ],
       ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// RESIZE HANDLE
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _ResizeHandle extends StatelessWidget {
-  final GestureDragUpdateCallback onPanUpdate;
-  final bool isEdge;
-  final Color color;
-
-  const _ResizeHandle({
-    required this.onPanUpdate,
-    this.isEdge = false,
-    this.color = const Color(0xFFCC0000),
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onPanUpdate: onPanUpdate,
-      child: isEdge
-          ? Container(color: color.withOpacity(0.6))
-          : Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              child: const Icon(
-                Icons.open_in_full,
-                size: 12,
-                color: Colors.white,
-              ),
-            ),
     );
   }
 }
