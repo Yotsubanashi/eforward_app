@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../config/app_env.dart';
 import '../../services/auth_api.dart';
 import '../../services/fcm_token_service.dart';
 import '../../services/secure_unlock_service.dart';
@@ -23,6 +24,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
+  // For the "two APKs" approach, branding is env-driven (fixed per build).
+  Map<String, String> _branding = AppEnv.defaultBranding;
+
   @override
   void initState() {
     super.initState();
@@ -43,6 +47,20 @@ class _LoginScreenState extends State<LoginScreen> {
     _rememberMe
         ? await prefs.setString('saved_email', email)
         : await prefs.remove('saved_email');
+  }
+
+  bool _isEmailAllowedForCurrentBrand(String email) {
+    final normalizedEmail = email.toLowerCase().trim();
+    final activeBrand = AppEnv.appBrand.toUpperCase().trim();
+
+    switch (activeBrand) {
+      case 'ARDENT':
+        return normalizedEmail.endsWith('@ardentnetworks.com.ph');
+      case 'VERSATECH':
+        return normalizedEmail.endsWith('@versatech.com.ph');
+      default:
+        return true;
+    }
   }
 
   String? _extractAccountStatus(Map<String, dynamic>? data) {
@@ -92,6 +110,16 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    if (!_isEmailAllowedForCurrentBrand(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No user found.'),
+          backgroundColor: Color(0xFFCC0000),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     final result = await _authApi.login(email: email, password: password);
@@ -113,23 +141,15 @@ class _LoginScreenState extends State<LoginScreen> {
         'BLOCKED',
       };
 
-      // Only block logins for clearly-inactive/disabled statuses.
-      // If the backend doesn't return a status (or returns a new/unknown one),
-      // we should not lock users out client-side.
       if (status != null && inactiveStatuses.contains(status)) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Your account is inactive. Please contact support.'),
+            content:
+                Text('Your account is inactive. Please contact support.'),
             backgroundColor: Color(0xFFCC0000),
           ),
         );
         return;
-      }
-
-      // If status is present and not recognized as active, still allow login
-      // (avoid client-side lockout), but keep the status available in logs.
-      if (status != null && !activeStatuses.contains(status)) {
-        debugPrint('Unrecognized account status during login: $status');
       }
 
       _saveRememberMe(email);
@@ -221,7 +241,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     children: [
                       Image.asset(
-                        'assets/ardent-logo-with-powering-innovation-8.webp',
+                        _branding['logo']!,
                         width: 280,
                         height: 120,
                         fit: BoxFit.contain,
@@ -235,10 +255,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         },
                       ),
                       const SizedBox(height: 15),
-                      const Text(
-                        "E-FORWARD",
+                      Text(
+                        _branding['name']!,
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 17,
                           color: Colors.black,
                           fontWeight: FontWeight.w900,
@@ -328,7 +348,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ? null
                             : (val) =>
                                   setState(() => _rememberMe = val ?? false),
-                        activeColor: const Color(0xFFCC0000),
+                        activeColor: Color(0xFFCC0000),
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         side: const BorderSide(
                           color: Colors.black38,

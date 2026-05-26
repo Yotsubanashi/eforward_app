@@ -22,7 +22,12 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: '.env');
+  // Loads the correct env file based on build-time define.
+  // Example:
+  //   flutter build apk --release --dart-define=DOTENV_FILE=.env.ardent
+  //   flutter build apk --release --dart-define=DOTENV_FILE=.env.versa
+  const dotenvFile = String.fromEnvironment('DOTENV_FILE', defaultValue: '.env');
+  await dotenv.load(fileName: dotenvFile);
 
   // 1. Init Firebase first
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);

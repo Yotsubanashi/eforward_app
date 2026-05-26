@@ -2679,7 +2679,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 
   Future<void> _loadWatermark() async {
     try {
-      final bd = await rootBundle.load('assets/images/eforward_watermark.png');
+      final bd = await rootBundle.load(AppEnv.watermarkAsset);
       if (mounted) setState(() => _watermarkBytes = bd.buffer.asUint8List());
     } catch (e) {
       debugPrint('Watermark load error: $e');

@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/components/bottom_navigator.dart';
 import 'package:eforward_app/components/loaders.dart';
+import '../../config/app_env.dart';
 import '../../services/auth_api.dart';
 
 // ─── Signature Painter ────────────────────────────────────────────────────────
@@ -156,7 +157,7 @@ class _ViewSignPageState extends State<ViewSignPage>
   Future<void> _loadWatermark() async {
     try {
       final byteData = await rootBundle.load(
-        'assets/images/eforward_watermark.png',
+        AppEnv.watermarkAsset,
       );
       if (mounted) {
         setState(() {
@@ -895,7 +896,7 @@ class _ViewSignPageState extends State<ViewSignPage>
                     opacity: 0.08,
                     child: Center(
                       child: Image.asset(
-                        'assets/images/eforward_watermark.png',
+                        AppEnv.watermarkAsset,
                         fit: BoxFit.contain,
                         width: 180,
                         height: 180,
