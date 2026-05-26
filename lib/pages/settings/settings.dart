@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/pages/auth/change_password.dart';
 import 'package:eforward_app/pages/auth/login.dart';
@@ -142,8 +143,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   color: const Color(0xFFCC0000).withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child:
-                    const Icon(Icons.check, color: Color(0xFFCC0000), size: 32),
+                child: const Icon(
+                  Icons.check,
+                  color: Color(0xFFCC0000),
+                  size: 32,
+                ),
               ),
               const SizedBox(height: 24),
               const Text(
@@ -291,7 +295,10 @@ class _SettingsPageState extends State<SettingsPage> {
                           final newMiddle = middleNameController.text.trim();
                           final newLast = lastNameController.text.trim();
 
-                          LoadingDialog.show(context, message: "SAVING CHANGES...");
+                          LoadingDialog.show(
+                            context,
+                            message: "SAVING CHANGES...",
+                          );
 
                           final prefs = await SharedPreferences.getInstance();
                           final token = prefs.getString('access_token') ?? '';
@@ -301,8 +308,9 @@ class _SettingsPageState extends State<SettingsPage> {
                             token: token,
                             employeeId: _employeeId,
                             fname: newFirst.isNotEmpty ? newFirst : _firstName,
-                            mname:
-                                newMiddle.isNotEmpty ? newMiddle : _middleName,
+                            mname: newMiddle.isNotEmpty
+                                ? newMiddle
+                                : _middleName,
                             lname: newLast.isNotEmpty ? newLast : _lastName,
                           );
 
@@ -467,7 +475,7 @@ class _SettingsPageState extends State<SettingsPage> {
         // 1. Specifically remove FCM token from database
         await FCMTokenService.removeToken(userId);
       }
-          
+
       // 2. Call Auth API logout for full session cleanup (includes clearing local prefs)
       await AuthApi().logout();
 
@@ -708,6 +716,29 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
 
             const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Align(
+                alignment: Alignment.center,
+                child: FutureBuilder(
+                  future: PackageInfo.fromPlatform(),
+                  builder: (context, snapshot) {
+                    final version = snapshot.hasData
+                        ? 'Version ${snapshot.data!.version}'
+                        : 'Loading...';
+                    return Text(
+                      version,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFFAAAAAA),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
           ],
         ),
       ),
