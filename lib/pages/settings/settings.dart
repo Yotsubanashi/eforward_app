@@ -461,32 +461,23 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _logout() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final userDataStr = prefs.getString('user_data');
+      final String? userId = prefs.getString('employee_id');
 
-      if (userDataStr != null) {
-        final userData = jsonDecode(userDataStr);
-        final user = userData['user'] is Map ? userData['user'] : userData;
-        final userId =
-            user['id']?.toString() ??
-            user['employee_id']?.toString() ??
-            user['employeeId']?.toString();
-
-        if (userId != null) {
-          await FCMTokenService.removeToken(userId);
-        }
+      if (userId != null && userId.isNotEmpty) {
+        // 1. Specifically remove FCM token from database
+        await FCMTokenService.removeToken(userId);
       }
+          
+      // 2. Call Auth API logout for full session cleanup (includes clearing local prefs)
+      await AuthApi().logout();
 
-      // 2. Sign out from Firebase Auth
+      // 3. Sign out from Firebase Auth
       await FirebaseAuth.instance.signOut();
 
-      // 3. Clear local session
-      await prefs.remove('access_token');
-      await prefs.remove('refresh_token');
-      await prefs.remove('user_data');
-
+      // 4. Reset notifications
       NotificationsService().reset();
 
-      debugPrint('✅ Logout successful - FCM token cleared');
+      debugPrint('✅ Logout successful - FCM token and local session cleared');
 
       if (mounted) {
         Navigator.pushReplacement(
@@ -496,10 +487,13 @@ class _SettingsPageState extends State<SettingsPage> {
       }
     } catch (e) {
       debugPrint('❌ Logout error: $e');
+      // If error occurs, still try to clear session and redirect
+      await AuthApi().clearSession();
       if (mounted) {
-        ScaffoldMessenger.of(
+        Navigator.pushReplacement(
           context,
-        ).showSnackBar(SnackBar(content: Text('Logout error: $e')));
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
       }
     }
   }

@@ -157,6 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
                          user['employeeId']?.toString();
           
           if (userId != null) {
+            await prefs.setString('employee_id', userId);
             await FCMTokenService.registerToken(userId);
           }
         }

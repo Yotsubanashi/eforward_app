@@ -17,7 +17,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
 # If backend says latest is 1.0.0, set this lower:
-version: 2.1.1+15
+version: 2.1.2+16
 environment:
   sdk: ^3.10.7
 
@@ -94,6 +94,8 @@ flutter:
     - assets/logo_full.svg
     - assets/eforward-logo.png
     - assets/ardent-logo-with-powering-innovation-8.webp
+    - assets/versa-logo.png
+    - assets/images/versa-watermarks.png
 
 
   # To add assets to your application, add an assets section, like this:

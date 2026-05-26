@@ -26,6 +26,9 @@ class FCMTokenService {
         return;
       }
 
+      // Cache token locally for logout cleanup
+      await prefs.setString('fcm_token_cached', token);
+
       final deviceInfo = await _getDeviceInfo();
       
       // JSON Payload na match sa SQL Columns natin
@@ -71,7 +74,20 @@ class FCMTokenService {
       final accessToken = prefs.getString('access_token') ?? '';
 
       String? token = await _messaging.getToken();
+      token ??= prefs.getString('fcm_token_cached');
+
       if (token != null) {
+        final deviceInfo = await _getDeviceInfo();
+        
+        // Match the registration payload for identification
+        final Map<String, dynamic> payload = {
+          'employee_id': employeeId,
+          'fcm_token': token,
+          'device_id': deviceInfo['deviceId'],
+          'device_model': deviceInfo['deviceModel'],
+          'platform': Platform.isIOS ? 'ios' : 'android',
+        };
+
         // I-delete lang ang entry na match ang employee_id AT fcm_token
         final response = await http.delete(
           Uri.parse('$_baseUrl/users/fcm-token'),
@@ -80,10 +96,7 @@ class FCMTokenService {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
           },
-          body: jsonEncode({
-            'employee_id': employeeId,
-            'fcm_token': token,
-          }),
+          body: jsonEncode(payload),
         );
 
         if (response.statusCode >= 200 && response.statusCode < 300) {

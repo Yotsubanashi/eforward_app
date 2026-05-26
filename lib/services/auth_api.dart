@@ -49,25 +49,27 @@ class AuthApi {
 
   Future<AuthLoginResult> logout() async {
     final prefs = await SharedPreferences.getInstance();
-    
+    final String accessToken = prefs.getString('access_token') ?? '';
+
     // Get employee_id from storage directly or parse from user_data
     String? employeeId = prefs.getString('employee_id');
-    if (employeeId == null) {
+    if (employeeId == null || employeeId.isEmpty) {
       final userDataStr = prefs.getString('user_data');
       if (userDataStr != null) {
         try {
           final userData = jsonDecode(userDataStr);
           final user = userData['user'] is Map ? userData['user'] : userData;
-          employeeId = user['id']?.toString() ?? 
-                       user['employee_id']?.toString() ?? 
-                       user['employeeId']?.toString();
+          employeeId =
+              user['id']?.toString() ??
+              user['employee_id']?.toString() ??
+              user['employeeId']?.toString();
         } catch (e) {
           debugPrint('Error parsing user_data for logout: $e');
         }
       }
     }
 
-    final String? fcmToken = prefs.getString('fcm_token_cached');
+    String? fcmToken = prefs.getString('fcm_token_cached');
     final deviceInfo = await _getDeviceInfo();
 
     final Map<String, dynamic> payload = {
@@ -80,12 +82,48 @@ class AuthApi {
 
     debugPrint('Sending logout payload: ${jsonEncode(payload)}');
 
-    return _post(
-      endpoint: '/auth/logout',
-      body: payload,
-      successMessage: 'Logout successful.',
-      failureMessage: 'Logout failed.',
-    );
+    final uri = Uri.parse('$baseUrl/auth/logout');
+    try {
+      final response = await _client.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+        body: jsonEncode(payload),
+      );
+
+      final dynamic decodedBody =
+          response.body.isNotEmpty ? jsonDecode(response.body) : null;
+
+      // Always clear local session even if backend call fails
+      await clearSession();
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return AuthLoginResult(
+          isSuccess: true,
+          statusCode: response.statusCode,
+          message: _extractMessage(decodedBody) ?? 'Logout successful.',
+          data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+        );
+      }
+
+      return AuthLoginResult(
+        isSuccess: false,
+        statusCode: response.statusCode,
+        message: _extractMessage(decodedBody) ?? 'Logout failed.',
+        data: decodedBody is Map<String, dynamic> ? decodedBody : null,
+      );
+    } catch (error) {
+      // Still clear local session on error
+      await clearSession();
+      return AuthLoginResult(
+        isSuccess: false,
+        statusCode: 0,
+        message: 'Network error: $error',
+      );
+    }
   }
 
   Future<Map<String, String>> _getDeviceInfo() async {
@@ -212,6 +250,9 @@ class AuthApi {
     await prefs.remove('access_token');
     await prefs.remove('refresh_token');
     await prefs.remove('user_data');
+    await prefs.remove('employee_id');
+    await prefs.remove('fcm_token_cached');
+    debugPrint('🧹 Local session and FCM cache cleared');
   }
 
   Future<AuthLoginResult> resendOtp({required String email}) async {
