@@ -20,60 +20,49 @@ class AppVersionInfo {
   final Uri downloadUrl;
 }
 
-/// Compares `versionName` + `buildNumber` (the `+build` in pubspec).
-/// NOTE: For your current requirement we ignore `+build` and compare ONLY
-/// `major.minor.patch` (versionName).
+/// Compares semver only (e.g. `3.1.2`). Build numbers are ignored.
 class AppComparableVersion implements Comparable<AppComparableVersion> {
   const AppComparableVersion({
     required this.major,
     required this.minor,
     required this.patch,
-    required this.build,
   });
 
   final int major;
   final int minor;
   final int patch;
-  final int build;
 
   static AppComparableVersion? tryParse(String input) {
     final trimmed = input.trim();
     if (trimmed.isEmpty) return null;
 
+    // Only semver-style strings are supported (e.g. 3.1.2, v3.1.2, 3.1.2+17).
+    if (RegExp(r'^\d+$').hasMatch(trimmed)) return null;
+
     final normalized =
         trimmed.startsWith('v') || trimmed.startsWith('V') ? trimmed.substring(1) : trimmed;
-    final plusParts = normalized.split('+');
-    final coreParts = plusParts.first.split('.');
-    if (coreParts.length < 3) return null;
 
-    final major = int.tryParse(coreParts[0]);
-    final minor = int.tryParse(coreParts[1]);
-    final patch = int.tryParse(coreParts[2]);
-    if (major == null || minor == null || patch == null) return null;
+    // Drop any +build suffix — comparison uses major.minor.patch only.
+    final core = normalized.split('+').first;
+    final parts = core.split('.');
 
-    // Ignored for comparison.
-    const build = 0;
+    if (parts.isEmpty || parts.length < 2) return null;
 
     return AppComparableVersion(
-      major: major,
-      minor: minor,
-      patch: patch,
-      build: build,
+      major: _extractLeadingInt(parts[0]),
+      minor: parts.length > 1 ? _extractLeadingInt(parts[1]) : 0,
+      patch: parts.length > 2 ? _extractLeadingInt(parts[2]) : 0,
     );
   }
 
-  static AppComparableVersion fromVersionNameAndBuildNumber({
-    required String versionName,
-    required String buildNumber,
-  }) {
-    final v = versionName.trim();
-    // buildNumber is intentionally ignored.
-    return AppComparableVersion(
-      major: int.parse(v.split('.')[0]),
-      minor: int.parse(v.split('.')[1]),
-      patch: int.parse(v.split('.')[2]),
-      build: 0,
-    );
+  static int _extractLeadingInt(String s) {
+    final match = RegExp(r'^\d+').firstMatch(s.trim());
+    if (match == null) return 0;
+    return int.tryParse(match.group(0)!) ?? 0;
+  }
+
+  static AppComparableVersion? fromVersionName(String versionName) {
+    return tryParse(versionName);
   }
 
   @override
@@ -92,7 +81,7 @@ class AppComparableVersion implements Comparable<AppComparableVersion> {
   bool operator ==(Object other) =>
       other is AppComparableVersion && compareTo(other) == 0;
   @override
-  int get hashCode => Object.hash(major, minor, patch, build);
+  int get hashCode => Object.hash(major, minor, patch);
 
   @override
   String toString() => '$major.$minor.$patch';
@@ -105,6 +94,14 @@ class AppVersionService {
 
   static Uri get _defaultVersionEndpoint =>
       Uri.parse('${AppEnv.apiBaseUrl}/app/version');
+
+  /// Returns true when [installed] is older than [latest] from the backend.
+  static bool isUpdateRequired(
+    AppComparableVersion installed,
+    AppComparableVersion latest,
+  ) {
+    return installed < latest;
+  }
 
   Future<AppVersionInfo?> fetchLatestVersion({
     Uri? endpoint,
@@ -155,8 +152,8 @@ class AppVersionService {
       final info = await PackageInfo.fromPlatform();
       final v = info.version.trim();
       if (v.isEmpty) return null;
-      // Compare ONLY the versionName; ignore buildNumber for dialog display.
-      return AppComparableVersion.tryParse(v.split('+').first);
+
+      return AppComparableVersion.fromVersionName(v);
     } catch (e) {
       debugPrint('getInstalledVersion failed: $e');
       return null;
@@ -192,12 +189,15 @@ class AppVersionService {
   }
 }
 
-Future<void> showForceUpdateDialog({
+/// Shows the force-update dialog. Returns `true` if the user tapped "Update Now".
+Future<bool> showForceUpdateDialog({
   required BuildContext context,
   required AppVersionInfo remote,
   required AppComparableVersion current,
   required String? packageName,
 }) async {
+  var updateInitiated = false;
+
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
@@ -219,6 +219,8 @@ Future<void> showForceUpdateDialog({
                   final svc = AppVersionService();
                   final ok = await svc.launchDownload(remote.downloadUrl);
                   svc.dispose();
+                  if (!dialogContext.mounted) return;
+
                   if (!ok) {
                     final messenger = ScaffoldMessenger.maybeOf(dialogContext);
                     messenger?.showSnackBar(
@@ -228,7 +230,11 @@ Future<void> showForceUpdateDialog({
                         ),
                       ),
                     );
+                    return;
                   }
+
+                  updateInitiated = true;
+                  Navigator.of(dialogContext).pop();
                 } catch (e) {
                   debugPrint('Update launch failed: $e');
                 }
@@ -240,5 +246,6 @@ Future<void> showForceUpdateDialog({
       );
     },
   );
-}
 
+  return updateInitiated;
+}

@@ -51,58 +51,152 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final _appLinks = AppLinks();
   late final Future<bool> _hasSessionFuture = _hasSavedSession();
-  bool _versionGateShown = false;
-  bool _versionGateScheduled = false;
+  bool _versionUpToDate = false;
+  bool _versionDialogVisible = false;
+  bool _versionCheckInProgress = false;
+  bool _initialVersionCheckScheduled = false;
+  DateTime? _lastVersionPromptAt;
+  DateTime? _suppressVersionPromptUntil;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initDeepLinks();
   }
 
-  void _scheduleVersionGateAfterHome() {
-    if (_versionGateScheduled || _versionGateShown) return;
-    _versionGateScheduled = true;
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _recheckVersionAfterResume();
+    }
+  }
+
+  void _scheduleInitialVersionCheck() {
+    if (_initialVersionCheckScheduled || _versionUpToDate) return;
+    _initialVersionCheckScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _enforceLatestVersionIfNeeded();
     });
   }
 
-  Future<void> _enforceLatestVersionIfNeeded() async {
-    if (_versionGateShown) return;
+  Future<void> _enforceLatestVersionIfNeeded({bool fromResume = false}) async {
+    if (_versionUpToDate || _versionDialogVisible || _versionCheckInProgress) {
+      return;
+    }
 
+    final now = DateTime.now();
+    final suppressPrompt = _suppressVersionPromptUntil != null &&
+        now.isBefore(_suppressVersionPromptUntil!);
+
+    if (fromResume && _lastVersionPromptAt != null && !suppressPrompt) {
+      final elapsed = now.difference(_lastVersionPromptAt!);
+      if (elapsed < const Duration(seconds: 30)) return;
+    }
+
+    _versionCheckInProgress = true;
     final svc = AppVersionService();
     try {
       final current = await svc.getInstalledVersion();
       final remote = await svc.fetchLatestVersion();
+      
+      debugPrint('[VersionCheck] Current: $current, Latest: ${remote?.latestVersion}');
+
       if (!mounted || current == null || remote == null) return;
 
-      if (current < remote.latestVersion) {
-        _versionGateShown = true;
-        final pkg = await svc.getPackageName();
+      if (!AppVersionService.isUpdateRequired(current, remote.latestVersion)) {
+        debugPrint('[VersionCheck] App is up to date');
+        _versionUpToDate = true;
+        _suppressVersionPromptUntil = null;
+        return;
+      }
+
+      if (suppressPrompt) {
+        debugPrint('[VersionCheck] Still outdated but prompt suppressed');
+        return;
+      }
+
+      debugPrint('[VersionCheck] Update required: $current < ${remote.latestVersion}');
+
+      final pkg = await svc.getPackageName();
+      if (!mounted) return;
+
+      BuildContext? dialogContext = navigatorKey.currentState?.overlay?.context;
+      if (dialogContext == null) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
         if (!mounted) return;
-        final dialogContext = navigatorKey.currentState?.overlay?.context;
-        if (dialogContext == null) {
-          _versionGateShown = false;
-          _versionGateScheduled = false;
-          return;
-        }
-        await showForceUpdateDialog(
-          context: dialogContext,
-          remote: remote,
-          current: current,
-          packageName: pkg,
-        );
+        dialogContext = navigatorKey.currentState?.overlay?.context;
+      }
+      if (dialogContext == null) {
+        debugPrint('[VersionCheck] Navigator context not available, will retry on resume');
+        return;
+      }
+
+      _versionDialogVisible = true;
+      _lastVersionPromptAt = DateTime.now();
+
+      final updateInitiated = await showForceUpdateDialog(
+        context: dialogContext,
+        remote: remote,
+        current: current,
+        packageName: pkg,
+      );
+
+      if (!mounted) return;
+
+      _versionDialogVisible = false;
+
+      // Re-fetch latest from API in case it changed, then re-read installed version.
+      final remoteAfter = await svc.fetchLatestVersion();
+      final latest = remoteAfter?.latestVersion ?? remote.latestVersion;
+      final currentAfter = await svc.getInstalledVersion();
+
+      if (currentAfter != null &&
+          !AppVersionService.isUpdateRequired(currentAfter, latest)) {
+        debugPrint('[VersionCheck] Update completed, app is now up to date');
+        _versionUpToDate = true;
+        _suppressVersionPromptUntil = null;
+        return;
+      }
+
+      // User opened the download link — avoid re-prompt loop while they install.
+      if (updateInitiated) {
+        _suppressVersionPromptUntil = DateTime.now().add(const Duration(minutes: 3));
+        debugPrint('[VersionCheck] Update started, suppressing prompt for 3 minutes');
       }
     } catch (e) {
       debugPrint('Version gate failed: $e');
+      _versionDialogVisible = false;
     } finally {
+      _versionCheckInProgress = false;
       svc.dispose();
     }
+  }
+
+  Future<void> _recheckVersionAfterResume() async {
+    if (_versionUpToDate || _versionDialogVisible || _versionCheckInProgress) {
+      return;
+    }
+
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    if (!mounted ||
+        _versionUpToDate ||
+        _versionDialogVisible ||
+        _versionCheckInProgress) {
+      return;
+    }
+
+    await _enforceLatestVersionIfNeeded(fromResume: true);
   }
 
   void _initDeepLinks() {
@@ -213,11 +307,11 @@ class _MyAppState extends State<MyApp> {
           }
 
           if (snapshot.data == true) {
-            _scheduleVersionGateAfterHome();
+            _scheduleInitialVersionCheck();
             return const DashboardPage();
           }
 
-          _scheduleVersionGateAfterHome();
+          _scheduleInitialVersionCheck();
           return const LoginScreen();
         },
       ),
