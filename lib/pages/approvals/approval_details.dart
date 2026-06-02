@@ -1181,9 +1181,10 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   DateTime? _parseApiDate(String raw) {
     if (raw.trim().isEmpty || raw == 'null') return null;
     try {
-      var normalized = raw.trim();
-      normalized = normalized.replaceFirst(RegExp(r'(Z|[+-]\d{2}:\d{2})$'), '');
-      return DateTime.parse(normalized);
+      // Parse with the timezone intact (Z / +08:00) and convert to the
+      // device's local time. Stripping the suffix treated UTC timestamps as
+      // local, which shifted the displayed time by the UTC offset.
+      return DateTime.parse(raw.trim()).toLocal();
     } catch (_) {
       return null;
     }
@@ -2625,7 +2626,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           setState(() {
-            _signedAt = _resolveSigningApiTime() ?? DateTime.now();
+            _signedAt = DateTime.now();
           });
         }
       });
@@ -2877,7 +2878,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     }
     setState(() {
       _isSigningMode = true;
-      _signedAt = _resolveSigningApiTime() ?? DateTime.now();
+      _signedAt = DateTime.now();
       // Default positions (fraction of PDF rect)
       _sigFracX = 0.05;
       _sigFracY = 0.78;
@@ -3247,13 +3248,19 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     final w = width ?? _sigPixelW;
     final h = height ?? _sigPixelH;
 
-    final now = _signedAt ?? DateTime.now();
+    // Force Philippine time (UTC+8) so the stamp matches the view-sign page
+    // regardless of the device's local timezone.
+    final now = (_signedAt ?? DateTime.now()).toUtc().add(
+      const Duration(hours: 8),
+    );
+    final hour = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
+    final amPm = now.hour >= 12 ? 'PM' : 'AM';
     final dateStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-'
         '${now.day.toString().padLeft(2, '0')} '
-        '${now.hour.toString().padLeft(2, '0')}:'
+        '${hour.toString().padLeft(2, '0')}:'
         '${now.minute.toString().padLeft(2, '0')}:'
-        '${now.second.toString().padLeft(2, '0')}';
+        '${now.second.toString().padLeft(2, '0')} $amPm';
     final refNo =
         widget.item['referenceNo']?.toString() ??
         widget.item['routing']?['reference_no']?.toString() ??
