@@ -17,7 +17,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
 # If backend says latest is 1.0.0, set this lower:
-version: 3.1.4+19
+version: 3.1.5+20
 environment:
   sdk: ^3.10.7
 
@@ -84,6 +84,12 @@ flutter_launcher_icons:
 
 # The following section is specific to Flutter packages.
 flutter:
+  # Some plugins (permission_handler_apple, open_file_ios,
+  # flutter_local_notifications) don't yet support Swift Package Manager,
+  # so keep this project on CocoaPods to avoid the SPM warnings/errors.
+  config:
+    enable-swift-package-manager: false
+
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

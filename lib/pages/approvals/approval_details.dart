@@ -553,6 +553,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     final routingId = _getRoutingId();
     if (routingId.isEmpty) return;
 
+    if (!mounted) return;
     setState(() => _isLoadingDocumentLinks = true);
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -589,6 +590,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   }
 
   Future<void> _loadPdfFromApi(dynamic detailData) async {
+    if (!mounted) return;
     setState(() {
       _documentNotFound = false;
     });
@@ -2508,13 +2510,26 @@ class _ExcelFileViewerPageState extends State<ExcelFileViewerPage> {
 // The aspect ratio is derived from these — never from the live image size.
 // ─────────────────────────────────────────────────────────────────────────────
 const double _kCaptureWidth = 380.0;
-const double _kCaptureHeight = 110.0;
+// Tighter height → the content (signature + 4 metadata lines) fills the box
+// instead of floating with big top/bottom gaps. Lower height = less whitespace
+// and visually larger text/signature for the same width.
+const double _kCaptureHeight = 84.0;
 // True aspect ratio of the signature composite widget (image + metadata Row)
-const double _kSigAspectRatio = _kCaptureWidth / _kCaptureHeight; // ≈ 3.454
+const double _kSigAspectRatio = _kCaptureWidth / _kCaptureHeight; // ≈ 4.52
 
 const double _kCmtCaptureWidth = 400.0;
 const double _kCmtCaptureHeight = 160.0;
 const double _kCmtAspectRatio = _kCmtCaptureWidth / _kCmtCaptureHeight; // 2.5
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Minimum overlay width as a fraction of the PDF page width.
+// The signature block (image + name / employee id / date metadata) must stay
+// large enough to remain legible when the PDF is PRINTED. 0.30 of an A4 page
+// (595 pt) ≈ 178 pt ≈ 2.5 inches wide — the smallest size at which the metadata
+// text is still readable on paper. Users can shrink down to this, no further.
+// ─────────────────────────────────────────────────────────────────────────────
+const double _kMinSigFracW = 0.40;
+const double _kMinCmtFracW = 0.35;
 
 class PdfSignerPage extends StatefulWidget {
   final String pdfPath;
@@ -2574,16 +2589,24 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   // All fraction math (position, size) is relative to this rect, NOT viewport.
   Rect _pdfRect = Rect.zero; // in viewport-local pixel coordinates
 
-  // PDF page intrinsic size in points (populated by onRender or heuristic)
+  // PDF page intrinsic size in points (the size used for the CURRENT page).
+  // These MUST match the real Syncfusion page.size used during stamping,
+  // otherwise the on-screen overlay rect and the stamped rect have different
+  // aspect ratios and the signature lands in the wrong place / wrong size.
   double _pdfPageWidth = 0; // points
   double _pdfPageHeight = 0; // points
+
+  // Real intrinsic size (in points) of every page, read once from the PDF via
+  // Syncfusion. Used so _pdfRect is computed from the TRUE page geometry
+  // instead of a hardcoded A4 guess.
+  List<Size>? _pdfPageSizes;
 
   // ── Fraction-based overlay positions (0.0–1.0 of _pdfRect) ───────────────
   // Using PDF-relative fractions means stamping at (fracX * pdfWidth) in
   // PDF point space is exactly where the user placed the overlay on screen.
   double _sigFracX = 0.25;
   double _sigFracY = 0.78;
-  double _sigFracW = 0.55; // fraction of PDF width
+  double _sigFracW = 0.70; // fraction of PDF width
   double _sigFracH = 0.0; // computed from aspect ratio below
 
   double _cmtFracX = 0.05;
@@ -2595,17 +2618,25 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   double get _pdfRectW => _pdfRect.width.clamp(1, double.infinity);
   double get _pdfRectH => _pdfRect.height.clamp(1, double.infinity);
 
-  double get _sigPixelW => (_sigFracW * _pdfRectW).clamp(120, double.infinity);
-  double get _sigPixelH =>
-      (_sigPixelW / _kSigAspectRatio).clamp(30, double.infinity);
+  // On-screen width = exact fraction of the rendered PDF rect (WYSIWYG): the
+  // preview is the same size as what gets stamped. The minimum size is enforced
+  // by _kMinSigFracW during resize, so no display-side inflation is needed.
+  double get _sigPixelW => (_sigFracW * _pdfRectW).clamp(1, double.infinity);
+  // Height ALWAYS follows the fixed capture aspect ratio — no independent clamp,
+  // so the on-screen overlay is never stretched relative to what gets stamped.
+  double get _sigPixelH => _sigPixelW / _kSigAspectRatio;
 
-  double get _cmtPixelW => (_cmtFracW * _pdfRectW).clamp(120, double.infinity);
-  double get _cmtPixelH =>
-      (_cmtPixelW / _kCmtAspectRatio).clamp(30, double.infinity);
+  double get _cmtPixelW => (_cmtFracW * _pdfRectW).clamp(1, double.infinity);
+  double get _cmtPixelH => _cmtPixelW / _kCmtAspectRatio;
 
-  // Keep fracH in sync with the width so stamping uses the right height
-  double get _sigFracHComputed => _sigPixelH / _pdfRectH;
-  double get _cmtFracHComputed => _cmtPixelH / _pdfRectH;
+  // Height fraction (of the PDF page) derived directly from the width fraction
+  // and the fixed aspect ratio. Because _pdfRect is a uniform scale of the real
+  // page, this preserves the signature's aspect ratio exactly when stamped —
+  // independent of any display-side min-size clamps.
+  double get _sigFracHComputed =>
+      (_sigFracW * _pdfRectW) / (_kSigAspectRatio * _pdfRectH);
+  double get _cmtFracHComputed =>
+      (_cmtFracW * _pdfRectW) / (_kCmtAspectRatio * _pdfRectH);
 
   // ── Remarks ───────────────────────────────────────────────────────────────
   String _remarks = '';
@@ -2620,6 +2651,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     _loadSignatureFromApi();
     _loadUserInfo();
     _loadWatermark();
+    _loadPdfPageSizes(); // read TRUE page dimensions for accurate placement
 
     if (widget.initialSigningMode) {
       _isSigningMode = true;
@@ -2654,6 +2686,41 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   //   offsetY = (viewportH - renderedH) / 2  <- centered vertically
   //
   // We call this whenever the viewport or page dimensions change.
+  // Read the TRUE intrinsic size (in points) of every page directly from the
+  // PDF using Syncfusion — the same engine used for stamping. This guarantees
+  // the on-screen overlay rect (_pdfRect) and the stamped rect share the exact
+  // same page geometry, so what the user places is what gets stamped.
+  Future<void> _loadPdfPageSizes() async {
+    try {
+      final bytes = await File(widget.pdfPath).readAsBytes();
+      final doc = PdfDocument(inputBytes: bytes);
+      final sizes = <Size>[];
+      for (int i = 0; i < doc.pages.count; i++) {
+        final s = doc.pages[i].size;
+        sizes.add(Size(s.width, s.height));
+      }
+      doc.dispose();
+      if (!mounted) return;
+      setState(() {
+        _pdfPageSizes = sizes;
+        _applyCurrentPageSize();
+        _updatePdfRect();
+      });
+    } catch (e) {
+      debugPrint('Failed to read PDF page sizes: $e');
+    }
+  }
+
+  // Point _pdfPageWidth/_pdfPageHeight at the size of the page currently shown,
+  // so multi-page PDFs with mixed page sizes still place the signature exactly.
+  void _applyCurrentPageSize() {
+    final sizes = _pdfPageSizes;
+    if (sizes == null || sizes.isEmpty) return;
+    final idx = _currentPage.clamp(0, sizes.length - 1);
+    _pdfPageWidth = sizes[idx].width;
+    _pdfPageHeight = sizes[idx].height;
+  }
+
   void _updatePdfRect() {
     if (_viewportWidth <= 0 ||
         _viewportHeight <= 0 ||
@@ -2882,10 +2949,10 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       // Default positions (fraction of PDF rect)
       _sigFracX = 0.05;
       _sigFracY = 0.78;
-      _sigFracW = 0.55;
+      _sigFracW = 0.70; // start larger
       _cmtFracX = 0.05;
       _cmtFracY = 0.58;
-      _cmtFracW = 0.50;
+      _cmtFracW = 0.55;
     });
   }
 
@@ -3253,7 +3320,9 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     final now = (_signedAt ?? DateTime.now()).toUtc().add(
       const Duration(hours: 8),
     );
-    final hour = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
+    final hour = now.hour > 12
+        ? now.hour - 12
+        : (now.hour == 0 ? 12 : now.hour);
     final amPm = now.hour >= 12 ? 'PM' : 'AM';
     final dateStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-'
@@ -3273,9 +3342,9 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         mainAxisSize: MainAxisSize.max, // ← was min, caused overflow
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Signature image — 33% of total width
+          // Signature image — 36% of total width
           Flexible(
-            flex: 33,
+            flex: 36,
             child: SizedBox(
               height: h,
               child: Stack(
@@ -3315,13 +3384,13 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               ),
             ),
           ),
-          // Metadata — 67% of total width
+          // Metadata — 64% of total width
           Flexible(
-            flex: 67,
+            flex: 64,
             child: SizedBox(
               height: h,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
+                padding: EdgeInsets.zero,
                 child: FittedBox(
                   fit: BoxFit.contain,
                   alignment: Alignment.centerLeft,
@@ -3731,25 +3800,25 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                   setState(() {
                                     _currentPage = page ?? 0;
                                     _totalPages = total ?? 1;
+                                    // Re-point page dims at the new page so the
+                                    // overlay rect matches what gets stamped.
+                                    _applyCurrentPageSize();
+                                    _updatePdfRect();
                                   });
                                 }
                               },
-                              // FIX: capture page dimensions when the PDF renders
-                              // so _updatePdfRect() knows the true page aspect ratio.
+                              // Use the TRUE page dimensions (read via Syncfusion)
+                              // so _updatePdfRect() knows the real page aspect
+                              // ratio. This is what makes the placed signature
+                              // land exactly where the user dropped it.
                               onRender: (pages) {
                                 if (!mounted) return;
-                                // flutter_pdfview doesn't expose page size directly;
-                                // use a standard A4/Letter heuristic if unknown, or
-                                // rely on the controller. We approximate from the
-                                // viewport aspect to minimise letterboxing error.
-                                // If your app has a way to get page size, prefer that.
-                                // A4 = 595 × 842 pt; Letter = 612 × 792 pt.
-                                // For now default to A4; override if you know the size.
-                                if (_pdfPageWidth <= 0) {
+                                if (_pdfPageSizes == null) {
+                                  // Real sizes not read yet — kick it off.
+                                  _loadPdfPageSizes();
+                                } else if (_pdfPageWidth <= 0) {
                                   setState(() {
-                                    _pdfPageWidth = 595.0; // A4 width in points
-                                    _pdfPageHeight =
-                                        842.0; // A4 height in points
+                                    _applyCurrentPageSize();
                                     _updatePdfRect();
                                   });
                                 }
@@ -3796,6 +3865,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                 pixelW: _cmtPixelW,
                                 pixelH: _cmtPixelH,
                                 accentColor: const Color(0xFFFFC107),
+                                minFracW: _kMinCmtFracW,
                                 child: _buildCommentWidget(
                                   width: _cmtPixelW,
                                   height: _cmtPixelH,
@@ -3816,6 +3886,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                               pixelW: _sigPixelW,
                               pixelH: _sigPixelH,
                               accentColor: const Color(0xFFCC0000),
+                              minFracW: _kMinSigFracW,
                               child: _buildSignatureContent(
                                 width: _sigPixelW,
                                 height: _sigPixelH,
