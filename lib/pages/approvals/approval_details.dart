@@ -2582,9 +2582,10 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   double _viewportHeight = 0;
 
   // ── PDF RENDERED RECT inside the viewport ─────────────────────────────────
-  // PDFView with FitPolicy.BOTH letterboxes: the actual rendered PDF area may
-  // be smaller than the viewport (gray bars on sides or top/bottom).
-  // We compute this from the PDF's intrinsic page size and the viewport dims.
+  // PDFView with FitPolicy.WIDTH fills the viewport width; the rendered PDF
+  // height follows the page aspect ratio (gray bars top/bottom when the page is
+  // shorter than the viewport). We compute this rect from the PDF's intrinsic
+  // page size and the viewport dims.
   //
   // All fraction math (position, size) is relative to this rect, NOT viewport.
   Rect _pdfRect = Rect.zero; // in viewport-local pixel coordinates
@@ -2673,17 +2674,15 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 
   // ── PDF rect computation ──────────────────────────────────────────────────
   //
-  // PDFView renders the page to fit inside the viewport while maintaining the
-  // page's aspect ratio (FitPolicy.BOTH = fit width OR height, whichever is
-  // more constraining). The rendered page rect in viewport-local coordinates:
+  // PDFView (FitPolicy.WIDTH) scales the page to fill the viewport width while
+  // maintaining the page's aspect ratio. The rendered page rect in
+  // viewport-local coordinates:
   //
-  //   scaleW = viewportW / pageW
-  //   scaleH = viewportH / pageH
-  //   scale  = min(scaleW, scaleH)          <- the limiting dimension
-  //   renderedW = pageW * scale
-  //   renderedH = pageH * scale
-  //   offsetX = (viewportW - renderedW) / 2  <- centered horizontally
-  //   offsetY = (viewportH - renderedH) / 2  <- centered vertically
+  //   scaleW    = viewportW / pageW
+  //   renderedW = viewportW                 <- fills the width
+  //   renderedH = pageH * scaleW
+  //   offsetX   = 0
+  //   offsetY   = centered when shorter than viewport, else 0 (top-pinned)
   //
   // We call this whenever the viewport or page dimensions change.
   // Read the TRUE intrinsic size (in points) of every page directly from the
@@ -2731,14 +2730,21 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       return;
     }
 
+    // Matches PDFView's FitPolicy.WIDTH: the page is scaled to fill the
+    // viewport width, so the document renders as large as possible. Height
+    // follows the page aspect ratio. For typical portrait forms the result is
+    // still shorter than the viewport (whole page visible, no scrolling), so
+    // the overlay rect maps 1:1 to what gets stamped.
     final scaleW = _viewportWidth / _pdfPageWidth;
-    final scaleH = _viewportHeight / _pdfPageHeight;
-    final scale = scaleW < scaleH ? scaleW : scaleH;
 
-    final renderedW = _pdfPageWidth * scale;
-    final renderedH = _pdfPageHeight * scale;
-    final offsetX = (_viewportWidth - renderedW) / 2;
-    final offsetY = (_viewportHeight - renderedH) / 2;
+    final renderedW = _viewportWidth;
+    final renderedH = _pdfPageHeight * scaleW;
+    const offsetX = 0.0;
+    // Center vertically only when the page is shorter than the viewport;
+    // otherwise pin to the top (PDFView scrolls down from the top edge).
+    final offsetY = renderedH < _viewportHeight
+        ? (_viewportHeight - renderedH) / 2
+        : 0.0;
 
     _pdfRect = Rect.fromLTWH(offsetX, offsetY, renderedW, renderedH);
   }
@@ -3791,7 +3797,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                               swipeHorizontal: false,
                               autoSpacing: false,
                               pageFling: false,
-                              fitPolicy: FitPolicy.BOTH,
+                              fitPolicy: FitPolicy.WIDTH,
                               backgroundColor: Colors.grey.shade200,
                               onViewCreated: (controller) =>
                                   _pdfController = controller,

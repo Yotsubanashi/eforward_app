@@ -1,6 +1,6 @@
-plugins {
-    id("com.google.gms.google-services") version "4.4.0" apply false
-}
+// NOTE: The google-services plugin is declared once in settings.gradle.kts
+// (FlutterFire configuration). Re-declaring it here with a version caused a
+// "plugin is already on the classpath with a different version" build failure.
 
 allprojects {
     repositories {
