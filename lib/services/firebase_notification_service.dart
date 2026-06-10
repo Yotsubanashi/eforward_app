@@ -6,10 +6,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:eforward_app/firebase_options.dart';
 import 'package:eforward_app/services/notifications_service.dart';
-import 'package:eforward_app/services/fcm_token_service.dart';
 import 'package:eforward_app/pages/approvals/approval_details.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,7 +32,26 @@ final FlutterLocalNotificationsPlugin flutterLocalNotifications =
 // ─────────────────────────────────────────────────────────────────────────────
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // flutter_local_notifications is a fresh instance in this background isolate —
+  // it must be initialized here before calling show().
+  await flutterLocalNotifications.initialize(
+    const InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      iOS: DarwinInitializationSettings(),
+    ),
+  );
+
+  // Ensure the Android channel exists in this isolate (idempotent).
+  if (Platform.isAndroid) {
+    await flutterLocalNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.createNotificationChannel(kApprovalChannel);
+  }
+
   debugPrint('🔔 [BG] ${message.notification?.title} | data=${message.data}');
   await FirebaseNotificationService.showLocalNotification(message);
 }
