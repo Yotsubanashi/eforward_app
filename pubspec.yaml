@@ -52,7 +52,7 @@ dependencies:
   syncfusion_flutter_pdf: ^33.1.47
   http_parser: ^4.0.2
   flutter_local_notifications: ^17.2.4
-  app_links: ^7.1.1   # ← ADD THIS
+  app_links: ^6.3.2   # pinned to 6.x: 7.x needs Dart >=3.12 (current Flutter ships 3.11.4)
   flutter_svg: ^2.2.4
   excel: ^4.0.6
   spreadsheet_decoder: ^2.2.0
