@@ -3795,7 +3795,12 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                               filePath: widget.pdfPath,
                               enableSwipe: true,
                               swipeHorizontal: false,
-                              autoSpacing: false,
+                              // iOS: flutter_pdfview ignores fitPolicy and ties
+                              // PDFKit's autoScales to this flag. In continuous
+                              // (enableSwipe) mode, autoScales fits the page to
+                              // width — which matches our width-based _pdfRect.
+                              // Android honors fitPolicy, so keep it false there.
+                              autoSpacing: Platform.isIOS,
                               pageFling: false,
                               fitPolicy: FitPolicy.WIDTH,
                               backgroundColor: Colors.grey.shade200,
