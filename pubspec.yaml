@@ -33,15 +33,15 @@ dependencies:
   shared_preferences: ^2.5.5
   image_picker: ^1.0.7
   flutter_pdfview: ^1.3.2
-  file_picker: ^10.3.10
-  intl: ^0.19.0
+  file_picker: ^12.0.0-beta.5
+  intl: ^0.20.2
   http: ^1.2.2
   path_provider: ^2.1.2
-  firebase_core: ^3.15.2
-  firebase_messaging: ^15.0.2
-  firebase_auth: ^5.5.1
-  cloud_firestore: ^5.6.3
-  device_info_plus: ^11.5.0
+  firebase_core: ^4.10.0
+  firebase_messaging: ^16.3.0
+  firebase_auth: ^6.5.2
+  cloud_firestore: ^6.5.0
+  device_info_plus: ^13.1.0
   permission_handler: ^12.0.1
   open_file: ^3.5.10
   flutter_dotenv: ^6.0.1
@@ -51,13 +51,13 @@ dependencies:
   cupertino_icons: ^1.0.8
   syncfusion_flutter_pdf: ^33.1.47
   http_parser: ^4.0.2
-  flutter_local_notifications: ^18.0.1
-  app_links: ^6.3.2   # ← ADD THIS
+  flutter_local_notifications: ^17.2.4
+  app_links: ^7.1.1   # ← ADD THIS
   flutter_svg: ^2.2.4
   excel: ^4.0.6
   spreadsheet_decoder: ^2.2.0
-  local_auth: ^2.3.0
-  package_info_plus: ^9.0.1
+  local_auth: ^2.1.8
+  package_info_plus: ^10.1.0
   pub_semver: ^2.2.0
   url_launcher: ^6.3.2
   android_intent_plus: ^6.0.0
