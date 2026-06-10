@@ -12,10 +12,14 @@ import 'package:eforward_app/services/notifications_service.dart';
 import 'package:eforward_app/pages/approvals/approval_details.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Module-level plugin + channel so the background isolate can reach them.
+// Android-only: module-level plugin + channel so the background isolate
+// can reach them. On iOS, Firebase is the sole UNUserNotificationCenterDelegate
+// and handles display natively — flutter_local_notifications must NOT be
+// initialized on iOS because its initialize() call replaces Firebase's
+// UNUserNotificationCenterDelegate, which silently breaks all iOS notifications.
 // ─────────────────────────────────────────────────────────────────────────────
 const AndroidNotificationChannel kApprovalChannel = AndroidNotificationChannel(
-  'eforward_approvals', // ← must match AndroidManifest meta-data value
+  'eforward_approvals', // must match AndroidManifest meta-data value
   'E-Forward Approvals',
   description: 'Approval and document routing notifications',
   importance: Importance.max,
@@ -27,30 +31,30 @@ final FlutterLocalNotificationsPlugin flutterLocalNotifications =
     FlutterLocalNotificationsPlugin();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ✅ TOP-LEVEL background handler — MUST be outside any class.
+// TOP-LEVEL background handler — MUST be outside any class.
 // Firebase invokes this in a separate Dart isolate when the app is killed.
 // ─────────────────────────────────────────────────────────────────────────────
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // flutter_local_notifications is a fresh instance in this background isolate —
-  // it must be initialized here before calling show().
+  // On iOS, APNs already displayed the notification; nothing to do here.
+  if (Platform.isIOS) return;
+
+  // Android: flutter_local_notifications is a fresh instance in this background
+  // isolate — initialize it before calling show().
   await flutterLocalNotifications.initialize(
     const InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      iOS: DarwinInitializationSettings(),
     ),
   );
 
   // Ensure the Android channel exists in this isolate (idempotent).
-  if (Platform.isAndroid) {
-    await flutterLocalNotifications
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.createNotificationChannel(kApprovalChannel);
-  }
+  await flutterLocalNotifications
+      .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin
+      >()
+      ?.createNotificationChannel(kApprovalChannel);
 
   debugPrint('🔔 [BG] ${message.notification?.title} | data=${message.data}');
   await FirebaseNotificationService.showLocalNotification(message);
@@ -77,25 +81,28 @@ class FirebaseNotificationService {
       // Firebase already initialised in main() — guard against double-init
       if (Firebase.apps.isEmpty) await Firebase.initializeApp();
 
-      // 1. OS permissions
+      // 1. OS permissions + iOS foreground presentation options
       await _requestPermissions();
 
-      // 2. Android notification channel
-      await _createAndroidChannel();
+      // 2. Android: notification channel + flutter_local_notifications
+      //    iOS: skipped — initializing flutter_local_notifications on iOS
+      //    replaces Firebase's UNUserNotificationCenterDelegate, which
+      //    silently breaks setForegroundNotificationPresentationOptions.
+      if (Platform.isAndroid) {
+        await _createAndroidChannel();
+        await _initLocalNotifications();
+      }
 
-      // 3. flutter_local_notifications
-      await _initLocalNotifications();
-
-      // 4. ✅ Register the TOP-LEVEL background handler
+      // 3. Register the TOP-LEVEL background handler
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-      // 5. Foreground messages
+      // 4. Foreground messages
       FirebaseMessaging.onMessage.listen(_onForegroundMessage);
 
-      // 6. Tap while app is backgrounded (resumed)
+      // 5. Tap while app is backgrounded (resumed)
       FirebaseMessaging.onMessageOpenedApp.listen(_onNotificationTap);
 
-      // 7. Tap while app was TERMINATED
+      // 6. Tap while app was TERMINATED
       final initial = await FirebaseMessaging.instance.getInitialMessage();
       if (initial != null) {
         debugPrint('📬 Launched from terminated state via notification');
@@ -126,6 +133,9 @@ class FirebaseNotificationService {
     }
 
     if (Platform.isIOS) {
+      // Tell Firebase to display the notification banner even when the app is
+      // open. This only works when Firebase IS the UNUserNotificationCenterDelegate,
+      // which is why we must NOT call flutterLocalNotifications.initialize() on iOS.
       await FirebaseMessaging.instance
           .setForegroundNotificationPresentationOptions(
             alert: true,
@@ -137,7 +147,6 @@ class FirebaseNotificationService {
 
   // ── Android channel ───────────────────────────────────────────────────────
   Future<void> _createAndroidChannel() async {
-    if (!Platform.isAndroid) return;
     await flutterLocalNotifications
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
@@ -148,16 +157,11 @@ class FirebaseNotificationService {
     );
   }
 
-  // ── flutter_local_notifications ───────────────────────────────────────────
+  // ── flutter_local_notifications (Android only) ────────────────────────────
   Future<void> _initLocalNotifications() async {
     await flutterLocalNotifications.initialize(
       const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-        iOS: DarwinInitializationSettings(
-          requestAlertPermission: false,
-          requestBadgePermission: false,
-          requestSoundPermission: false,
-        ),
       ),
       onDidReceiveNotificationResponse: (response) {
         debugPrint('👆 Local notif tapped — payload: ${response.payload}');
@@ -166,9 +170,12 @@ class FirebaseNotificationService {
     );
   }
 
-  // ── Show system-tray notification ─────────────────────────────────────────
-  /// Static so the top-level background handler can call it without an instance.
+  // ── Show system-tray notification (Android only) ─────────────────────────
+  /// On iOS Firebase displays the notification natively via APNs.
+  /// This method is only called on Android (foreground + background isolate).
   static Future<void> showLocalNotification(RemoteMessage message) async {
+    if (Platform.isIOS) return;
+
     final title =
         message.notification?.title ?? message.data['title'] ?? 'E-Forward';
     final body =
@@ -193,11 +200,6 @@ class FirebaseNotificationService {
           playSound: true,
           enableVibration: true,
         ),
-        iOS: const DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-        ),
       ),
       payload: payload,
     );
@@ -207,8 +209,10 @@ class FirebaseNotificationService {
   static Future<void> _onForegroundMessage(RemoteMessage message) async {
     debugPrint('📨 [FG] ${message.notification?.title}');
 
-    // Show system heads-up notification (FCM does NOT do this automatically
-    // when the app is open on Android)
+    // Android: FCM does NOT auto-show notifications when the app is in the
+    // foreground, so we show them manually.
+    // iOS: setForegroundNotificationPresentationOptions already handles this;
+    // showLocalNotification is a no-op on iOS.
     await showLocalNotification(message);
 
     // Update badge counter
