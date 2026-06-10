@@ -57,47 +57,111 @@ class _DashboardPageState extends State<DashboardPage> {
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Enable Biometric Security'),
-          content: const Text(
-            'You can protect app access using fingerprint/biometric with device PIN fallback. Enable it now?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('LATER'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final success =
-                    await SecureUnlockService.authenticateAfterLogin();
-                if (success) {
-                  await SecureUnlockService.setEnabled(true);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Biometric/PIN unlock enabled.'),
-                        backgroundColor: Color(0xFF2E7D32),
+        return Dialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCC0000).withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.fingerprint,
+                    color: Color(0xFFCC0000),
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  "ENABLE BIOMETRIC UNLOCK",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.5,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  "Protect app access with your fingerprint, Face ID, or device PIN. You can change this anytime in Settings.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.black54, height: 1.5),
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final success =
+                          await SecureUnlockService.authenticateAfterLogin();
+                      if (success) {
+                        await SecureUnlockService.setEnabled(true);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Biometric/PIN unlock enabled.'),
+                              backgroundColor: Color(0xFF2E7D32),
+                            ),
+                          );
+                        }
+                      } else if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Unable to enable biometric unlock right now.',
+                            ),
+                            backgroundColor: Color(0xFFCC0000),
+                          ),
+                        );
+                      }
+                      if (Navigator.of(dialogContext).canPop()) {
+                        Navigator.of(dialogContext).pop();
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFCC0000),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
                       ),
-                    );
-                  }
-                } else if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Unable to enable biometric unlock right now.',
-                      ),
-                      backgroundColor: Color(0xFFCC0000),
+                      elevation: 0,
                     ),
-                  );
-                }
-                if (Navigator.of(dialogContext).canPop()) {
-                  Navigator.of(dialogContext).pop();
-                }
-              },
-              child: const Text('ENABLE NOW'),
+                    child: const Text(
+                      "ENABLE NOW",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text(
+                      "MAYBE LATER",
+                      style: TextStyle(
+                        color: Colors.black54,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
