@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show Factory;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
@@ -3793,6 +3795,23 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                           Positioned.fill(
                             child: PDFView(
                               filePath: widget.pdfPath,
+                              // iOS: a plain UiKitView withholds touches until
+                              // Flutter's gesture arena resolves, which starves
+                              // PDFKit's native pinch-zoom recognizer — so the
+                              // PDF can't be zoomed. Claiming the gesture eagerly
+                              // lets PDFKit handle pinch/pan directly.
+                              //
+                              // Only do this in VIEW mode. In signing mode the
+                              // signature overlay is positioned relative to the
+                              // (un-zoomed) fit-to-width page, so the PDF must
+                              // stay locked — leave gestures to Flutter there.
+                              gestureRecognizers: _isSigningMode
+                                  ? null
+                                  : <Factory<OneSequenceGestureRecognizer>>{
+                                      Factory<OneSequenceGestureRecognizer>(
+                                        () => EagerGestureRecognizer(),
+                                      ),
+                                    },
                               enableSwipe: true,
                               swipeHorizontal: false,
                               // iOS: flutter_pdfview ignores fitPolicy and ties
