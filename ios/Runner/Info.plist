@@ -45,7 +45,18 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-	
+
+	<!-- 🔔 Push Notifications: allow the app to process FCM data messages while in the background -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
+
+	<!-- Let firebase_messaging swizzle the APNs delegate methods (default true; set explicitly for clarity) -->
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<true/>
+
 	<!-- 🔗 Deep Linking Configuration for Password Reset -->
 	<!-- URL Scheme for custom e-forward:// links -->
 	<key>CFBundleURLTypes</key>

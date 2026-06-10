@@ -19,10 +19,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.macOS:
         return macos;
       case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return windows;
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
@@ -36,13 +33,12 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'YOUR_WEB_API_KEY',
-    appId: 'YOUR_WEB_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    authDomain: 'YOUR_AUTH_DOMAIN',
-    databaseURL: 'YOUR_DATABASE_URL',
-    storageBucket: 'YOUR_STORAGE_BUCKET',
+    apiKey: 'AIzaSyCokZfFDNAjkHIwsz1UkXfvz3spOTXS-H0',
+    appId: '1:616817065201:web:214a851622c62a6220bd50',
+    messagingSenderId: '616817065201',
+    projectId: 'eforward-app',
+    authDomain: 'eforward-app.firebaseapp.com',
+    storageBucket: 'eforward-app.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
@@ -54,20 +50,30 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'YOUR_IOS_API_KEY',
-    appId: 'YOUR_IOS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    databaseURL: 'YOUR_DATABASE_URL',
-    storageBucket: 'YOUR_STORAGE_BUCKET',
+    apiKey: 'AIzaSyBaHdnDl6QXuWVtqLjuTO7zrcmgYiUY5oU',
+    appId: '1:616817065201:ios:28474eeabc93674120bd50',
+    messagingSenderId: '616817065201',
+    projectId: 'eforward-app',
+    storageBucket: 'eforward-app.firebasestorage.app',
+    iosBundleId: 'com.example.eforwardApp',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'YOUR_MACOS_API_KEY',
-    appId: 'YOUR_MACOS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    databaseURL: 'YOUR_DATABASE_URL',
-    storageBucket: 'YOUR_STORAGE_BUCKET',
+    apiKey: 'AIzaSyBaHdnDl6QXuWVtqLjuTO7zrcmgYiUY5oU',
+    appId: '1:616817065201:ios:28474eeabc93674120bd50',
+    messagingSenderId: '616817065201',
+    projectId: 'eforward-app',
+    storageBucket: 'eforward-app.firebasestorage.app',
+    iosBundleId: 'com.example.eforwardApp',
   );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyCokZfFDNAjkHIwsz1UkXfvz3spOTXS-H0',
+    appId: '1:616817065201:web:051cc64e636b92f720bd50',
+    messagingSenderId: '616817065201',
+    projectId: 'eforward-app',
+    authDomain: 'eforward-app.firebaseapp.com',
+    storageBucket: 'eforward-app.firebasestorage.app',
+  );
+
 }
