@@ -1259,6 +1259,10 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     }
 
     setState(() => _isApproving = true);
+    // Open the document in VIEW mode first: the reviewer can zoom and move
+    // between pages, then tap SIGN (top-right) to lock onto the current page
+    // and place the signature. (Previously this jumped straight into signing
+    // mode, which skipped review and pinned signing to page 1.)
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -1266,7 +1270,6 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           pdfPath: _localPdfPath!,
           item: _signerItemData(),
           enableSigning: true,
-          initialSigningMode: true,
         ),
       ),
     );
@@ -2526,12 +2529,13 @@ const double _kCmtAspectRatio = _kCmtCaptureWidth / _kCmtCaptureHeight; // 2.5
 // ─────────────────────────────────────────────────────────────────────────────
 // Minimum overlay width as a fraction of the PDF page width.
 // The signature block (image + name / employee id / date metadata) must stay
-// large enough to remain legible when the PDF is PRINTED. 0.30 of an A4 page
-// (595 pt) ≈ 178 pt ≈ 2.5 inches wide — the smallest size at which the metadata
-// text is still readable on paper. Users can shrink down to this, no further.
+// large enough to remain legible when the PDF is PRINTED, but small enough that
+// it can tuck into a signature line without overlapping existing content.
+// 0.24 of an A4 page (595 pt) ≈ 143 pt ≈ 2 inches wide — still readable on
+// paper. Users can shrink down to this, no further.
 // ─────────────────────────────────────────────────────────────────────────────
-const double _kMinSigFracW = 0.40;
-const double _kMinCmtFracW = 0.35;
+const double _kMinSigFracW = 0.24;
+const double _kMinCmtFracW = 0.24;
 
 class PdfSignerPage extends StatefulWidget {
   final String pdfPath;
@@ -2560,6 +2564,10 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   bool _pendingEnterSigningMode = false;
   DateTime? _signedAt;
   Uint8List? _watermarkBytes;
+  // Original PDF bytes, cached in memory the first time we read the file.
+  // The source is a temp/cache file that Android can purge at any time, so we
+  // must NOT rely on it still existing when the signed PDF is generated.
+  Uint8List? _pdfBytes;
 
   // ── Capture keys ──────────────────────────────────────────────────────────
   final GlobalKey _signatureKey = GlobalKey();
@@ -2609,12 +2617,12 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   // PDF point space is exactly where the user placed the overlay on screen.
   double _sigFracX = 0.25;
   double _sigFracY = 0.78;
-  double _sigFracW = 0.70; // fraction of PDF width
+  double _sigFracW = 0.45; // fraction of PDF width
   double _sigFracH = 0.0; // computed from aspect ratio below
 
   double _cmtFracX = 0.05;
   double _cmtFracY = 0.58;
-  double _cmtFracW = 0.50;
+  double _cmtFracW = 0.45;
   double _cmtFracH = 0.0; // computed from aspect ratio below
 
   // ── Computed pixel sizes from fractions × PDF rect ───────────────────────
@@ -2694,6 +2702,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   Future<void> _loadPdfPageSizes() async {
     try {
       final bytes = await File(widget.pdfPath).readAsBytes();
+      _pdfBytes = bytes; // keep bytes so signing never depends on the temp file
       final doc = PdfDocument(inputBytes: bytes);
       final sizes = <Size>[];
       for (int i = 0; i < doc.pages.count; i++) {
@@ -2732,11 +2741,27 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       return;
     }
 
-    // Matches PDFView's FitPolicy.WIDTH: the page is scaled to fill the
-    // viewport width, so the document renders as large as possible. Height
-    // follows the page aspect ratio. For typical portrait forms the result is
-    // still shorter than the viewport (whole page visible, no scrolling), so
-    // the overlay rect maps 1:1 to what gets stamped.
+    if (_isSigningMode) {
+      // SIGNING MODE — CONTAIN fit: scale the page so the WHOLE page fits
+      // inside the viewport (letterboxed, centered). The PDF is rendered into
+      // a box of exactly this size (see build), so there is no scrolling and
+      // the overlay maps 1:1 to the stamped position — placement is exact even
+      // for tall pages that would otherwise overflow a width-fit viewport.
+      final scaleW = _viewportWidth / _pdfPageWidth;
+      final scaleH = _viewportHeight / _pdfPageHeight;
+      final scale = scaleW < scaleH ? scaleW : scaleH;
+      final renderedW = _pdfPageWidth * scale;
+      final renderedH = _pdfPageHeight * scale;
+      final offsetX = (_viewportWidth - renderedW) / 2;
+      final offsetY = (_viewportHeight - renderedH) / 2;
+      _pdfRect = Rect.fromLTWH(offsetX, offsetY, renderedW, renderedH);
+      return;
+    }
+
+    // VIEW MODE — Matches PDFView's FitPolicy.WIDTH: the page is scaled to fill
+    // the viewport width, so the document renders as large as possible. Height
+    // follows the page aspect ratio. Zooming/scrolling is allowed here, so the
+    // rect is only used to seed the overlay before signing begins.
     final scaleW = _viewportWidth / _pdfPageWidth;
 
     final renderedW = _viewportWidth;
@@ -2951,16 +2976,30 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       );
       return;
     }
+    final targetPage = _currentPage;
     setState(() {
       _isSigningMode = true;
       _signedAt = DateTime.now();
-      // Default positions (fraction of PDF rect)
+      // Lock signing onto the page the reviewer is currently viewing.
+      _signaturePage = targetPage;
+      // Recompute the PDF rect for CONTAIN fit now that we're signing, so the
+      // overlay is seeded against the same geometry that gets stamped.
+      _applyCurrentPageSize();
+      _updatePdfRect();
+      // Default positions (fraction of PDF rect). Start compact so the
+      // signature sits on a signature line without overlapping existing text;
+      // the reviewer can enlarge with the corner handle if needed.
       _sigFracX = 0.05;
-      _sigFracY = 0.78;
-      _sigFracW = 0.70; // start larger
+      _sigFracY = 0.80;
+      _sigFracW = 0.45;
       _cmtFracX = 0.05;
-      _cmtFracY = 0.58;
-      _cmtFracW = 0.55;
+      _cmtFracY = 0.60;
+      _cmtFracW = 0.45;
+    });
+    // The PDF view is re-laid-out into the contain-fit box when entering
+    // signing mode; make sure it stays on the page the reviewer chose.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pdfController?.setPage(targetPage);
     });
   }
 
@@ -3044,7 +3083,25 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     }
 
     try {
-      final pdfBytes = await File(widget.pdfPath).readAsBytes();
+      // Prefer the in-memory copy; the temp/cache file may have been purged by
+      // Android since the page opened. Fall back to (re-)reading the file, and
+      // cache it for any later attempt.
+      Uint8List? pdfBytes = _pdfBytes;
+      if (pdfBytes == null) {
+        final file = File(widget.pdfPath);
+        if (await file.exists()) {
+          pdfBytes = await file.readAsBytes();
+          _pdfBytes = pdfBytes;
+        }
+      }
+      if (pdfBytes == null) {
+        debugPrint(
+          '_generateSignedPdf: PDF bytes unavailable (temp file purged: '
+          '${widget.pdfPath})',
+        );
+        return null;
+      }
+
       final document = PdfDocument(inputBytes: pdfBytes);
       final page = document.pages[_currentPage];
       final pdfW = page.size.width;
@@ -3556,29 +3613,23 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onPanUpdate: (d) {
-                  // Convert screen delta → PDF-rect fraction delta
+                  // Convert screen delta → PDF-rect fraction delta.
                   final dfw = d.delta.dx / _pdfRect.width;
                   final dfh = d.delta.dy / _pdfRect.height;
 
-                  final sigFracH = _sigFracHComputed; // current height fraction
+                  final fracH = _sigFracHComputed; // current height fraction
+                  // Keep the overlay fully inside the current page. Signing is
+                  // locked to one page (chosen in view mode), so dragging never
+                  // changes pages — it only repositions within this page.
                   final newFx = (fracX + dfw).clamp(
                     0.0,
                     (1.0 - fracW).clamp(0.0, 1.0),
                   );
-                  final newFy = (fracY + dfh).clamp(-0.1, 1.1);
-
-                  // Page jump when dragged beyond edges
-                  if (newFy > 0.97 && _currentPage < _totalPages - 1) {
-                    _signaturePage = _currentPage + 1;
-                    _pdfController?.setPage(_signaturePage);
-                    onMove(newFx, 0.03);
-                  } else if (newFy < 0.03 && _currentPage > 0) {
-                    _signaturePage = _currentPage - 1;
-                    _pdfController?.setPage(_signaturePage);
-                    onMove(newFx, 0.90);
-                  } else {
-                    onMove(newFx, newFy.clamp(0.0, 1.0 - sigFracH));
-                  }
+                  final newFy = (fracY + dfh).clamp(
+                    0.0,
+                    (1.0 - fracH).clamp(0.0, 1.0),
+                  );
+                  onMove(newFx, newFy);
                 },
                 child: Container(
                   width: w,
@@ -3602,7 +3653,21 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                 behavior: HitTestBehavior.opaque,
                 onPanUpdate: (d) {
                   final dfw = d.delta.dx / _pdfRect.width;
-                  final newFw = (fracW + dfw).clamp(minFracW, 0.95);
+                  // Resizing only changes width; height follows the fixed
+                  // aspect ratio (aspect = width / height of the live box).
+                  // Cap the width so the box — at its aspect-derived height —
+                  // never extends past the right or bottom edge of the page.
+                  // This guarantees the stamped result stays fully on-page and
+                  // matches the on-screen preview at ANY size.
+                  final aspect = pixelW / pixelH;
+                  final maxByRight = 1.0 - fracX;
+                  final maxByBottom =
+                      ((1.0 - fracY) * aspect * _pdfRect.height) /
+                      _pdfRect.width;
+                  var maxFw = maxByRight < maxByBottom ? maxByRight : maxByBottom;
+                  if (maxFw > 0.98) maxFw = 0.98;
+                  if (maxFw < minFracW) maxFw = minFracW;
+                  final newFw = (fracW + dfw).clamp(minFracW, maxFw);
                   onResizeW(newFw);
                 },
                 child: Container(
@@ -3644,7 +3709,9 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       child: Stack(
         children: [
           Scaffold(
-            backgroundColor: Colors.black,
+            // Light background so the bands around the page (in signing mode)
+            // and below the document read as white paper, not a black void.
+            backgroundColor: const Color(0xFFEDEFF2),
             appBar: AppBar(
               backgroundColor: const Color(0xFF1A1A1A),
               elevation: 0,
@@ -3727,44 +3794,17 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                           color: Colors.white,
                         ),
                         const SizedBox(width: 8),
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            "Drag to move · drag bottom-right corner to resize",
-                            style: TextStyle(
+                            "Signing page ${_signaturePage + 1} · drag to move, "
+                            "drag the corner to resize",
+                            style: const TextStyle(
                               fontSize: 11,
                               color: Colors.white,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
-                        if (_currentPage != _signaturePage)
-                          GestureDetector(
-                            onTap: isBlocking
-                                ? null
-                                : () {
-                                    setState(
-                                      () => _signaturePage = _currentPage,
-                                    );
-                                  },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text(
-                                "MOVE SIGNATURE HERE",
-                                style: TextStyle(
-                                  color: Color(0xFFCC0000),
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
-                          ),
                       ],
                     ),
                   ),
@@ -3789,11 +3829,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                         }
                       });
 
-                      return Stack(
-                        children: [
-                          // ── PDF viewer ────────────────────────────────
-                          Positioned.fill(
-                            child: PDFView(
+                      final pdfView = PDFView(
                               filePath: widget.pdfPath,
                               // iOS: a plain UiKitView withholds touches until
                               // Flutter's gesture arena resolves, which starves
@@ -3812,30 +3848,68 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                         () => EagerGestureRecognizer(),
                                       ),
                                     },
-                              enableSwipe: true,
+                              // Lock page navigation while signing — the
+                              // reviewer already chose the page in view mode.
+                              enableSwipe: !_isSigningMode,
                               swipeHorizontal: false,
-                              // iOS: flutter_pdfview ignores fitPolicy and ties
-                              // PDFKit's autoScales to this flag. In continuous
-                              // (enableSwipe) mode, autoScales fits the page to
-                              // width — which matches our width-based _pdfRect.
-                              // Android honors fitPolicy, so keep it false there.
-                              autoSpacing: Platform.isIOS,
+                              // View mode: add spacing between pages so the
+                              // page boundaries are obvious (the grey gutter
+                              // shows where one page ends and the next begins,
+                              // making it clear which page you'll sign on).
+                              // Signing mode keeps the iOS-specific behavior
+                              // (autoScales is tied to this flag on iOS) and is
+                              // a single locked page anyway.
+                              autoSpacing: _isSigningMode ? Platform.isIOS : true,
                               pageFling: false,
                               fitPolicy: FitPolicy.WIDTH,
-                              backgroundColor: Colors.grey.shade200,
-                              onViewCreated: (controller) =>
-                                  _pdfController = controller,
+                              // Grey gutter: in view mode it separates pages; in
+                              // signing mode the page exactly fills its box so
+                              // this isn't visible.
+                              backgroundColor: const Color(0xFFCED2D8),
+                              onViewCreated: (controller) {
+                                _pdfController = controller;
+                                // Switching into signing mode recreates the
+                                // native view, which resets it to page 1. Snap
+                                // it back to the page the reviewer chose so
+                                // signing stays locked to that page.
+                                if (_isSigningMode) {
+                                  WidgetsBinding.instance.addPostFrameCallback((
+                                    _,
+                                  ) {
+                                    _pdfController?.setPage(_signaturePage);
+                                  });
+                                }
+                              },
                               onPageChanged: (page, total) {
-                                if (mounted) {
+                                if (!mounted) return;
+                                final p = page ?? 0;
+                                final t = total ?? _totalPages;
+                                // ── Signing mode: page is LOCKED ──────────
+                                // Ignore/undo any page drift (e.g. the reset
+                                // that happens when the view is recreated on
+                                // entering signing mode).
+                                if (_isSigningMode) {
+                                  if (p != _signaturePage) {
+                                    _pdfController?.setPage(_signaturePage);
+                                    return;
+                                  }
                                   setState(() {
-                                    _currentPage = page ?? 0;
-                                    _totalPages = total ?? 1;
-                                    // Re-point page dims at the new page so the
-                                    // overlay rect matches what gets stamped.
+                                    _currentPage = _signaturePage;
+                                    _totalPages = t;
                                     _applyCurrentPageSize();
                                     _updatePdfRect();
                                   });
+                                  return;
                                 }
+                                // ── View mode: free navigation ───────────
+                                setState(() {
+                                  _currentPage = p;
+                                  _totalPages = t;
+                                  // Re-point page dims at the new page so the
+                                  // overlay rect matches what gets stamped.
+                                  _applyCurrentPageSize();
+                                  _updatePdfRect();
+                                });
                               },
                               // Use the TRUE page dimensions (read via Syncfusion)
                               // so _updatePdfRect() knows the real page aspect
@@ -3854,8 +3928,35 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                 }
                               },
                               onError: (e) => debugPrint('PDF error: $e'),
-                            ),
-                          ),
+                            );
+
+                      // Signing mode: fully lock the PDF — no zoom, no pan, no
+                      // page change. IgnorePointer swallows every touch on the
+                      // document so neither Flutter nor the native PDF view can
+                      // zoom it. The draggable signature/comment overlays are
+                      // separate siblings in the Stack, so they stay
+                      // interactive. View mode leaves the PDF fully gesture-able.
+                      final lockedPdf = _isSigningMode
+                          ? IgnorePointer(child: pdfView)
+                          : pdfView;
+
+                      return Stack(
+                        children: [
+                          // ── PDF viewer ────────────────────────────────
+                          // Signing mode: render the page inside a centered,
+                          // page-aspect box (contain fit) so the WHOLE page is
+                          // visible with no scrolling and the overlay maps 1:1
+                          // to the stamped position. View mode: fill the
+                          // viewport so it stays zoomable / scrollable.
+                          (_isSigningMode && _pdfRect != Rect.zero)
+                              ? Positioned(
+                                  left: _pdfRect.left,
+                                  top: _pdfRect.top,
+                                  width: _pdfRect.width,
+                                  height: _pdfRect.height,
+                                  child: lockedPdf,
+                                )
+                              : Positioned.fill(child: lockedPdf),
 
                           // ── Page counter ──────────────────────────────
                           if (_totalPages > 1)
@@ -3935,97 +4036,106 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                 ),
 
                 // ── Action bar ────────────────────────────────────────────
+                // Compact, side-by-side buttons inside a SafeArea so the bar
+                // always clears the device's bottom gesture/navigation inset
+                // (this is what was clipping CONFIRM & APPROVE) and leaves more
+                // height for the document above.
                 if (_isSigningMode)
-                  Container(
+                  Material(
                     color: Colors.white,
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        SizedBox(
-                          height: 50,
-                          child: ElevatedButton(
-                            onPressed: _isSubmitting ? null : _submitApproval,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF059669),
-                              disabledBackgroundColor: Colors.green.withOpacity(
-                                0.6,
-                              ),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                            ),
-                            child: _isSubmitting
-                                ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.5,
-                                      color: Colors.white,
+                    elevation: 8,
+                    child: SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: SizedBox(
+                                height: 48,
+                                child: OutlinedButton(
+                                  onPressed: isBlocking
+                                      ? null
+                                      : () => Navigator.pop(context),
+                                  style: OutlinedButton.styleFrom(
+                                    side: const BorderSide(
+                                      color: Color(0xFFCC0000),
+                                      width: 1.5,
                                     ),
-                                  )
-                                : const Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.check,
-                                        color: Colors.white,
-                                        size: 18,
-                                      ),
-                                      SizedBox(width: 10),
-                                      Text(
-                                        "CONFIRM & APPROVE",
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: 1.2,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    "CANCEL",
+                                    style: TextStyle(
+                                      color: Color(0xFFCC0000),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: SizedBox(
+                                height: 48,
+                                child: ElevatedButton(
+                                  onPressed: _isSubmitting
+                                      ? null
+                                      : _submitApproval,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF059669),
+                                    disabledBackgroundColor: Colors.green
+                                        .withOpacity(0.6),
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                  ),
+                                  child: _isSubmitting
+                                      ? const SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.5,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.check,
+                                              color: Colors.white,
+                                              size: 18,
+                                            ),
+                                            SizedBox(width: 8),
+                                            Flexible(
+                                              child: Text(
+                                                "CONFIRM & APPROVE",
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w800,
+                                                  letterSpacing: 1.2,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: 50,
-                          child: OutlinedButton(
-                            onPressed: isBlocking
-                                ? null
-                                : () => Navigator.pop(context),
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(
-                                color: Color(0xFFCC0000),
-                                width: 1.5,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(4),
+                                ),
                               ),
                             ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.close,
-                                  color: Color(0xFFCC0000),
-                                  size: 18,
-                                ),
-                                SizedBox(width: 8),
-                                Text(
-                                  "CANCEL",
-                                  style: TextStyle(
-                                    color: Color(0xFFCC0000),
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.2,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
               ],
