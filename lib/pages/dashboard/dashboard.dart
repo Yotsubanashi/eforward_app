@@ -206,8 +206,12 @@ class _DashboardPageState extends State<DashboardPage> {
             user['employeeId']?.toString();
 
         if (userId != null) {
-          await FCMTokenService.registerToken(userId);
-          debugPrint('✅ FCM token synced in Dashboard');
+          final synced = await FCMTokenService.registerToken(userId);
+          if (synced) {
+            debugPrint('✅ FCM token synced in Dashboard');
+          } else {
+            debugPrint('⚠️ FCM token NOT synced in Dashboard (see error above)');
+          }
         }
       }
     } catch (e) {

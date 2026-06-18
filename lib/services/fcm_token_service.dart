@@ -13,17 +13,18 @@ class FCMTokenService {
 
   /// Registers the current device FCM token to your SQL Backend.
   /// This supports multiple devices per employee_id.
-  static Future<void> registerToken(String employeeId) async {
+  /// Returns `true` only when the backend confirms the token was saved.
+  static Future<bool> registerToken(String employeeId) async {
     try {
-      if (employeeId.isEmpty) return;
+      if (employeeId.isEmpty) return false;
 
       final prefs = await SharedPreferences.getInstance();
       final accessToken = prefs.getString('access_token') ?? '';
-      
+
       String? token = await _messaging.getToken();
       if (token == null) {
         debugPrint('❌ Could not get FCM token');
-        return;
+        return false;
       }
 
       // Cache token locally for logout cleanup
@@ -50,7 +51,10 @@ class FCMTokenService {
         body: jsonEncode(payload),
       );
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
+      final bool saved =
+          response.statusCode >= 200 && response.statusCode < 300;
+
+      if (saved) {
         debugPrint('✅ FCM Token saved to SQL (Multi-Device) for: $employeeId');
       } else {
         debugPrint('⚠️ SQL Backend Error (${response.statusCode}): ${response.body}');
@@ -60,8 +64,11 @@ class FCMTokenService {
       _messaging.onTokenRefresh.listen((newToken) async {
         await registerToken(employeeId);
       });
+
+      return saved;
     } catch (e) {
       debugPrint('❌ Error syncing FCM token to SQL: $e');
+      return false;
     }
   }
 
