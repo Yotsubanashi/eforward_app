@@ -3861,7 +3861,18 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                               // a single locked page anyway.
                               autoSpacing: _isSigningMode ? Platform.isIOS : true,
                               pageFling: false,
-                              fitPolicy: FitPolicy.WIDTH,
+                              // Signing mode: fit the WHOLE page (both
+                              // dimensions) so it's always fully visible inside
+                              // its letterboxed box — never cropped. With
+                              // width-only fit, a portrait page in a short/wide
+                              // landscape viewport (e.g. a tablet lying flat)
+                              // renders far taller than the box and the bottom
+                              // gets clipped, because the locked PDF can't be
+                              // scrolled (IgnorePointer). View mode keeps
+                              // width-fit so the page stays large and zoomable.
+                              fitPolicy: _isSigningMode
+                                  ? FitPolicy.BOTH
+                                  : FitPolicy.WIDTH,
                               // Grey gutter: in view mode it separates pages; in
                               // signing mode the page exactly fills its box so
                               // this isn't visible.
