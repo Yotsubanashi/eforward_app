@@ -2629,6 +2629,19 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   double get _pdfRectW => _pdfRect.width.clamp(1, double.infinity);
   double get _pdfRectH => _pdfRect.height.clamp(1, double.infinity);
 
+  // True once we have a real, page-aspect contain-fit rect to render the
+  // signing page into (i.e. the viewport has been measured AND the true PDF
+  // page dimensions have been read). Until this is true, _updatePdfRect()
+  // falls back to the full viewport — and in signing mode the page is locked
+  // (IgnorePointer, no scroll), so a portrait page rendered into a short/wide
+  // landscape viewport would have its bottom CLIPPED. We must not render the
+  // locked PDF until the letterboxed contain box is ready.
+  bool get _signRectReady =>
+      _viewportWidth > 0 &&
+      _viewportHeight > 0 &&
+      _pdfPageWidth > 0 &&
+      _pdfPageHeight > 0;
+
   // On-screen width = exact fraction of the rendered PDF rect (WYSIWYG): the
   // preview is the same size as what gets stamped. The minimum size is enforced
   // by _kMinSigFracW during resize, so no display-side inflation is needed.
@@ -3957,17 +3970,31 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                           // Signing mode: render the page inside a centered,
                           // page-aspect box (contain fit) so the WHOLE page is
                           // visible with no scrolling and the overlay maps 1:1
-                          // to the stamped position. View mode: fill the
-                          // viewport so it stays zoomable / scrollable.
-                          (_isSigningMode && _pdfRect != Rect.zero)
-                              ? Positioned(
-                                  left: _pdfRect.left,
-                                  top: _pdfRect.top,
-                                  width: _pdfRect.width,
-                                  height: _pdfRect.height,
-                                  child: lockedPdf,
-                                )
-                              : Positioned.fill(child: lockedPdf),
+                          // to the stamped position. The page is locked
+                          // (IgnorePointer) so it can't be scrolled — rendering
+                          // it before the real contain box is known would let a
+                          // portrait page overflow a short/wide landscape
+                          // viewport and clip its bottom. So while the box isn't
+                          // ready yet, show a loader instead of the raw page.
+                          // View mode: fill the viewport so it stays zoomable.
+                          if (_isSigningMode)
+                            _signRectReady
+                                ? Positioned(
+                                    left: _pdfRect.left,
+                                    top: _pdfRect.top,
+                                    width: _pdfRect.width,
+                                    height: _pdfRect.height,
+                                    child: lockedPdf,
+                                  )
+                                : const Positioned.fill(
+                                    child: Center(
+                                      child: CircularProgressIndicator(
+                                        color: Color(0xFFCC0000),
+                                      ),
+                                    ),
+                                  )
+                          else
+                            Positioned.fill(child: lockedPdf),
 
                           // ── Page counter ──────────────────────────────
                           if (_totalPages > 1)
@@ -3995,9 +4022,13 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                             ),
 
                           // ── Draggable overlays (PDF-rect-relative) ────
+                          // Gate on _signRectReady (not just _pdfRect != zero)
+                          // so the overlays only appear once the page is laid
+                          // out in its real contain box — never floating over
+                          // the loader or a clipped fallback render.
                           if (_isSigningMode &&
                               _currentPage == _signaturePage &&
-                              _pdfRect != Rect.zero) ...[
+                              _signRectReady) ...[
                             // Comment overlay
                             if (_remarks.trim().isNotEmpty)
                               _buildDraggableOverlay(
