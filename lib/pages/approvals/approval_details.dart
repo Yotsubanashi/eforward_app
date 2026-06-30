@@ -2518,7 +2518,7 @@ const double _kCaptureWidth = 380.0;
 // Tighter height → the content (signature + 4 metadata lines) fills the box
 // instead of floating with big top/bottom gaps. Lower height = less whitespace
 // and visually larger text/signature for the same width.
-const double _kCaptureHeight = 84.0;
+const double _kCaptureHeight = 66.0;
 // True aspect ratio of the signature composite widget (image + metadata Row)
 const double _kSigAspectRatio = _kCaptureWidth / _kCaptureHeight; // ≈ 4.52
 
@@ -2534,7 +2534,7 @@ const double _kCmtAspectRatio = _kCmtCaptureWidth / _kCmtCaptureHeight; // 2.5
 // 0.24 of an A4 page (595 pt) ≈ 143 pt ≈ 2 inches wide — still readable on
 // paper. Users can shrink down to this, no further.
 // ─────────────────────────────────────────────────────────────────────────────
-const double _kMinSigFracW = 0.24;
+const double _kMinSigFracW = 0.15;
 const double _kMinCmtFracW = 0.24;
 
 class PdfSignerPage extends StatefulWidget {
@@ -2579,7 +2579,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 
   // ── Signer info ───────────────────────────────────────────────────────────
   String _signerName = '';
-  String _signerEmployeeId = '';
 
   // ── PDF controller ────────────────────────────────────────────────────────
   PDFViewController? _pdfController;
@@ -2617,13 +2616,25 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   // PDF point space is exactly where the user placed the overlay on screen.
   double _sigFracX = 0.25;
   double _sigFracY = 0.78;
-  double _sigFracW = 0.45; // fraction of PDF width
+  double _sigFracW = 0.30; // fraction of PDF width
   double _sigFracH = 0.0; // computed from aspect ratio below
 
   double _cmtFracX = 0.05;
   double _cmtFracY = 0.58;
   double _cmtFracW = 0.45;
   double _cmtFracH = 0.0; // computed from aspect ratio below
+
+  // ── Drag/resize session anchors ──────────────────────────────────────────
+  // A drag is tracked against the position the overlay had when the gesture
+  // STARTED plus the cursor's TOTAL travel since then — not by accumulating
+  // per-event deltas. Per-event deltas silently drop movement when several
+  // pointer events land in the same frame (they all read the same stale
+  // build-time fraction), so the overlay lags the finger and doesn't end up
+  // where it's dropped. Anchoring to the start makes placement 1:1 and exact.
+  double _dragBaseFracX = 0.0;
+  double _dragBaseFracY = 0.0;
+  double _dragBaseFracW = 0.0;
+  Offset _dragStartGlobal = Offset.zero;
 
   // ── Computed pixel sizes from fractions × PDF rect ───────────────────────
   double get _pdfRectW => _pdfRect.width.clamp(1, double.infinity);
@@ -2824,12 +2835,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           userData['last_name'] ??
           userData['lastName'] ??
           '';
-      final empId =
-          userData['employee_id'] ??
-          userData['employeeId'] ??
-          userData['emp_id'] ??
-          '';
-
       if (mounted) {
         setState(() {
           _signerName = [first, last]
@@ -2837,7 +2842,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               .where((p) => p.isNotEmpty)
               .join(' ')
               .trim();
-          _signerEmployeeId = empId.toString().trim();
         });
       }
     } catch (e) {
@@ -3004,7 +3008,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       // the reviewer can enlarge with the corner handle if needed.
       _sigFracX = 0.05;
       _sigFracY = 0.80;
-      _sigFracW = 0.45;
+      _sigFracW = 0.30;
       _cmtFracX = 0.05;
       _cmtFracY = 0.60;
       _cmtFracW = 0.45;
@@ -3477,7 +3481,6 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _metaRow('Digitally signed by:', _signerName),
-                      _metaRow('Employee ID:', _signerEmployeeId),
                       _metaRow('Date:', dateStr),
                       _metaRow('Ref:', refNo),
                     ],
@@ -3593,6 +3596,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     required double fracX,
     required double fracY,
     required double fracW,
+    required double fracH,
     required double pixelW,
     required double pixelH,
     required Widget child,
@@ -3625,23 +3629,27 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               top: pad,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
+                onPanStart: (d) {
+                  // Anchor the drag: remember where the overlay was and where
+                  // the finger started. Every update is computed from these,
+                  // so the overlay tracks the finger 1:1 and stays exactly
+                  // where it's released — no drift from dropped per-frame deltas.
+                  _dragBaseFracX = fracX;
+                  _dragBaseFracY = fracY;
+                  _dragStartGlobal = d.globalPosition;
+                },
                 onPanUpdate: (d) {
-                  // Convert screen delta → PDF-rect fraction delta.
-                  final dfw = d.delta.dx / _pdfRect.width;
-                  final dfh = d.delta.dy / _pdfRect.height;
+                  // Total finger travel since the drag started → fraction delta.
+                  final totalDx = d.globalPosition.dx - _dragStartGlobal.dx;
+                  final totalDy = d.globalPosition.dy - _dragStartGlobal.dy;
 
-                  final fracH = _sigFracHComputed; // current height fraction
                   // Keep the overlay fully inside the current page. Signing is
                   // locked to one page (chosen in view mode), so dragging never
                   // changes pages — it only repositions within this page.
-                  final newFx = (fracX + dfw).clamp(
-                    0.0,
-                    (1.0 - fracW).clamp(0.0, 1.0),
-                  );
-                  final newFy = (fracY + dfh).clamp(
-                    0.0,
-                    (1.0 - fracH).clamp(0.0, 1.0),
-                  );
+                  final newFx = (_dragBaseFracX + totalDx / _pdfRect.width)
+                      .clamp(0.0, (1.0 - fracW).clamp(0.0, 1.0));
+                  final newFy = (_dragBaseFracY + totalDy / _pdfRect.height)
+                      .clamp(0.0, (1.0 - fracH).clamp(0.0, 1.0));
                   onMove(newFx, newFy);
                 },
                 child: Container(
@@ -3664,8 +3672,13 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               bottom: 0,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
+                onPanStart: (d) {
+                  _dragBaseFracW = fracW;
+                  _dragStartGlobal = d.globalPosition;
+                },
                 onPanUpdate: (d) {
-                  final dfw = d.delta.dx / _pdfRect.width;
+                  // Total finger travel since the resize started → width delta.
+                  final totalDx = d.globalPosition.dx - _dragStartGlobal.dx;
                   // Resizing only changes width; height follows the fixed
                   // aspect ratio (aspect = width / height of the live box).
                   // Cap the width so the box — at its aspect-derived height —
@@ -3680,7 +3693,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                   var maxFw = maxByRight < maxByBottom ? maxByRight : maxByBottom;
                   if (maxFw > 0.98) maxFw = 0.98;
                   if (maxFw < minFracW) maxFw = minFracW;
-                  final newFw = (fracW + dfw).clamp(minFracW, maxFw);
+                  final newFw = (_dragBaseFracW + totalDx / _pdfRect.width)
+                      .clamp(minFracW, maxFw);
                   onResizeW(newFw);
                 },
                 child: Container(
@@ -4035,6 +4049,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                 fracX: _cmtFracX,
                                 fracY: _cmtFracY,
                                 fracW: _cmtFracW,
+                                fracH: _cmtFracHComputed,
                                 pixelW: _cmtPixelW,
                                 pixelH: _cmtPixelH,
                                 accentColor: const Color(0xFFFFC107),
@@ -4056,6 +4071,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                               fracX: _sigFracX,
                               fracY: _sigFracY,
                               fracW: _sigFracW,
+                              fracH: _sigFracHComputed,
                               pixelW: _sigPixelW,
                               pixelH: _sigPixelH,
                               accentColor: const Color(0xFFCC0000),
