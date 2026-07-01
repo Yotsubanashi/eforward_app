@@ -57,7 +57,9 @@ class _LoginScreenState extends State<LoginScreen> {
       case 'ARDENT':
         return normalizedEmail.endsWith('@ardentnetworks.com.ph');
       case 'VERSATECH':
-        return normalizedEmail.endsWith('@versatech.com.ph');
+        // Versa build serves both Versatech and Ardent users.
+        return normalizedEmail.endsWith('@versatech.com.ph') ||
+            normalizedEmail.endsWith('@ardentnetworks.com.ph');
       default:
         return true;
     }
