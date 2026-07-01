@@ -55,7 +55,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     switch (activeBrand) {
       case 'ARDENT':
-        return normalizedEmail.endsWith('@ardentnetworks.com.ph');
+        return normalizedEmail.endsWith('@ardentnetworks.com.ph') ||
+            normalizedEmail.endsWith('@versatech.com.ph');
+
       case 'VERSATECH':
         // Versa build serves both Versatech and Ardent users.
         return normalizedEmail.endsWith('@versatech.com.ph') ||
@@ -146,8 +148,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (status != null && inactiveStatuses.contains(status)) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content:
-                Text('Your account is inactive. Please contact support.'),
+            content: Text('Your account is inactive. Please contact support.'),
             backgroundColor: Color(0xFFCC0000),
           ),
         );
@@ -172,12 +173,15 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         if (result.data != null) {
           await prefs.setString('user_data', jsonEncode(result.data));
-          
-          final user = result.data!['user'] is Map ? result.data!['user'] : result.data;
-          final userId = user['id']?.toString() ?? 
-                         user['employee_id']?.toString() ?? 
-                         user['employeeId']?.toString();
-          
+
+          final user = result.data!['user'] is Map
+              ? result.data!['user']
+              : result.data;
+          final userId =
+              user['id']?.toString() ??
+              user['employee_id']?.toString() ??
+              user['employeeId']?.toString();
+
           if (userId != null) {
             await prefs.setString('employee_id', userId);
             await FCMTokenService.registerToken(userId);
