@@ -10,6 +10,8 @@ import 'package:eforward_app/constants/shared_prefs_keys.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
 import 'package:eforward_app/widgets/password_strength_indicator.dart';
+import 'package:eforward_app/widgets/password_match_message.dart';
+import 'package:eforward_app/widgets/fixed_bottom_bar.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -47,6 +49,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   void initState() {
     super.initState();
     _newPasswordController.addListener(() => setState(() {}));
+    _confirmPasswordController.addListener(() => setState(() {}));
   }
 
   @override
@@ -247,61 +250,61 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             obscure: _obscureConfirm,
             onToggle: () => setState(() => _obscureConfirm = !_obscureConfirm),
           ),
+          PasswordMatchMessage(
+            newPassword: _newPasswordController.text,
+            confirmPassword: _confirmPasswordController.text,
+          ),
         ],
       ),
     );
   }
 
   Widget _buildBottomActions() {
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Change Password Button
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _changePassword,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFCC0000),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                child: const Text(
-                  "CHANGE PASSWORD",
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 2,
-                  ),
+    return FixedBottomBar(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Change Password Button
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: _changePassword,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFCC0000),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
                 ),
               ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Cancel
-            TextButton(
-              onPressed: () => Navigator.pop(context),
               child: const Text(
-                "CANCEL AND RETURN TO PROFILE",
+                "CHANGE PASSWORD",
                 style: TextStyle(
-                  color: Colors.black45,
-                  fontSize: 11,
-                  letterSpacing: 1.2,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 2,
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Cancel
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              "CANCEL AND RETURN TO PROFILE",
+              style: TextStyle(
+                color: Colors.black45,
+                fontSize: 11,
+                letterSpacing: 1.2,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
