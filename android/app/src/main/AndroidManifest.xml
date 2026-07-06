@@ -52,13 +52,20 @@
                 <data
                     android:scheme="https"
                     android:host="eforward.ardentnetworks.com.ph"
-                    android:pathPrefix="/auth/reset-password" />
+                    android:pathPrefix="/reset-password" />
             </intent-filter>
         </activity>
 
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Let the app_links package handle deep links via its stream.
+             Without this, Flutter's built-in deep linking routes the URL
+             through onGenerateRoute and fails with "No route defined". -->
+        <meta-data
+            android:name="flutter_deeplinking_enabled"
+            android:value="false" />
 
         <!-- ✅ FIX 3: flutter_local_notifications receivers (needed for scheduled/boot) -->
         <receiver

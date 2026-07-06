@@ -209,37 +209,18 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     }
 
     // Normal reset password form
-    return Stack(
-      children: [
-        Scaffold(
-          backgroundColor: const Color(0xFFF8F8F8),
-          appBar: EForwardAppBar(
-            title: "SECURITY",
-            backgroundColor: const Color(0xFFF8F8F8),
-            onBackPressed: () => Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const LoginScreen()),
-            ),
-          ),
-          body: Column(
-            children: [
-              Expanded(child: _buildForm()),
-              _buildBottomActions(),
-            ],
-          ),
-        ),
-        if (_isLoading) const LoadingOverlay(),
-      ],
-    );
-  }
-
-  Widget _buildForm() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 8),
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F8F8),
+      appBar: const EForwardAppBar(
+        title: "SECURITY",
+        backgroundColor: Color(0xFFF8F8F8),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 8),
 
           // Title
           const Text(

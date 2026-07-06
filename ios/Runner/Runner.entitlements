@@ -5,5 +5,11 @@
 	<!-- APNs environment. Xcode flips this to "production" for release/App Store builds. -->
 	<key>aps-environment</key>
 	<string>development</string>
+	<!-- Universal Links: must live here (entitlements), NOT in Info.plist.
+	     Host must match the reset link domain exactly (no "-api"). -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:eforward.ardentnetworks.com.ph</string>
+	</array>
 </dict>
 </plist>

@@ -213,8 +213,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     debugPrint('Path: ${uri.path}');
     debugPrint('Query params: ${uri.queryParameters}');
 
-    // Matches: {APP_BASE_URL}/auth/reset-password?token=xxx
-    if (uri.path == '/auth/reset-password') {
+    // Matches: {APP_BASE_URL}/reset-password?token=xxx
+    if (uri.path == '/reset-password') {
       final token = uri.queryParameters['token'];
       debugPrint('Found token: $token');
 
