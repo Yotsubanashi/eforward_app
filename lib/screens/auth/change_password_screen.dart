@@ -8,8 +8,8 @@ import 'package:eforward_app/validators/password_validator.dart';
 import 'package:eforward_app/validators/required_field_validator.dart';
 import 'package:eforward_app/constants/shared_prefs_keys.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
-import 'package:eforward_app/widgets/section_label.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
+import 'package:eforward_app/widgets/password_strength_indicator.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -131,199 +131,177 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F8F8),
-      appBar: EForwardAppBar(
-        title: "SECURITY",
-        backgroundColor: const Color(0xFFF8F8F8),
-        onBackPressed: () => Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const SettingsPage()),
-        ),
-      ),
-      body: Stack(
-        children: [
-          SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 8),
-
-                // Title
-                const Text(
-                  "CHANGE\nPASSWORD",
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1,
-                    height: 1.1,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                ),
-
-                // Red underline accent
-                Container(
-                  margin: const EdgeInsets.only(top: 8, bottom: 16),
-                  width: 40,
-                  height: 3,
-                  color: const Color(0xFFCC0000),
-                ),
-
-                // Subtitle
-                const Text(
-                  "Update your security credentials. Your new password must adhere to institutional security protocols.",
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.black45,
-                    height: 1.6,
-                  ),
-                ),
-
-                const SizedBox(height: 28),
-
-                // Current Password
-                const Text(
-                  "CURRENT PASSWORD",
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.5,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _buildPasswordField(
-                  controller: _currentPasswordController,
-                  obscure: _obscureCurrent,
-                  onToggle: () =>
-                      setState(() => _obscureCurrent = !_obscureCurrent),
-                ),
-
-                const SizedBox(height: 24),
-
-                // New Password
-                const Text(
-                  "NEW PASSWORD",
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.5,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _buildPasswordField(
-                  controller: _newPasswordController,
-                  obscure: _obscureNew,
-                  onToggle: () => setState(() => _obscureNew = !_obscureNew),
-                ),
-
-                const SizedBox(height: 24),
-
-                // Confirm New Password
-                const Text(
-                  "CONFIRM NEW PASSWORD",
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.5,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _buildPasswordField(
-                  controller: _confirmPasswordController,
-                  obscure: _obscureConfirm,
-                  onToggle: () =>
-                      setState(() => _obscureConfirm = !_obscureConfirm),
-                ),
-
-                const SizedBox(height: 24),
-
-                // Security Requirements Box
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(
-                      color: const Color(0xFFEEEEEE),
-                      width: 1,
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SectionLabel(
-                        "SECURITY REQUIREMENTS",
-                        color: Color(0xFF1A1A1A),
-                      ),
-                      const SizedBox(height: 12),
-                      _buildRequirement("At least 8 characters", _hasMinLength),
-                      _buildRequirement("Include a number (0-9)", _hasNumber),
-                      _buildRequirement(
-                        "Special character (!@#\$)",
-                        _hasSpecialChar,
-                      ),
-                      _buildRequirement("Mixed case (Aa)", _hasMixedCase),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 28),
-
-                // Change Password Button
-                Center(
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: _changePassword,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFCC0000),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                      child: const Text(
-                        "CHANGE PASSWORD",
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Cancel
-                Center(
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text(
-                      "CANCEL AND RETURN TO PROFILE",
-                      style: TextStyle(
-                        color: Colors.black45,
-                        fontSize: 11,
-                        letterSpacing: 1.2,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-              ],
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: const Color(0xFFF8F8F8),
+          appBar: EForwardAppBar(
+            title: "SECURITY",
+            backgroundColor: const Color(0xFFF8F8F8),
+            onBackPressed: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsPage()),
             ),
           ),
-          if (_isLoading) const LoadingOverlay(),
+          body: Column(
+            children: [
+              Expanded(child: _buildForm()),
+              _buildBottomActions(),
+            ],
+          ),
+        ),
+        if (_isLoading) const LoadingOverlay(),
+      ],
+    );
+  }
+
+  Widget _buildForm() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+
+          // Title
+          const Text(
+            "CHANGE\nPASSWORD",
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1,
+              height: 1.1,
+              color: Color(0xFF1A1A1A),
+            ),
+          ),
+
+          // Red underline accent
+          Container(
+            margin: const EdgeInsets.only(top: 8, bottom: 16),
+            width: 40,
+            height: 3,
+            color: const Color(0xFFCC0000),
+          ),
+
+          // Subtitle
+          const Text(
+            "Update your security credentials. Your new password must adhere to institutional security protocols.",
+            style: TextStyle(fontSize: 12, color: Colors.black45, height: 1.6),
+          ),
+
+          const SizedBox(height: 28),
+
+          // Current Password
+          const Text(
+            "CURRENT PASSWORD",
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.5,
+              color: Color(0xFF1A1A1A),
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildPasswordField(
+            controller: _currentPasswordController,
+            obscure: _obscureCurrent,
+            onToggle: () => setState(() => _obscureCurrent = !_obscureCurrent),
+          ),
+
+          const SizedBox(height: 24),
+
+          // New Password
+          const Text(
+            "NEW PASSWORD",
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.5,
+              color: Color(0xFF1A1A1A),
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildPasswordField(
+            controller: _newPasswordController,
+            obscure: _obscureNew,
+            onToggle: () => setState(() => _obscureNew = !_obscureNew),
+          ),
+          const SizedBox(height: 12),
+          PasswordStrengthIndicator(password: _newPasswordController.text),
+
+          const SizedBox(height: 24),
+
+          // Confirm New Password
+          const Text(
+            "CONFIRM NEW PASSWORD",
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.5,
+              color: Color(0xFF1A1A1A),
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildPasswordField(
+            controller: _confirmPasswordController,
+            obscure: _obscureConfirm,
+            onToggle: () => setState(() => _obscureConfirm = !_obscureConfirm),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildBottomActions() {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Change Password Button
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: _changePassword,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFCC0000),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                child: const Text(
+                  "CHANGE PASSWORD",
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 2,
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Cancel
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                "CANCEL AND RETURN TO PROFILE",
+                style: TextStyle(
+                  color: Colors.black45,
+                  fontSize: 11,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -354,40 +332,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         focusedBorder: const UnderlineInputBorder(
           borderSide: BorderSide(color: Color(0xFFCC0000)),
         ),
-      ),
-    );
-  }
-
-  Widget _buildRequirement(String label, bool met) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          Container(
-            width: 16,
-            height: 16,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: met ? const Color(0xFFCC0000) : Colors.transparent,
-              border: Border.all(
-                color: met ? const Color(0xFFCC0000) : Colors.black26,
-                width: 1.5,
-              ),
-            ),
-            child: met
-                ? const Icon(Icons.check, size: 10, color: Colors.white)
-                : null,
-          ),
-          const SizedBox(width: 10),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: met ? const Color(0xFF1A1A1A) : Colors.black38,
-              fontWeight: met ? FontWeight.w600 : FontWeight.normal,
-            ),
-          ),
-        ],
       ),
     );
   }

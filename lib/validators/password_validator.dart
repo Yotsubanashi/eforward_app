@@ -10,9 +10,14 @@ class PasswordValidator {
   static bool hasSpecialChar(String password) =>
       password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'));
 
-  static bool hasMixedCase(String password) =>
-      password.contains(RegExp(r'[A-Z]')) &&
+  static bool hasUppercase(String password) =>
+      password.contains(RegExp(r'[A-Z]'));
+
+  static bool hasLowercase(String password) =>
       password.contains(RegExp(r'[a-z]'));
+
+  static bool hasMixedCase(String password) =>
+      hasUppercase(password) && hasLowercase(password);
 
   static bool meetsRequirements(String password) =>
       hasMinLength(password) &&
