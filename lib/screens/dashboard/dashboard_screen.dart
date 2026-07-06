@@ -12,6 +12,7 @@ import 'package:eforward_app/services/secure_unlock_service.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/approval_card.dart';
 import 'package:eforward_app/widgets/app_empty_state.dart';
+import 'package:eforward_app/widgets/loading_overlay.dart';
 
 class DashboardPage extends StatefulWidget {
   final Map<String, dynamic>? userData;
@@ -406,122 +407,175 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F5F7),
-      body: SafeArea(
-        child: RefreshIndicator(
-          color: const Color(0xFFCC0000),
-          onRefresh: () async {
-            await _loadUserData();
-            await _fetchPendingApprovals();
-          },
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Brand Header
-                Row(
-                  children: const [
-                    Icon(
-                      Icons.shield_outlined,
-                      color: Color(0xFFCC0000),
-                      size: 16,
-                    ),
-                    SizedBox(width: 10),
-                    Text(
-                      "E-FORWARD",
-                      style: TextStyle(
-                        color: Color(0xFFCC0000),
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                  ],
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: const Color(0xFFF4F5F7),
+          body: SafeArea(
+            child: RefreshIndicator(
+              color: const Color(0xFFCC0000),
+              onRefresh: () async {
+                await _loadUserData();
+                await _fetchPendingApprovals();
+              },
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 20,
                 ),
-
-                const SizedBox(height: 28),
-
-                Text(
-                  "WELCOME BACK,\n${_userName.isNotEmpty ? _userName.split(' ').first.toUpperCase() : 'USER'}",
-                  style: const TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.5,
-                    height: 1.1,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                // ─── PENDING APPROVALS CARD ───────────────────────────────────
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: const Color(0xFFE8E8E8)),
-                  ),
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      border: Border(
-                        left: BorderSide(color: Color(0xFFCC0000), width: 3),
-                      ),
-                    ),
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "PENDING APPROVALS",
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: Color(0xFFCC0000),
-                                  letterSpacing: 1.2,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              _isLoadingPending
-                                  ? const SizedBox(
-                                      width: 24,
-                                      height: 24,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Color(0xFFCC0000),
-                                      ),
-                                    )
-                                  : Text(
-                                      '${_pendingApprovals.length}',
-                                      style: const TextStyle(
-                                        fontSize: 38,
-                                        fontWeight: FontWeight.w900,
-                                        color: Color(0xFF1A1A1A),
-                                        height: 1,
-                                      ),
-                                    ),
-                              const SizedBox(height: 6),
-                              const Text(
-                                "High-priority authorizations requiring immediate executive review.",
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.black45,
-                                  letterSpacing: 0.3,
-                                  height: 1.5,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Brand Header
+                    Row(
+                      children: const [
+                        Icon(
+                          Icons.shield_outlined,
+                          color: Color(0xFFCC0000),
+                          size: 16,
+                        ),
+                        SizedBox(width: 10),
+                        Text(
+                          "E-FORWARD",
+                          style: TextStyle(
+                            color: Color(0xFFCC0000),
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 2,
                           ),
                         ),
-                        const SizedBox(width: 16),
-                        ElevatedButton(
-                          onPressed: () {
+                      ],
+                    ),
+
+                    const SizedBox(height: 28),
+
+                    Text(
+                      "WELCOME BACK,\n${_userName.isNotEmpty ? _userName.split(' ').first.toUpperCase() : 'USER'}",
+                      style: const TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                        height: 1.1,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // ─── PENDING APPROVALS CARD ───────────────────────────────────
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: const Color(0xFFE8E8E8)),
+                      ),
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            left: BorderSide(
+                              color: Color(0xFFCC0000),
+                              width: 3,
+                            ),
+                          ),
+                        ),
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    "PENDING APPROVALS",
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      color: Color(0xFFCC0000),
+                                      letterSpacing: 1.2,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '${_pendingApprovals.length}',
+                                    style: const TextStyle(
+                                      fontSize: 38,
+                                      fontWeight: FontWeight.w900,
+                                      color: Color(0xFF1A1A1A),
+                                      height: 1,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  const Text(
+                                    "High-priority authorizations requiring immediate executive review.",
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.black45,
+                                      letterSpacing: 0.3,
+                                      height: 1.5,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            ElevatedButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const ApprovalsPage(),
+                                  ),
+                                ).then((_) {
+                                  if (mounted) _fetchPendingApprovals();
+                                });
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFCC0000),
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                              child: const Text(
+                                "REVIEW NOW",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.5,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 32),
+
+                    // ─── RECENT ACTIVITY ──────────────────────────────────────────
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          "RECENT ACTIVITY",
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 2,
+                            color: Color(0xFF1A1A1A),
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -531,136 +585,79 @@ class _DashboardPageState extends State<DashboardPage> {
                               if (mounted) _fetchPendingApprovals();
                             });
                           },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFCC0000),
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
                           child: const Text(
-                            "REVIEW NOW",
-                            textAlign: TextAlign.center,
+                            "VIEW ALL LOGS →",
                             style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.5,
-                              height: 1.4,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1,
+                              color: Color(0xFFCC0000),
                             ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ),
 
-                const SizedBox(height: 32),
+                    const SizedBox(height: 16),
 
-                // ─── RECENT ACTIVITY ──────────────────────────────────────────
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      "RECENT ACTIVITY",
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 2,
-                        color: Color(0xFF1A1A1A),
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ApprovalsPage(),
-                          ),
-                        ).then((_) {
-                          if (mounted) _fetchPendingApprovals();
-                        });
-                      },
-                      child: const Text(
-                        "VIEW ALL LOGS →",
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1,
-                          color: Color(0xFFCC0000),
+                    if (_isLoadingPending)
+                      const SizedBox.shrink()
+                    else if (_pendingApprovals.isEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          border: Border.all(color: const Color(0xFFE8E8E8)),
                         ),
+                        child: const AppEmptyState(
+                          icon: Icons.check_circle_outline,
+                          title: "No pending approvals",
+                        ),
+                      )
+                    else
+                      ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _pendingApprovals.length > 5
+                            ? 5
+                            : _pendingApprovals.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final item = _pendingApprovals[index];
+                          return ApprovalCard(
+                            item: item,
+                            isPending: true,
+                            onTap: () =>
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ApprovalDetailPage(
+                                      item: item,
+                                      isFromHistory: false,
+                                    ),
+                                  ),
+                                ).then((_) {
+                                  if (mounted) _fetchPendingApprovals();
+                                }),
+                          );
+                        },
                       ),
-                    ),
+
+                    const SizedBox(height: 24),
                   ],
                 ),
-
-                const SizedBox(height: 16),
-
-                if (_isLoadingPending)
-                  const Center(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
-                      child: CircularProgressIndicator(
-                        color: Color(0xFFCC0000),
-                      ),
-                    ),
-                  )
-                else if (_pendingApprovals.isEmpty)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: const Color(0xFFE8E8E8)),
-                    ),
-                    child: const AppEmptyState(
-                      icon: Icons.check_circle_outline,
-                      title: "No pending approvals",
-                    ),
-                  )
-                else
-                  ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _pendingApprovals.length > 5
-                        ? 5
-                        : _pendingApprovals.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final item = _pendingApprovals[index];
-                      return ApprovalCard(
-                        item: item,
-                        isPending: true,
-                        onTap: () =>
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ApprovalDetailPage(
-                                  item: item,
-                                  isFromHistory: false,
-                                ),
-                              ),
-                            ).then((_) {
-                              if (mounted) _fetchPendingApprovals();
-                            }),
-                      );
-                    },
-                  ),
-
-                const SizedBox(height: 24),
-              ],
+              ),
             ),
           ),
+          bottomNavigationBar: BottomNavigator(
+            selectedIndex: _selectedIndex,
+            onTap: (_) {},
+          ),
         ),
-      ),
-      bottomNavigationBar: BottomNavigator(
-        selectedIndex: _selectedIndex,
-        onTap: (_) {},
-      ),
+        if (_isLoadingPending && _pendingApprovals.isEmpty)
+          const LoadingOverlay(),
+      ],
     );
   }
 }

@@ -8,6 +8,7 @@ import '../../services/secure_unlock_service.dart';
 import '../../validators/email_validator.dart';
 import '../../validators/required_field_validator.dart';
 import '../../widgets/app_snackbar.dart';
+import '../../widgets/loading_overlay.dart';
 import '../dashboard/dashboard_screen.dart';
 import 'forgot_password_screen.dart';
 
@@ -109,85 +110,86 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!mounted) return;
 
-    setState(() => _isLoading = false);
+    if (!result.isSuccess) {
+      debugPrint('Login failed [${result.statusCode}]: ${result.message}');
+      setState(() => _isLoading = false);
+      AppSnackbar.error(context, result.message);
+      return;
+    }
 
-    if (result.isSuccess) {
-      final status = _extractAccountStatus(result.data);
-      final activeStatuses = <String>{'ATV', 'ACTIVE', 'ACT', 'APPROVED'};
-      final inactiveStatuses = <String>{
-        'ITV',
-        'INACTIVE',
-        'INA',
-        'DISABLED',
-        'DEACTIVATED',
-        'SUSPENDED',
-        'BLOCKED',
-      };
+    final status = _extractAccountStatus(result.data);
+    final inactiveStatuses = <String>{
+      'ITV',
+      'INACTIVE',
+      'INA',
+      'DISABLED',
+      'DEACTIVATED',
+      'SUSPENDED',
+      'BLOCKED',
+    };
 
-      if (status != null && inactiveStatuses.contains(status)) {
-        AppSnackbar.error(
-          context,
-          'Your account is inactive. Please contact support.',
-        );
-        return;
-      }
-
-      _saveRememberMe(email);
-      debugPrint('Login success: ${result.data}');
-
-      final token =
-          result.data?['accessToken'] ??
-          result.data?['access_token'] ??
-          result.data?['token'];
-      final refreshToken =
-          result.data?['refreshToken'] ?? result.data?['refresh_token'];
-
-      if (token != null && token.toString().isNotEmpty) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('access_token', token.toString());
-        if (refreshToken != null && refreshToken.toString().isNotEmpty) {
-          await prefs.setString('refresh_token', refreshToken.toString());
-        }
-        if (result.data != null) {
-          await prefs.setString('user_data', jsonEncode(result.data));
-
-          final user = result.data!['user'] is Map
-              ? result.data!['user']
-              : result.data;
-          final userId =
-              user['id']?.toString() ??
-              user['employee_id']?.toString() ??
-              user['employeeId']?.toString();
-
-          if (userId != null) {
-            await prefs.setString('employee_id', userId);
-            await FCMTokenService.registerToken(userId);
-          }
-        }
-      }
-
-      final isUnlocked = await SecureUnlockService.authenticateAfterLogin();
-      if (!mounted) return;
-      if (!isUnlocked) {
-        AppSnackbar.error(
-          context,
-          'Authentication cancelled. Please login again.',
-        );
-        return;
-      }
-
-      Navigator.pushReplacement(
+    if (status != null && inactiveStatuses.contains(status)) {
+      setState(() => _isLoading = false);
+      AppSnackbar.error(
         context,
-        MaterialPageRoute(
-          builder: (context) => DashboardPage(userData: result.data),
-        ),
+        'Your account is inactive. Please contact support.',
       );
       return;
     }
 
-    debugPrint('Login failed [${result.statusCode}]: ${result.message}');
+    _saveRememberMe(email);
+    debugPrint('Login success: ${result.data}');
 
-    AppSnackbar.error(context, result.message);
+    final token =
+        result.data?['accessToken'] ??
+        result.data?['access_token'] ??
+        result.data?['token'];
+    final refreshToken =
+        result.data?['refreshToken'] ?? result.data?['refresh_token'];
+
+    if (token != null && token.toString().isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('access_token', token.toString());
+      if (refreshToken != null && refreshToken.toString().isNotEmpty) {
+        await prefs.setString('refresh_token', refreshToken.toString());
+      }
+      if (result.data != null) {
+        await prefs.setString('user_data', jsonEncode(result.data));
+
+        final user = result.data!['user'] is Map
+            ? result.data!['user']
+            : result.data;
+        final userId =
+            user['id']?.toString() ??
+            user['employee_id']?.toString() ??
+            user['employeeId']?.toString();
+
+        if (userId != null) {
+          await prefs.setString('employee_id', userId);
+          await FCMTokenService.registerToken(userId);
+        }
+      }
+    }
+
+    if (!mounted) return;
+
+    final isUnlocked = await SecureUnlockService.authenticateAfterLogin();
+    if (!mounted) return;
+    if (!isUnlocked) {
+      setState(() => _isLoading = false);
+      AppSnackbar.error(
+        context,
+        'Authentication cancelled. Please login again.',
+      );
+      return;
+    }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DashboardPage(userData: result.data),
+      ),
+    );
   }
 
   @override
@@ -200,208 +202,216 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 40),
-
-                // Logo
-                Center(
-                  child: Column(
-                    children: [
-                      Image.asset(
-                        _branding['logo']!,
-                        width: 280,
-                        height: 120,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) {
-                          debugPrint('❌ Logo load error: $error');
-                          return const Icon(
-                            Icons.shield_outlined,
-                            color: Color(0xFFCC0000),
-                            size: 60,
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 15),
-                      Text(
-                        _branding['name']!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 17,
-                          color: Colors.black,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                    ],
-                  ),
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: Colors.white,
+          body: SafeArea(
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 32,
                 ),
-                const SizedBox(height: 40),
-
-                // Email Field
-                const Text(
-                  "EMAIL",
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    hintText: "ENTER EMAIL ADDRESS",
-                    hintStyle: TextStyle(color: Colors.black26, fontSize: 12),
-                    enabledBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: Colors.black26),
-                    ),
-                    focusedBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: Color(0xFFCC0000)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Password Field
-                const Text(
-                  "PASSWORD",
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: _obscurePassword,
-                  decoration: InputDecoration(
-                    hintText: "ENTER PASSWORD",
-                    hintStyle: const TextStyle(
-                      color: Colors.black26,
-                      fontSize: 12,
-                    ),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined,
-                        color: Colors.black38,
-                        size: 20,
-                      ),
-                      onPressed: () =>
-                          setState(() => _obscurePassword = !_obscurePassword),
-                    ),
-                    enabledBorder: const UnderlineInputBorder(
-                      borderSide: BorderSide(color: Colors.black26),
-                    ),
-                    focusedBorder: const UnderlineInputBorder(
-                      borderSide: BorderSide(color: Color(0xFFCC0000)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Remember Me Checkbox
-                Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: Checkbox(
-                        value: _rememberMe,
-                        onChanged: _isLoading
-                            ? null
-                            : (val) =>
-                                  setState(() => _rememberMe = val ?? false),
-                        activeColor: Color(0xFFCC0000),
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        side: const BorderSide(
-                          color: Colors.black38,
-                          width: 1.5,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    const Text(
-                      "Remember Me",
-                      style: TextStyle(color: Colors.black54, fontSize: 15),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
+                    const SizedBox(height: 40),
 
-                // Login Button
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton.icon(
-                    onPressed: _isLoading ? null : _handleLogin,
-                    icon: _isLoading
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
+                    // Logo
+                    Center(
+                      child: Column(
+                        children: [
+                          Image.asset(
+                            _branding['logo']!,
+                            width: 280,
+                            height: 120,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              debugPrint('❌ Logo load error: $error');
+                              return const Icon(
+                                Icons.shield_outlined,
+                                color: Color(0xFFCC0000),
+                                size: 60,
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 15),
+                          Text(
+                            _branding['name']!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              color: Colors.black,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.2,
                             ),
-                          )
-                        : const Icon(Icons.arrow_forward, color: Colors.white),
-                    label: Text(
-                      _isLoading ? "LOGGING IN..." : "LOGIN",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        letterSpacing: 2,
-                        fontWeight: FontWeight.bold,
+                          ),
+                        ],
                       ),
                     ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFCC0000),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
+                    const SizedBox(height: 40),
 
-                // Forgot Password
-                Center(
-                  child: TextButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ForgotPasswordScreen(),
-                      ),
-                    ),
-                    child: const Text(
-                      "FORGOT PASSWORD",
+                    // Email Field
+                    const Text(
+                      "EMAIL",
                       style: TextStyle(
-                        color: Colors.black54,
-                        fontSize: 12,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
                         letterSpacing: 1.5,
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        hintText: "ENTER EMAIL ADDRESS",
+                        hintStyle: TextStyle(
+                          color: Colors.black26,
+                          fontSize: 12,
+                        ),
+                        enabledBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.black26),
+                        ),
+                        focusedBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(color: Color(0xFFCC0000)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Password Field
+                    const Text(
+                      "PASSWORD",
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: _passwordController,
+                      obscureText: _obscurePassword,
+                      decoration: InputDecoration(
+                        hintText: "ENTER PASSWORD",
+                        hintStyle: const TextStyle(
+                          color: Colors.black26,
+                          fontSize: 12,
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            color: Colors.black38,
+                            size: 20,
+                          ),
+                          onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword,
+                          ),
+                        ),
+                        enabledBorder: const UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.black26),
+                        ),
+                        focusedBorder: const UnderlineInputBorder(
+                          borderSide: BorderSide(color: Color(0xFFCC0000)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Remember Me Checkbox
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: Checkbox(
+                            value: _rememberMe,
+                            onChanged: _isLoading
+                                ? null
+                                : (val) => setState(
+                                    () => _rememberMe = val ?? false,
+                                  ),
+                            activeColor: Color(0xFFCC0000),
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                            side: const BorderSide(
+                              color: Colors.black38,
+                              width: 1.5,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          "Remember Me",
+                          style: TextStyle(color: Colors.black54, fontSize: 15),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Login Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        onPressed: _isLoading ? null : _handleLogin,
+                        icon: const Icon(
+                          Icons.arrow_forward,
+                          color: Colors.white,
+                        ),
+                        label: const Text(
+                          "LOGIN",
+                          style: TextStyle(
+                            color: Colors.white,
+                            letterSpacing: 2,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFCC0000),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Forgot Password
+                    Center(
+                      child: TextButton(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ForgotPasswordScreen(),
+                          ),
+                        ),
+                        child: const Text(
+                          "FORGOT PASSWORD",
+                          style: TextStyle(
+                            color: Colors.black54,
+                            fontSize: 12,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
-      ),
+        if (_isLoading) const LoadingOverlay(),
+      ],
     );
   }
 }

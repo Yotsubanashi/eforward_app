@@ -7,7 +7,7 @@ import 'package:eforward_app/screens/auth/login_screen.dart';
 import 'package:eforward_app/widgets/bottom_navigator.dart';
 import 'package:eforward_app/screens/notifications/notification_settings_screen.dart';
 import 'package:eforward_app/services/api/auth_api.dart';
-import 'package:eforward_app/widgets/loaders.dart';
+import 'package:eforward_app/widgets/loading_overlay.dart';
 import 'package:eforward_app/services/notifications/fcm_token_service.dart';
 import 'package:eforward_app/services/notifications/notifications_service.dart';
 import 'package:eforward_app/services/secure_unlock_service.dart';
@@ -218,72 +218,84 @@ class _SettingsPageState extends State<SettingsPage> {
                       width: double.infinity,
                       height: 50,
                       child: ElevatedButton(
-                        onPressed: () async {
-                          final newFirst = firstNameController.text.trim();
-                          final newMiddle = middleNameController.text.trim();
-                          final newLast = lastNameController.text.trim();
+                        onPressed: isSaving
+                            ? null
+                            : () async {
+                                final newFirst = firstNameController.text
+                                    .trim();
+                                final newMiddle = middleNameController.text
+                                    .trim();
+                                final newLast = lastNameController.text.trim();
 
-                          LoadingDialog.show(
-                            context,
-                            message: "SAVING CHANGES...",
-                          );
+                                setSheetState(() => isSaving = true);
 
-                          final prefs = await SharedPreferences.getInstance();
-                          final token = prefs.getString('access_token') ?? '';
+                                final prefs =
+                                    await SharedPreferences.getInstance();
+                                final token =
+                                    prefs.getString('access_token') ?? '';
 
-                          final api = AuthApi();
-                          final result = await api.updateProfile(
-                            token: token,
-                            employeeId: _employeeId,
-                            fname: newFirst.isNotEmpty ? newFirst : _firstName,
-                            mname: newMiddle.isNotEmpty
-                                ? newMiddle
-                                : _middleName,
-                            lname: newLast.isNotEmpty ? newLast : _lastName,
-                          );
-
-                          if (mounted) LoadingDialog.hide(context);
-
-                          if (result.isSuccess) {
-                            if (newFirst.isNotEmpty) _firstName = newFirst;
-                            if (newMiddle.isNotEmpty) _middleName = newMiddle;
-                            if (newLast.isNotEmpty) _lastName = newLast;
-
-                            final userDataStr = prefs.getString('user_data');
-                            if (userDataStr != null) {
-                              try {
-                                final Map<String, dynamic> full = jsonDecode(
-                                  userDataStr,
+                                final api = AuthApi();
+                                final result = await api.updateProfile(
+                                  token: token,
+                                  employeeId: _employeeId,
+                                  fname: newFirst.isNotEmpty
+                                      ? newFirst
+                                      : _firstName,
+                                  mname: newMiddle.isNotEmpty
+                                      ? newMiddle
+                                      : _middleName,
+                                  lname: newLast.isNotEmpty
+                                      ? newLast
+                                      : _lastName,
                                 );
-                                final userData = (full['user'] is Map)
-                                    ? full['user'] as Map<String, dynamic>
-                                    : full;
-                                userData['fname'] = _firstName;
-                                userData['mname'] = _middleName;
-                                userData['lname'] = _lastName;
-                                await prefs.setString(
-                                  'user_data',
-                                  jsonEncode(full),
-                                );
-                              } catch (e) {
-                                debugPrint('Error saving profile cache: $e');
-                              }
-                            }
 
-                            if (mounted) {
-                              setState(() {});
-                              Navigator.pop(context);
-                              AppSnackbar.success(
-                                context,
-                                "Your profile has been updated successfully.",
-                              );
-                            }
-                          } else {
-                            if (mounted) {
-                              AppSnackbar.error(context, result.message);
-                            }
-                          }
-                        },
+                                setSheetState(() => isSaving = false);
+
+                                if (result.isSuccess) {
+                                  if (newFirst.isNotEmpty)
+                                    _firstName = newFirst;
+                                  if (newMiddle.isNotEmpty)
+                                    _middleName = newMiddle;
+                                  if (newLast.isNotEmpty) _lastName = newLast;
+
+                                  final userDataStr = prefs.getString(
+                                    'user_data',
+                                  );
+                                  if (userDataStr != null) {
+                                    try {
+                                      final Map<String, dynamic> full =
+                                          jsonDecode(userDataStr);
+                                      final userData = (full['user'] is Map)
+                                          ? full['user'] as Map<String, dynamic>
+                                          : full;
+                                      userData['fname'] = _firstName;
+                                      userData['mname'] = _middleName;
+                                      userData['lname'] = _lastName;
+                                      await prefs.setString(
+                                        'user_data',
+                                        jsonEncode(full),
+                                      );
+                                    } catch (e) {
+                                      debugPrint(
+                                        'Error saving profile cache: $e',
+                                      );
+                                    }
+                                  }
+
+                                  if (mounted) {
+                                    setState(() {});
+                                    Navigator.pop(context);
+                                    AppSnackbar.success(
+                                      context,
+                                      "Your profile has been updated successfully.",
+                                    );
+                                  }
+                                } else {
+                                  if (mounted) {
+                                    AppSnackbar.error(context, result.message);
+                                  }
+                                }
+                              },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFCC0000),
                           foregroundColor: Colors.white,
@@ -306,6 +318,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
             ),
+            if (isSaving) const LoadingOverlay(),
           ],
         ),
       ),
@@ -427,240 +440,251 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      bottomNavigationBar: BottomNavigator(
-        selectedIndex: _selectedIndex,
-        onTap: (_) {},
-      ),
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-              child: Row(
-                children: [
-                  Container(
-                    width: 3,
-                    height: 18,
-                    color: const Color(0xFFCC0000),
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: Colors.white,
+          bottomNavigationBar: BottomNavigator(
+            selectedIndex: _selectedIndex,
+            onTap: (_) {},
+          ),
+          body: SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 20,
                   ),
-                  const SizedBox(width: 10),
-                  const Text(
-                    "EFORWARD SETTINGS",
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 2,
-                      color: Color(0xFFCC0000),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 40),
-
-            // Profile Section
-            Center(
-              child: _isLoading
-                  ? const CircularProgressIndicator(color: Color(0xFFCC0000))
-                  : Column(
-                      children: [
-                        // Initials Avatar
-                        CircleAvatar(
-                          radius: 60,
-                          backgroundColor: Colors.black,
-                          child: Text(
-                            _initials.isNotEmpty ? _initials : '?',
-                            style: const TextStyle(
-                              fontSize: 36,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                              letterSpacing: 3,
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        // Full Name
-                        Text(
-                          _displayName.isNotEmpty ? _displayName : '—',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.5,
-                            color: Color(0xFF1A1A1A),
-                          ),
-                        ),
-
-                        const SizedBox(height: 4),
-
-                        // Email
-                        if (_email.isNotEmpty)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(
-                                Icons.email_outlined,
-                                size: 13,
-                                color: Colors.black38,
-                              ),
-                              const SizedBox(width: 5),
-                              Text(
-                                _email,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.black45,
-                                  letterSpacing: 0.3,
-                                ),
-                              ),
-                            ],
-                          ),
-
-                        const SizedBox(height: 4),
-
-                        // Employee ID
-                        if (_employeeId.isNotEmpty)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(
-                                Icons.badge_outlined,
-                                size: 13,
-                                color: Colors.black38,
-                              ),
-                              const SizedBox(width: 5),
-                              Text(
-                                _employeeId,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.black45,
-                                  letterSpacing: 1,
-                                ),
-                              ),
-                            ],
-                          ),
-                      ],
-                    ),
-            ),
-
-            const SizedBox(height: 32),
-            const Divider(height: 1, color: Color(0xFFEEEEEE)),
-
-            // Edit Profile
-            _buildMenuItem(
-              context,
-              icon: Icons.person_outline,
-              iconColor: const Color(0xFFCC0000),
-              label: "ACCOUNT",
-              title: "EDIT PROFILE",
-              trailing: const Icon(
-                Icons.chevron_right,
-                color: Color(0xFFAAAAAA),
-                size: 20,
-              ),
-              onTap: _showEditProfileSheet,
-            ),
-
-            const Divider(height: 1, color: Color(0xFFEEEEEE)),
-
-            // Change Password
-            _buildMenuItem(
-              context,
-              icon: Icons.lock_outline,
-              iconColor: const Color(0xFFCC0000),
-              label: "SECURITY",
-              title: "CHANGE PASSWORD",
-              trailing: const Icon(
-                Icons.chevron_right,
-                color: Color(0xFFAAAAAA),
-                size: 20,
-              ),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
-              ),
-            ),
-
-            const Divider(height: 1, color: Color(0xFFEEEEEE)),
-
-            _buildMenuItem(
-              context,
-              icon: Icons.fingerprint,
-              iconColor: const Color(0xFFCC0000),
-              label: "SECURITY",
-              title: "BIOMETRIC/PIN UNLOCK",
-              trailing: Switch(
-                value: _biometricUnlockEnabled,
-                onChanged: _onToggleBiometricUnlock,
-                activeThumbColor: const Color(0xFFCC0000),
-              ),
-              onTap: () => _onToggleBiometricUnlock(!_biometricUnlockEnabled),
-            ),
-
-            // const Divider(height: 1, color: Color(0xFFEEEEEE)),
-
-            // _buildMenuItem(
-            //   context,
-            //   icon: Icons.notifications_active_outlined,
-            //   iconColor: const Color(0xFFCC0000),
-            //   label: "TESTING",
-            //   title: "PUSH NOTIFICATION TEST",
-            //   trailing: const Icon(
-            //     Icons.chevron_right,
-            //     color: Color(0xFFAAAAAA),
-            //     size: 20,
-            //   ),
-            //   onTap: () => Navigator.push(
-            //     context,
-            //     MaterialPageRoute(builder: (_) => const NotificationTestPage()),
-            //   ),
-            // ),
-            const Divider(height: 1, color: Color(0xFFEEEEEE)),
-
-            // Logout
-            // Logout
-            _buildMenuItem(
-              context,
-              icon: Icons.logout,
-              iconColor: const Color(0xFF555555),
-              label: "SESSION MANAGEMENT",
-              title: "LOGOUT",
-              onTap: _logout,
-            ),
-
-            const Divider(height: 1, color: Color(0xFFEEEEEE)),
-
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Align(
-                alignment: Alignment.center,
-                child: FutureBuilder(
-                  future: PackageInfo.fromPlatform(),
-                  builder: (context, snapshot) {
-                    final version = snapshot.hasData
-                        ? 'Version ${snapshot.data!.version}'
-                        : 'Loading...';
-                    return Text(
-                      version,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFFAAAAAA),
-                        fontWeight: FontWeight.w600,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 3,
+                        height: 18,
+                        color: const Color(0xFFCC0000),
                       ),
-                    );
-                  },
+                      const SizedBox(width: 10),
+                      const Text(
+                        "EFORWARD SETTINGS",
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 2,
+                          color: Color(0xFFCC0000),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+
+                const SizedBox(height: 40),
+
+                // Profile Section
+                Center(
+                  child: _isLoading
+                      ? const SizedBox.shrink()
+                      : Column(
+                          children: [
+                            // Initials Avatar
+                            CircleAvatar(
+                              radius: 60,
+                              backgroundColor: Colors.black,
+                              child: Text(
+                                _initials.isNotEmpty ? _initials : '?',
+                                style: const TextStyle(
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  letterSpacing: 3,
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            // Full Name
+                            Text(
+                              _displayName.isNotEmpty ? _displayName : '—',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.5,
+                                color: Color(0xFF1A1A1A),
+                              ),
+                            ),
+
+                            const SizedBox(height: 4),
+
+                            // Email
+                            if (_email.isNotEmpty)
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(
+                                    Icons.email_outlined,
+                                    size: 13,
+                                    color: Colors.black38,
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    _email,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.black45,
+                                      letterSpacing: 0.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                            const SizedBox(height: 4),
+
+                            // Employee ID
+                            if (_employeeId.isNotEmpty)
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(
+                                    Icons.badge_outlined,
+                                    size: 13,
+                                    color: Colors.black38,
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    _employeeId,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.black45,
+                                      letterSpacing: 1,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                ),
+
+                const SizedBox(height: 32),
+                const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+                // Edit Profile
+                _buildMenuItem(
+                  context,
+                  icon: Icons.person_outline,
+                  iconColor: const Color(0xFFCC0000),
+                  label: "ACCOUNT",
+                  title: "EDIT PROFILE",
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    color: Color(0xFFAAAAAA),
+                    size: 20,
+                  ),
+                  onTap: _showEditProfileSheet,
+                ),
+
+                const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+                // Change Password
+                _buildMenuItem(
+                  context,
+                  icon: Icons.lock_outline,
+                  iconColor: const Color(0xFFCC0000),
+                  label: "SECURITY",
+                  title: "CHANGE PASSWORD",
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    color: Color(0xFFAAAAAA),
+                    size: 20,
+                  ),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ChangePasswordScreen(),
+                    ),
+                  ),
+                ),
+
+                const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+                _buildMenuItem(
+                  context,
+                  icon: Icons.fingerprint,
+                  iconColor: const Color(0xFFCC0000),
+                  label: "SECURITY",
+                  title: "BIOMETRIC/PIN UNLOCK",
+                  trailing: Switch(
+                    value: _biometricUnlockEnabled,
+                    onChanged: _onToggleBiometricUnlock,
+                    activeThumbColor: const Color(0xFFCC0000),
+                  ),
+                  onTap: () =>
+                      _onToggleBiometricUnlock(!_biometricUnlockEnabled),
+                ),
+
+                // const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+                // _buildMenuItem(
+                //   context,
+                //   icon: Icons.notifications_active_outlined,
+                //   iconColor: const Color(0xFFCC0000),
+                //   label: "TESTING",
+                //   title: "PUSH NOTIFICATION TEST",
+                //   trailing: const Icon(
+                //     Icons.chevron_right,
+                //     color: Color(0xFFAAAAAA),
+                //     size: 20,
+                //   ),
+                //   onTap: () => Navigator.push(
+                //     context,
+                //     MaterialPageRoute(builder: (_) => const NotificationTestPage()),
+                //   ),
+                // ),
+                const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+                // Logout
+                // Logout
+                _buildMenuItem(
+                  context,
+                  icon: Icons.logout,
+                  iconColor: const Color(0xFF555555),
+                  label: "SESSION MANAGEMENT",
+                  title: "LOGOUT",
+                  onTap: _logout,
+                ),
+
+                const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Align(
+                    alignment: Alignment.center,
+                    child: FutureBuilder(
+                      future: PackageInfo.fromPlatform(),
+                      builder: (context, snapshot) {
+                        final version = snapshot.hasData
+                            ? 'Version ${snapshot.data!.version}'
+                            : 'Loading...';
+                        return Text(
+                          version,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFFAAAAAA),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
+        if (_isLoading) const LoadingOverlay(),
+      ],
     );
   }
 

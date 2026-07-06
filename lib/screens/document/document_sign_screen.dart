@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
+import 'package:eforward_app/widgets/loading_overlay.dart';
 
 class DocumentSignScreen extends StatefulWidget {
   final Map<String, dynamic> document;
@@ -149,538 +150,556 @@ class _DocumentSignScreenState extends State<DocumentSignScreen> {
   @override
   Widget build(BuildContext context) {
     final doc = widget.document;
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F5F7),
-      appBar: const EForwardAppBar(
-        title: "DOCUMENT SIGNING",
-        backgroundColor: Color(0xFFF4F5F7),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Document Info Card
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: const Color(0xFFE8E8E8)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    doc['id'],
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFFCC0000),
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1,
-                    ),
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: const Color(0xFFF4F5F7),
+          appBar: const EForwardAppBar(
+            title: "DOCUMENT SIGNING",
+            backgroundColor: Color(0xFFF4F5F7),
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Document Info Card
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: const Color(0xFFE8E8E8)),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    doc['title'],
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
-                      color: Color(0xFF1A1A1A),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Divider(height: 1, color: Color(0xFFF0F0F0)),
-                  const SizedBox(height: 16),
-                  _buildInfoRow(
-                    Icons.person_outline,
-                    "CREATED BY",
-                    doc['createdBy'],
-                  ),
-                  const SizedBox(height: 10),
-                  _buildInfoRow(
-                    Icons.calendar_today_outlined,
-                    "DATE & TIME",
-                    doc['dateTime'],
-                  ),
-                  const SizedBox(height: 10),
-                  _buildInfoRow(Icons.label_outline, "CATEGORY", doc['label']),
-                  const SizedBox(height: 16),
-                  const Divider(height: 1, color: Color(0xFFF0F0F0)),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        doc['label'],
+                        doc['id'],
                         style: const TextStyle(
-                          fontSize: 10,
-                          color: Colors.black45,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      Text(
-                        "${(doc['progress'] * 100).toInt()}%",
-                        style: const TextStyle(
-                          fontSize: 10,
-                          color: Colors.black45,
+                          fontSize: 11,
+                          color: Color(0xFFCC0000),
                           fontWeight: FontWeight.w700,
+                          letterSpacing: 1,
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Stack(
-                    children: [
-                      Container(
-                        height: 4,
-                        width: double.infinity,
-                        color: const Color(0xFFEEEEEE),
-                      ),
-                      FractionallySizedBox(
-                        widthFactor: doc['progress'],
-                        child: Container(
-                          height: 4,
-                          color: const Color(0xFFCC0000),
+                      const SizedBox(height: 6),
+                      Text(
+                        doc['title'],
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                          color: Color(0xFF1A1A1A),
                         ),
                       ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // PDF Upload/Preview Section
-            Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: const Color(0xFFE8E8E8)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header row
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          "DOCUMENT PREVIEW",
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.5,
-                            color: Color(0xFF1A1A1A),
-                          ),
-                        ),
-                        // Upload/Replace PDF button
-                        GestureDetector(
-                          onTap: _pickPdf,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF5F5F5),
-                              border: Border.all(
-                                color: const Color(0xFFE8E8E8),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.upload_file_outlined,
-                                  size: 13,
-                                  color: Color(0xFFCC0000),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _pdfFile == null ? "UPLOAD PDF" : "REPLACE",
-                                  style: const TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 1,
-                                    color: Color(0xFFCC0000),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // PDF notice
-                  if (_pdfFile == null)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 16, bottom: 8),
-                      child: Text(
-                        "Only PDF files are supported.",
-                        style: TextStyle(fontSize: 10, color: Colors.black38),
+                      const SizedBox(height: 16),
+                      const Divider(height: 1, color: Color(0xFFF0F0F0)),
+                      const SizedBox(height: 16),
+                      _buildInfoRow(
+                        Icons.person_outline,
+                        "CREATED BY",
+                        doc['createdBy'],
                       ),
-                    ),
-
-                  // PDF viewer or placeholder
-                  if (_pdfFile == null)
-                    SizedBox(
-                      height: 280,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Icon(
-                            Icons.picture_as_pdf_outlined,
-                            size: 48,
-                            color: Colors.black12,
-                          ),
-                          SizedBox(height: 12),
+                      const SizedBox(height: 10),
+                      _buildInfoRow(
+                        Icons.calendar_today_outlined,
+                        "DATE & TIME",
+                        doc['dateTime'],
+                      ),
+                      const SizedBox(height: 10),
+                      _buildInfoRow(
+                        Icons.label_outline,
+                        "CATEGORY",
+                        doc['label'],
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(height: 1, color: Color(0xFFF0F0F0)),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
                           Text(
-                            "NO PDF UPLOADED",
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.black26,
-                              letterSpacing: 1.5,
+                            doc['label'],
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Colors.black45,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          Text(
+                            "${(doc['progress'] * 100).toInt()}%",
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Colors.black45,
                               fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            "Tap UPLOAD PDF to select a file",
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.black26,
                             ),
                           ),
                         ],
                       ),
-                    )
-                  else
-                    // PDF + draggable signature overlay
-                    Column(
-                      children: [
-                        // Page indicator for multi-page PDFs
-                        if (_pdfLoaded && _totalPages > 1)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  "PAGE ${_currentPage + 1} OF $_totalPages",
-                                  style: const TextStyle(
-                                    fontSize: 9,
-                                    color: Colors.black38,
-                                    letterSpacing: 1,
-                                    fontWeight: FontWeight.w700,
+                      const SizedBox(height: 6),
+                      Stack(
+                        children: [
+                          Container(
+                            height: 4,
+                            width: double.infinity,
+                            color: const Color(0xFFEEEEEE),
+                          ),
+                          FractionallySizedBox(
+                            widthFactor: doc['progress'],
+                            child: Container(
+                              height: 4,
+                              color: const Color(0xFFCC0000),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // PDF Upload/Preview Section
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: const Color(0xFFE8E8E8)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header row
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              "DOCUMENT PREVIEW",
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.5,
+                                color: Color(0xFF1A1A1A),
+                              ),
+                            ),
+                            // Upload/Replace PDF button
+                            GestureDetector(
+                              onTap: _pickPdf,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF5F5F5),
+                                  border: Border.all(
+                                    color: const Color(0xFFE8E8E8),
                                   ),
                                 ),
-                                Row(
+                                child: Row(
                                   children: [
-                                    GestureDetector(
-                                      onTap: _currentPage > 0
-                                          ? () => _pdfController?.setPage(
-                                              _currentPage - 1,
-                                            )
-                                          : null,
-                                      child: Icon(
-                                        Icons.chevron_left,
-                                        size: 20,
-                                        color: _currentPage > 0
-                                            ? const Color(0xFFCC0000)
-                                            : Colors.black12,
-                                      ),
+                                    const Icon(
+                                      Icons.upload_file_outlined,
+                                      size: 13,
+                                      color: Color(0xFFCC0000),
                                     ),
-                                    GestureDetector(
-                                      onTap: _currentPage < _totalPages - 1
-                                          ? () => _pdfController?.setPage(
-                                              _currentPage + 1,
-                                            )
-                                          : null,
-                                      child: Icon(
-                                        Icons.chevron_right,
-                                        size: 20,
-                                        color: _currentPage < _totalPages - 1
-                                            ? const Color(0xFFCC0000)
-                                            : Colors.black12,
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _pdfFile == null
+                                          ? "UPLOAD PDF"
+                                          : "REPLACE",
+                                      style: const TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 1,
+                                        color: Color(0xFFCC0000),
                                       ),
                                     ),
                                   ],
                                 ),
-                              ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // PDF notice
+                      if (_pdfFile == null)
+                        const Padding(
+                          padding: EdgeInsets.only(left: 16, bottom: 8),
+                          child: Text(
+                            "Only PDF files are supported.",
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.black38,
                             ),
                           ),
+                        ),
+
+                      // PDF viewer or placeholder
+                      if (_pdfFile == null)
                         SizedBox(
-                          key: _pdfContainerKey,
-                          height: 500,
-                          child: Stack(
-                            children: [
-                              // PDF View — scrollable multi-page
-                              PDFView(
-                                filePath: _pdfFile!.path,
-                                enableSwipe: true, // 👈 swipe between pages
-                                swipeHorizontal: false, // 👈 vertical scroll
-                                autoSpacing: true, // 👈 spacing between pages
-                                pageFling: true, // 👈 smooth fling
-                                pageSnap: true,
-                                fitPolicy: FitPolicy.BOTH,
-                                onRender: (pages) => setState(() {
-                                  _pdfLoaded = true;
-                                  _totalPages = pages ?? 1;
-                                }),
-                                onViewCreated: (controller) =>
-                                    _pdfController = controller,
-                                onPageChanged: (page, total) => setState(() {
-                                  _currentPage = page ?? 0;
-                                  _totalPages = total ?? 1;
-                                }),
-                                onError: (e) => debugPrint('PDF error: $e'),
+                          height: 280,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: const [
+                              Icon(
+                                Icons.picture_as_pdf_outlined,
+                                size: 48,
+                                color: Colors.black12,
                               ),
-
-                              // Loading indicator
-                              if (!_pdfLoaded)
-                                const Center(
-                                  child: CircularProgressIndicator(
-                                    color: Color(0xFFCC0000),
-                                  ),
+                              SizedBox(height: 12),
+                              Text(
+                                "NO PDF UPLOADED",
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.black26,
+                                  letterSpacing: 1.5,
+                                  fontWeight: FontWeight.w700,
                                 ),
-
-                              // Draggable Signature Overlay
-                              if (_showSignatureOverlay)
-                                Positioned(
-                                  left: _signaturePosition.dx,
-                                  top: _signaturePosition.dy,
-                                  child: GestureDetector(
-                                    onPanUpdate: (details) {
-                                      setState(() {
-                                        _signaturePosition += details.delta;
-                                        final maxX =
-                                            (MediaQuery.of(context).size.width -
-                                                60) -
-                                            140;
-                                        final maxY = 500.0 - 80;
-                                        _signaturePosition = Offset(
-                                          _signaturePosition.dx.clamp(
-                                            0.0,
-                                            maxX,
-                                          ),
-                                          _signaturePosition.dy.clamp(
-                                            0.0,
-                                            maxY,
-                                          ),
-                                        );
-                                      });
-                                    },
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                          color: _signed
-                                              ? Colors.transparent
-                                              : const Color(
-                                                  0xFFCC0000,
-                                                ).withOpacity(0.5),
-                                          width: 1,
-                                        ),
-                                        color: Colors.transparent,
-                                      ),
-                                      padding: const EdgeInsets.all(6),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (!_signed)
-                                            const Padding(
-                                              padding: EdgeInsets.only(
-                                                bottom: 4,
-                                              ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Icon(
-                                                    Icons.open_with,
-                                                    size: 10,
-                                                    color: Colors.black38,
-                                                  ),
-                                                  SizedBox(width: 3),
-                                                  Text(
-                                                    "DRAG TO POSITION",
-                                                    style: TextStyle(
-                                                      fontSize: 8,
-                                                      color: Colors.black38,
-                                                      letterSpacing: 0.8,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          _buildSignatureWidget(),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            _signedTimestamp,
-                                            style: const TextStyle(
-                                              fontSize: 8,
-                                              color: Colors.black54,
-                                              letterSpacing: 0.5,
-                                            ),
-                                          ),
-                                        ],
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                "Tap UPLOAD PDF to select a file",
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.black26,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        // PDF + draggable signature overlay
+                        Column(
+                          children: [
+                            // Page indicator for multi-page PDFs
+                            if (_pdfLoaded && _totalPages > 1)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  8,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      "PAGE ${_currentPage + 1} OF $_totalPages",
+                                      style: const TextStyle(
+                                        fontSize: 9,
+                                        color: Colors.black38,
+                                        letterSpacing: 1,
+                                        fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                  ),
+                                    Row(
+                                      children: [
+                                        GestureDetector(
+                                          onTap: _currentPage > 0
+                                              ? () => _pdfController?.setPage(
+                                                  _currentPage - 1,
+                                                )
+                                              : null,
+                                          child: Icon(
+                                            Icons.chevron_left,
+                                            size: 20,
+                                            color: _currentPage > 0
+                                                ? const Color(0xFFCC0000)
+                                                : Colors.black12,
+                                          ),
+                                        ),
+                                        GestureDetector(
+                                          onTap: _currentPage < _totalPages - 1
+                                              ? () => _pdfController?.setPage(
+                                                  _currentPage + 1,
+                                                )
+                                              : null,
+                                          child: Icon(
+                                            Icons.chevron_right,
+                                            size: 20,
+                                            color:
+                                                _currentPage < _totalPages - 1
+                                                ? const Color(0xFFCC0000)
+                                                : Colors.black12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
-                            ],
+                              ),
+                            SizedBox(
+                              key: _pdfContainerKey,
+                              height: 500,
+                              child: Stack(
+                                children: [
+                                  // PDF View — scrollable multi-page
+                                  PDFView(
+                                    filePath: _pdfFile!.path,
+                                    enableSwipe: true, // 👈 swipe between pages
+                                    swipeHorizontal:
+                                        false, // 👈 vertical scroll
+                                    autoSpacing:
+                                        true, // 👈 spacing between pages
+                                    pageFling: true, // 👈 smooth fling
+                                    pageSnap: true,
+                                    fitPolicy: FitPolicy.BOTH,
+                                    onRender: (pages) => setState(() {
+                                      _pdfLoaded = true;
+                                      _totalPages = pages ?? 1;
+                                    }),
+                                    onViewCreated: (controller) =>
+                                        _pdfController = controller,
+                                    onPageChanged: (page, total) =>
+                                        setState(() {
+                                          _currentPage = page ?? 0;
+                                          _totalPages = total ?? 1;
+                                        }),
+                                    onError: (e) => debugPrint('PDF error: $e'),
+                                  ),
+
+                                  // Loading indicator
+                                  if (!_pdfLoaded)
+                                    const Center(
+                                      child: CircularProgressIndicator(
+                                        color: Color(0xFFCC0000),
+                                      ),
+                                    ),
+
+                                  // Draggable Signature Overlay
+                                  if (_showSignatureOverlay)
+                                    Positioned(
+                                      left: _signaturePosition.dx,
+                                      top: _signaturePosition.dy,
+                                      child: GestureDetector(
+                                        onPanUpdate: (details) {
+                                          setState(() {
+                                            _signaturePosition += details.delta;
+                                            final maxX =
+                                                (MediaQuery.of(
+                                                      context,
+                                                    ).size.width -
+                                                    60) -
+                                                140;
+                                            final maxY = 500.0 - 80;
+                                            _signaturePosition = Offset(
+                                              _signaturePosition.dx.clamp(
+                                                0.0,
+                                                maxX,
+                                              ),
+                                              _signaturePosition.dy.clamp(
+                                                0.0,
+                                                maxY,
+                                              ),
+                                            );
+                                          });
+                                        },
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            border: Border.all(
+                                              color: _signed
+                                                  ? Colors.transparent
+                                                  : const Color(
+                                                      0xFFCC0000,
+                                                    ).withOpacity(0.5),
+                                              width: 1,
+                                            ),
+                                            color: Colors.transparent,
+                                          ),
+                                          padding: const EdgeInsets.all(6),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              if (!_signed)
+                                                const Padding(
+                                                  padding: EdgeInsets.only(
+                                                    bottom: 4,
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        Icons.open_with,
+                                                        size: 10,
+                                                        color: Colors.black38,
+                                                      ),
+                                                      SizedBox(width: 3),
+                                                      Text(
+                                                        "DRAG TO POSITION",
+                                                        style: TextStyle(
+                                                          fontSize: 8,
+                                                          color: Colors.black38,
+                                                          letterSpacing: 0.8,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              _buildSignatureWidget(),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                _signedTimestamp,
+                                                style: const TextStyle(
+                                                  fontSize: 8,
+                                                  color: Colors.black54,
+                                                  letterSpacing: 0.5,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+
+                      const SizedBox(height: 12),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Sign / Confirm Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _isSigning
+                        ? null
+                        : _signed
+                        ? null
+                        : _showSignatureOverlay
+                        ? _confirmSign // 👈 confirm placement
+                        : _onSignDocument, // 👈 show signature on PDF
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _signed
+                          ? Colors.green
+                          : _showSignatureOverlay
+                          ? const Color(0xFF1565C0) // blue = confirm
+                          : const Color(0xFFCC0000), // red = sign
+                      disabledBackgroundColor: _signed
+                          ? Colors.green
+                          : const Color(0xFFCC0000).withOpacity(0.6),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _signed
+                              ? Icons.check_circle_outline
+                              : _showSignatureOverlay
+                              ? Icons.check
+                              : Icons.draw_outlined,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _signed
+                              ? "DOCUMENT SIGNED"
+                              : _showSignatureOverlay
+                              ? "CONFIRM PLACEMENT"
+                              : "SIGN DOCUMENT",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 2,
                           ),
                         ),
                       ],
                     ),
-
-                  const SizedBox(height: 12),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Sign / Confirm Button
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _isSigning
-                    ? null
-                    : _signed
-                    ? null
-                    : _showSignatureOverlay
-                    ? _confirmSign // 👈 confirm placement
-                    : _onSignDocument, // 👈 show signature on PDF
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _signed
-                      ? Colors.green
-                      : _showSignatureOverlay
-                      ? const Color(0xFF1565C0) // blue = confirm
-                      : const Color(0xFFCC0000), // red = sign
-                  disabledBackgroundColor: _signed
-                      ? Colors.green
-                      : const Color(0xFFCC0000).withOpacity(0.6),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
                   ),
-                  elevation: 0,
                 ),
-                child: _isSigning
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            _signed
-                                ? Icons.check_circle_outline
-                                : _showSignatureOverlay
-                                ? Icons.check
-                                : Icons.draw_outlined,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _signed
-                                ? "DOCUMENT SIGNED"
-                                : _showSignatureOverlay
-                                ? "CONFIRM PLACEMENT"
-                                : "SIGN DOCUMENT",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 2,
-                            ),
-                          ),
-                        ],
+
+                const SizedBox(height: 12),
+
+                // Cancel
+                Center(
+                  child: TextButton(
+                    onPressed: () {
+                      if (_showSignatureOverlay && !_signed) {
+                        setState(() => _showSignatureOverlay = false);
+                      } else {
+                        Navigator.pop(context);
+                      }
+                    },
+                    child: Text(
+                      _showSignatureOverlay && !_signed
+                          ? "CANCEL PLACEMENT"
+                          : "CANCEL AND GO BACK",
+                      style: const TextStyle(
+                        color: Colors.black45,
+                        fontSize: 11,
+                        letterSpacing: 1.2,
+                        fontWeight: FontWeight.w600,
                       ),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Cancel
-            Center(
-              child: TextButton(
-                onPressed: () {
-                  if (_showSignatureOverlay && !_signed) {
-                    setState(() => _showSignatureOverlay = false);
-                  } else {
-                    Navigator.pop(context);
-                  }
-                },
-                child: Text(
-                  _showSignatureOverlay && !_signed
-                      ? "CANCEL PLACEMENT"
-                      : "CANCEL AND GO BACK",
-                  style: const TextStyle(
-                    color: Colors.black45,
-                    fontSize: 11,
-                    letterSpacing: 1.2,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Signing Notice
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  left: BorderSide(color: Color(0xFFCC0000), width: 3),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
-                    "SIGNING NOTICE",
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.5,
-                      color: Color(0xFF1A1A1A),
                     ),
                   ),
-                  SizedBox(height: 6),
-                  Text(
-                    "By signing this document, you confirm that you have reviewed and approved the contents. This action is logged and cannot be undone.",
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.black54,
-                      height: 1.6,
+                ),
+
+                const SizedBox(height: 24),
+
+                // Signing Notice
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    border: Border(
+                      left: BorderSide(color: Color(0xFFCC0000), width: 3),
                     ),
                   ),
-                ],
-              ),
-            ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        "SIGNING NOTICE",
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.5,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        "By signing this document, you confirm that you have reviewed and approved the contents. This action is logged and cannot be undone.",
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.black54,
+                          height: 1.6,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
 
-            const SizedBox(height: 24),
-          ],
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
         ),
-      ),
+        if (_isSigning) const LoadingOverlay(),
+      ],
     );
   }
 

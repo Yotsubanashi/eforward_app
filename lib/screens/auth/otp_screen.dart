@@ -9,6 +9,7 @@ import '../../services/notifications/fcm_token_service.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/eforward_app_bar.dart';
+import '../../widgets/loading_overlay.dart';
 
 class OtpScreen extends StatefulWidget {
   final String email;
@@ -265,211 +266,207 @@ class _OtpScreenState extends State<OtpScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F8F8),
-      appBar: EForwardAppBar(
-        title: "SECURITY",
-        backgroundColor: const Color(0xFFF8F8F8),
-        onBackPressed: () => Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        child: Column(
-          children: [
-            const SizedBox(height: 24),
-
-            // Shield Icon
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.06),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.verified_user,
-                color: Color(0xFFCC0000),
-                size: 32,
-              ),
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: const Color(0xFFF8F8F8),
+          appBar: EForwardAppBar(
+            title: "SECURITY",
+            backgroundColor: const Color(0xFFF8F8F8),
+            onBackPressed: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
             ),
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            child: Column(
+              children: [
+                const SizedBox(height: 24),
 
-            const SizedBox(height: 24),
-
-            const Text(
-              "VERIFY ACCOUNT",
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.5,
-                color: Color(0xFF1A1A1A),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            const Text(
-              "Enter the 6-digit code sent to your registered\ninstitutional email address.",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.black45,
-                height: 1.6,
-              ),
-            ),
-
-            const SizedBox(height: 36),
-
-            // OTP Fields
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: List.generate(6, (index) => _buildOtpBox(index)),
-            ),
-
-            const SizedBox(height: 32),
-
-            // Verify Button
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _verifyCode,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFCC0000),
-                  disabledBackgroundColor: const Color(
-                    0xFFCC0000,
-                  ).withOpacity(0.7),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  elevation: 0,
-                ),
-                child: _isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Text(
-                            "VERIFY CODE",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 2,
-                            ),
-                          ),
-                          SizedBox(width: 8),
-                          Icon(
-                            Icons.chevron_right,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ],
+                // Shield Icon
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.06),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
                       ),
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Resend Code
-            TextButton(
-              onPressed: _secondsRemaining == 0 ? _resendOtp : null,
-              child: const Text(
-                "RESEND CODE",
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.5,
-                  color: Color(0xFF1A1A1A),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.verified_user,
+                    color: Color(0xFFCC0000),
+                    size: 32,
+                  ),
                 ),
-              ),
-            ),
 
-            // Timer
-            RichText(
-              text: TextSpan(
-                text: "CODE EXPIRES IN  ",
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: Colors.black38,
-                  letterSpacing: 1,
+                const SizedBox(height: 24),
+
+                const Text(
+                  "VERIFY ACCOUNT",
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.5,
+                    color: Color(0xFF1A1A1A),
+                  ),
                 ),
-                children: [
-                  TextSpan(
-                    text: _timerText,
-                    style: const TextStyle(
-                      color: Color(0xFFCC0000),
-                      fontWeight: FontWeight.w700,
+
+                const SizedBox(height: 12),
+
+                const Text(
+                  "Enter the 6-digit code sent to your registered\ninstitutional email address.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.black45,
+                    height: 1.6,
+                  ),
+                ),
+
+                const SizedBox(height: 36),
+
+                // OTP Fields
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: List.generate(6, (index) => _buildOtpBox(index)),
+                ),
+
+                const SizedBox(height: 32),
+
+                // Verify Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _verifyCode,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFCC0000),
+                      disabledBackgroundColor: const Color(
+                        0xFFCC0000,
+                      ).withOpacity(0.7),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          "VERIFY CODE",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 2,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Icon(
+                          Icons.chevron_right,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 32),
-
-            // Security Notice
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: const Border(
-                  left: BorderSide(color: Color(0xFFCC0000), width: 3),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
-                    "SECURITY NOTICE",
+
+                const SizedBox(height: 20),
+
+                // Resend Code
+                TextButton(
+                  onPressed: _secondsRemaining == 0 ? _resendOtp : null,
+                  child: const Text(
+                    "RESEND CODE",
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       letterSpacing: 1.5,
                       color: Color(0xFF1A1A1A),
                     ),
                   ),
-                  SizedBox(height: 6),
-                  Text(
-                    "This verification step is mandatory for all high-value institutional transfers. Ensure you are on a secure network before proceeding.",
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.black54,
-                      height: 1.6,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                ),
 
-            const SizedBox(height: 24),
-          ],
+                // Timer
+                RichText(
+                  text: TextSpan(
+                    text: "CODE EXPIRES IN  ",
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Colors.black38,
+                      letterSpacing: 1,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: _timerText,
+                        style: const TextStyle(
+                          color: Color(0xFFCC0000),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 32),
+
+                // Security Notice
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: const Border(
+                      left: BorderSide(color: Color(0xFFCC0000), width: 3),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        "SECURITY NOTICE",
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.5,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        "This verification step is mandatory for all high-value institutional transfers. Ensure you are on a secure network before proceeding.",
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.black54,
+                          height: 1.6,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
         ),
-      ),
+        if (_isLoading) const LoadingOverlay(),
+      ],
     );
   }
 

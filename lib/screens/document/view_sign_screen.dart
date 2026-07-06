@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/widgets/bottom_navigator.dart';
-import 'package:eforward_app/widgets/loaders.dart';
+import 'package:eforward_app/widgets/loading_overlay.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
 import '../../config/app_env.dart';
@@ -214,7 +214,7 @@ class _ViewSignPageState extends State<ViewSignPage>
     }
 
     HapticFeedback.mediumImpact();
-    LoadingDialog.show(context, message: "UPDATING SIGNATURE...");
+    setState(() => _isSaving = true);
 
     List<int>? capturedBytes;
     String fileName = 'signature.png';
@@ -309,8 +309,6 @@ class _ViewSignPageState extends State<ViewSignPage>
         );
       }
     }
-
-    if (mounted) LoadingDialog.hide(context);
 
     await Future.delayed(const Duration(milliseconds: 600));
 
@@ -781,6 +779,7 @@ class _ViewSignPageState extends State<ViewSignPage>
             onTap: (_) {},
           ),
         ),
+        if (_isSaving) const LoadingOverlay(),
       ],
     );
   }

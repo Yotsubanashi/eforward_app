@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:spreadsheet_decoder/spreadsheet_decoder.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
+import 'package:eforward_app/widgets/loading_overlay.dart';
 
 class ExcelFileViewerPage extends StatefulWidget {
   final String filePath;
@@ -90,88 +91,93 @@ class _ExcelFileViewerPageState extends State<ExcelFileViewerPage> {
     final rows = _sheetRows[currentSheet] ?? const <List<String>>[];
     final maxCols = rows.fold<int>(0, (m, r) => r.length > m ? r.length : m);
 
-    return Scaffold(
-      appBar: EForwardAppBar(
-        title: widget.fileName,
-        backgroundColor: Colors.white,
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? Center(child: Text(_error!))
-          : _sheetNames.isEmpty
-          ? const Center(child: Text('No sheets found.'))
-          : Column(
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  color: const Color(0xFFF8F8F8),
-                  child: DropdownButton<int>(
-                    isExpanded: true,
-                    value: _sheetIndex,
-                    items: List.generate(
-                      _sheetNames.length,
-                      (i) => DropdownMenuItem(
-                        value: i,
-                        child: Text(_sheetNames[i]),
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: EForwardAppBar(
+            title: widget.fileName,
+            backgroundColor: Colors.white,
+          ),
+          body: _isLoading
+              ? const SizedBox.shrink()
+              : _error != null
+              ? Center(child: Text(_error!))
+              : _sheetNames.isEmpty
+              ? const Center(child: Text('No sheets found.'))
+              : Column(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
                       ),
-                    ),
-                    onChanged: (val) {
-                      if (val == null) return;
-                      setState(() => _sheetIndex = val);
-                    },
-                  ),
-                ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SizedBox(
-                      width: (maxCols * 140).toDouble().clamp(280, 5000),
-                      child: ListView.builder(
-                        itemCount: rows.length,
-                        itemBuilder: (context, rowIndex) {
-                          final row = rows[rowIndex];
-                          return Container(
-                            color: rowIndex == 0
-                                ? const Color(0xFFF1F1F1)
-                                : Colors.white,
-                            child: Row(
-                              children: List.generate(maxCols, (colIndex) {
-                                final text = colIndex < row.length
-                                    ? row[colIndex]
-                                    : '';
-                                return Container(
-                                  width: 140,
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: const Color(0xFFE3E3E3),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    text,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: rowIndex == 0
-                                          ? FontWeight.w700
-                                          : FontWeight.w400,
-                                    ),
-                                  ),
-                                );
-                              }),
-                            ),
-                          );
+                      color: const Color(0xFFF8F8F8),
+                      child: DropdownButton<int>(
+                        isExpanded: true,
+                        value: _sheetIndex,
+                        items: List.generate(
+                          _sheetNames.length,
+                          (i) => DropdownMenuItem(
+                            value: i,
+                            child: Text(_sheetNames[i]),
+                          ),
+                        ),
+                        onChanged: (val) {
+                          if (val == null) return;
+                          setState(() => _sheetIndex = val);
                         },
                       ),
                     ),
-                  ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: SizedBox(
+                          width: (maxCols * 140).toDouble().clamp(280, 5000),
+                          child: ListView.builder(
+                            itemCount: rows.length,
+                            itemBuilder: (context, rowIndex) {
+                              final row = rows[rowIndex];
+                              return Container(
+                                color: rowIndex == 0
+                                    ? const Color(0xFFF1F1F1)
+                                    : Colors.white,
+                                child: Row(
+                                  children: List.generate(maxCols, (colIndex) {
+                                    final text = colIndex < row.length
+                                        ? row[colIndex]
+                                        : '';
+                                    return Container(
+                                      width: 140,
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: const Color(0xFFE3E3E3),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        text,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: rowIndex == 0
+                                              ? FontWeight.w700
+                                              : FontWeight.w400,
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+        ),
+        if (_isLoading) const LoadingOverlay(),
+      ],
     );
   }
 }

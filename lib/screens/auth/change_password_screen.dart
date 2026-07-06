@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/screens/settings/settings_screen.dart';
 import 'package:eforward_app/services/api/auth_api.dart';
 import 'package:eforward_app/screens/auth/login_screen.dart';
-import 'package:eforward_app/widgets/loaders.dart';
+import 'package:eforward_app/widgets/loading_overlay.dart';
 import 'package:eforward_app/validators/password_validator.dart';
 import 'package:eforward_app/validators/required_field_validator.dart';
 import 'package:eforward_app/constants/shared_prefs_keys.dart';
@@ -79,14 +79,14 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       return;
     }
 
-    LoadingDialog.show(context, message: "UPDATING PASSWORD...");
+    setState(() => _isLoading = true);
 
     // Get token
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(SharedPrefsKeys.accessToken) ?? '';
 
     if (token.isEmpty) {
-      if (mounted) LoadingDialog.hide(context);
+      if (mounted) setState(() => _isLoading = false);
       _showSnackbar("Session expired. Please log in again.");
       return;
     }
@@ -100,7 +100,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     );
 
     if (!mounted) return;
-    LoadingDialog.hide(context);
+    setState(() => _isLoading = false);
 
     if (result.isSuccess) {
       setState(() {
@@ -322,6 +322,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               ],
             ),
           ),
+          if (_isLoading) const LoadingOverlay(),
         ],
       ),
     );

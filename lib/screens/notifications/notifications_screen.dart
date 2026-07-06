@@ -9,6 +9,7 @@ import 'package:eforward_app/screens/approvals/approval_detail_screen.dart';
 import 'package:eforward_app/services/notifications/notifications_service.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/app_empty_state.dart';
+import 'package:eforward_app/widgets/loading_overlay.dart';
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -175,155 +176,157 @@ class _NotificationsPageState extends State<NotificationsPage>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F5F7),
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: () async {
-            setState(() {
-              _notifications = [];
-              _currentPage = 1;
-              _hasMore = true;
-            });
-            await _fetchNotifications();
-          },
-          color: const Color(0xFFCC0000),
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header
-                const Text(
-                  "NOTIFICATIONS",
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 2,
-                    color: Color(0xFF1A1A1A),
-                  ),
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: const Color(0xFFF4F5F7),
+          body: SafeArea(
+            child: RefreshIndicator(
+              onRefresh: () async {
+                setState(() {
+                  _notifications = [];
+                  _currentPage = 1;
+                  _hasMore = true;
+                });
+                await _fetchNotifications();
+              },
+              color: const Color(0xFFCC0000),
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 20,
                 ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header
+                    const Text(
+                      "NOTIFICATIONS",
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                    ),
 
-                const SizedBox(height: 12),
+                    const SizedBox(height: 12),
 
-                // Unread count + Mark All Read
-                ValueListenableBuilder<int>(
-                  valueListenable: _notificationsService.unreadCountNotifier,
-                  builder: (context, unreadCount, _) {
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          unreadCount > 0
-                              ? '$unreadCount unread notification${unreadCount != 1 ? 's' : ''}'
-                              : 'All caught up!',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: unreadCount > 0
-                                ? const Color(0xFFCC0000)
-                                : Colors.black54,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                        if (unreadCount > 0)
-                          GestureDetector(
-                            onTap: _markAllAsRead,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFCC0000),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text(
-                                "MARK ALL READ",
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1,
-                                  color: Colors.white,
-                                ),
+                    // Unread count + Mark All Read
+                    ValueListenableBuilder<int>(
+                      valueListenable:
+                          _notificationsService.unreadCountNotifier,
+                      builder: (context, unreadCount, _) {
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              unreadCount > 0
+                                  ? '$unreadCount unread notification${unreadCount != 1 ? 's' : ''}'
+                                  : 'All caught up!',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: unreadCount > 0
+                                    ? const Color(0xFFCC0000)
+                                    : Colors.black54,
+                                letterSpacing: 0.3,
                               ),
                             ),
+                            if (unreadCount > 0)
+                              GestureDetector(
+                                onTap: _markAllAsRead,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFCC0000),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text(
+                                    "MARK ALL READ",
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 1,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Notifications list
+                    if (_isLoading)
+                      const SizedBox.shrink()
+                    else if (_notifications.isEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 40),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          border: Border.all(color: const Color(0xFFE8E8E8)),
+                        ),
+                        child: const AppEmptyState(
+                          icon: Icons.notifications_none,
+                          title: "No notifications",
+                        ),
+                      )
+                    else
+                      ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _notifications.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) =>
+                            _buildNotificationCard(_notifications[index]),
+                      ),
+
+                    // Bottom loader / end message
+                    if (_isFetchingMore)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 20),
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFFCC0000),
+                            strokeWidth: 2,
                           ),
-                      ],
-                    );
-                  },
-                ),
-
-                const SizedBox(height: 20),
-
-                // Notifications list
-                if (_isLoading)
-                  const Center(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 40),
-                      child: CircularProgressIndicator(
-                        color: Color(0xFFCC0000),
-                      ),
-                    ),
-                  )
-                else if (_notifications.isEmpty)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 40),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: const Color(0xFFE8E8E8)),
-                    ),
-                    child: const AppEmptyState(
-                      icon: Icons.notifications_none,
-                      title: "No notifications",
-                    ),
-                  )
-                else
-                  ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _notifications.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) =>
-                        _buildNotificationCard(_notifications[index]),
-                  ),
-
-                // Bottom loader / end message
-                if (_isFetchingMore)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
-                    child: Center(
-                      child: CircularProgressIndicator(
-                        color: Color(0xFFCC0000),
-                        strokeWidth: 2,
-                      ),
-                    ),
-                  )
-                else if (!_hasMore && _notifications.isNotEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
-                    child: Center(
-                      child: Text(
-                        "— You're all caught up —",
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.black38,
-                          letterSpacing: 0.5,
+                        ),
+                      )
+                    else if (!_hasMore && _notifications.isNotEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 20),
+                        child: Center(
+                          child: Text(
+                            "— You're all caught up —",
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.black38,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-              ],
+                  ],
+                ),
+              ),
             ),
           ),
+          bottomNavigationBar: BottomNavigator(
+            selectedIndex: _selectedIndex,
+            onTap: (_) {},
+          ),
         ),
-      ),
-      bottomNavigationBar: BottomNavigator(
-        selectedIndex: _selectedIndex,
-        onTap: (_) {},
-      ),
+        if (_isLoading && _notifications.isEmpty) const LoadingOverlay(),
+      ],
     );
   }
 

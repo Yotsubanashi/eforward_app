@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show Factory;
+import 'package:flutter/foundation.dart' show Factory, compute;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -18,6 +18,22 @@ import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:eforward_app/config/app_env.dart';
 import 'package:eforward_app/screens/approvals/approvals_screen.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
+import 'package:eforward_app/widgets/loading_overlay.dart';
+
+/// Runs on a background isolate via [compute] — parses the PDF just to read
+/// each page's intrinsic size. Must be a top-level function (isolates can't
+/// close over instance state) and only pass/return simple, isolate-safe
+/// data (raw bytes in, plain `[width, height]` pairs out).
+List<List<double>> _parsePdfPageSizes(Uint8List bytes) {
+  final doc = PdfDocument(inputBytes: bytes);
+  final sizes = <List<double>>[];
+  for (int i = 0; i < doc.pages.count; i++) {
+    final s = doc.pages[i].size;
+    sizes.add([s.width, s.height]);
+  }
+  doc.dispose();
+  return sizes;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PDF SIGNER PAGE
@@ -253,13 +269,12 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     try {
       final bytes = await File(widget.pdfPath).readAsBytes();
       _pdfBytes = bytes; // keep bytes so signing never depends on the temp file
-      final doc = PdfDocument(inputBytes: bytes);
-      final sizes = <Size>[];
-      for (int i = 0; i < doc.pages.count; i++) {
-        final s = doc.pages[i].size;
-        sizes.add(Size(s.width, s.height));
-      }
-      doc.dispose();
+      // Parsing runs on a background isolate via compute() — Syncfusion's
+      // PdfDocument parse is CPU-heavy and was previously blocking the UI
+      // thread right as this screen opened, which is exactly when the user
+      // wants to see the PDF render.
+      final rawSizes = await compute(_parsePdfPageSizes, bytes);
+      final sizes = rawSizes.map((s) => Size(s[0], s[1])).toList();
       if (!mounted) return;
       setState(() {
         _pdfPageSizes = sizes;
@@ -1657,40 +1672,30 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                                       borderRadius: BorderRadius.circular(4),
                                     ),
                                   ),
-                                  child: _isSubmitting
-                                      ? const SizedBox(
-                                          width: 22,
-                                          height: 22,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2.5,
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.check,
+                                        color: Colors.white,
+                                        size: 18,
+                                      ),
+                                      SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          "CONFIRM & APPROVE",
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
                                             color: Colors.white,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 1.2,
                                           ),
-                                        )
-                                      : const Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Icon(
-                                              Icons.check,
-                                              color: Colors.white,
-                                              size: 18,
-                                            ),
-                                            SizedBox(width: 8),
-                                            Flexible(
-                                              child: Text(
-                                                "CONFIRM & APPROVE",
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w800,
-                                                  letterSpacing: 1.2,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
                                         ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -1742,129 +1747,8 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           ),
 
           // ── Blocking overlay ──────────────────────────────────────────
-          if (isBlocking)
-            Positioned.fill(
-              child: AbsorbPointer(
-                child: Container(
-                  color: Colors.black.withOpacity(0.45),
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 22,
-                        vertical: 18,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.35),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const _PulsingDotsLoader(
-                            color: Colors.white,
-                            dotSize: 10,
-                          ),
-                          const SizedBox(height: 14),
-                          Text(
-                            _isSubmitting
-                                ? 'Please wait...'
-                                : 'Signature is still loading. Please wait...',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              decoration: TextDecoration.none,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          if (isBlocking) const LoadingOverlay(),
         ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PULSING DOTS LOADER
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _PulsingDotsLoader extends StatefulWidget {
-  final Color color;
-  final double dotSize;
-  const _PulsingDotsLoader({this.color = Colors.white, this.dotSize = 8});
-
-  @override
-  State<_PulsingDotsLoader> createState() => _PulsingDotsLoaderState();
-}
-
-class _PulsingDotsLoaderState extends State<_PulsingDotsLoader>
-    with TickerProviderStateMixin {
-  late final List<AnimationController> _controllers;
-  late final List<Animation<double>> _animations;
-
-  @override
-  void initState() {
-    super.initState();
-    _controllers = List.generate(
-      3,
-      (i) => AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 600),
-      ),
-    );
-    _animations = _controllers
-        .map(
-          (c) => Tween<double>(
-            begin: 0,
-            end: 1,
-          ).animate(CurvedAnimation(parent: c, curve: Curves.easeInOut)),
-        )
-        .toList();
-    for (int i = 0; i < 3; i++) {
-      Future.delayed(Duration(milliseconds: i * 160), () {
-        if (mounted) _controllers[i].repeat(reverse: true);
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    for (final c in _controllers) c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(
-        3,
-        (i) => AnimatedBuilder(
-          animation: _animations[i],
-          builder: (_, __) => Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 3),
-            child: Opacity(
-              opacity: 0.3 + (_animations[i].value * 0.7),
-              child: Transform.translate(
-                offset: Offset(0, -4 * _animations[i].value),
-                child: Container(
-                  width: widget.dotSize,
-                  height: widget.dotSize,
-                  decoration: BoxDecoration(
-                    color: widget.color,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }

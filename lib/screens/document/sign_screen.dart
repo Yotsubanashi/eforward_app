@@ -8,7 +8,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:eforward_app/widgets/loaders.dart';
+import 'package:eforward_app/widgets/loading_overlay.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
 import '../../services/api/auth_api.dart';
@@ -155,7 +155,7 @@ class _SignScreenState extends State<SignScreen>
     }
 
     HapticFeedback.mediumImpact();
-    LoadingDialog.show(context, message: "SAVING SIGNATURE...");
+    setState(() => _isSaving = true);
 
     final prefs = await SharedPreferences.getInstance();
 
@@ -210,8 +210,6 @@ class _SignScreenState extends State<SignScreen>
 
     // 👇 Upload to API after saving locally
     await _uploadSignatureToApi(prefs, currentTab);
-
-    if (mounted) LoadingDialog.hide(context);
 
     // ── Clear image cache to ensure fresh data is fetched ──
     await Future.delayed(const Duration(milliseconds: 600));
@@ -429,6 +427,7 @@ class _SignScreenState extends State<SignScreen>
             ],
           ),
         ),
+        if (_isSaving) const LoadingOverlay(),
       ],
     );
   }

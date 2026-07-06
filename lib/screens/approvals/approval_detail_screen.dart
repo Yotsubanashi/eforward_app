@@ -16,6 +16,7 @@ import 'package:eforward_app/screens/approvals/pdf_signer/pdf_signer_screen.dart
 import 'package:eforward_app/services/api/approvals_api.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
+import 'package:eforward_app/widgets/loading_overlay.dart';
 import 'package:eforward_app/widgets/section_label.dart';
 import 'package:eforward_app/widgets/status_pill.dart';
 
@@ -187,24 +188,15 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                               ),
                               padding: const EdgeInsets.symmetric(vertical: 12),
                             ),
-                            child: _isSubmittingAttachmentRequest
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Text(
-                                    "SUBMIT",
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 1,
-                                      color: Colors.white,
-                                    ),
-                                  ),
+                            child: const Text(
+                              "SUBMIT",
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1,
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -336,24 +328,15 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                               ),
                               padding: const EdgeInsets.symmetric(vertical: 12),
                             ),
-                            child: _isSubmittingRevision
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Text(
-                                    "SUBMIT",
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 1,
-                                      color: Colors.white,
-                                    ),
-                                  ),
+                            child: const Text(
+                              "SUBMIT",
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1,
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -578,6 +561,26 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         return;
       }
 
+      // Cache on disk keyed only by fileId (no timestamp) so reopening the
+      // same document reuses the local copy instead of re-downloading it
+      // from the network every time.
+      final dir = await getTemporaryDirectory();
+      final fileName = _getFileName();
+      final fileExtension = _getFileExtension(fileName);
+      final cachedFileName =
+          'doc_$fileId${fileExtension.isNotEmpty ? '.$fileExtension' : '.pdf'}';
+      final cachedFile = File('${dir.path}/$cachedFileName');
+
+      if (await cachedFile.exists() && await cachedFile.length() > 0) {
+        debugPrint('Using cached document for file $fileId');
+        if (mounted) {
+          setState(() {
+            _localPdfPath = cachedFile.path;
+          });
+        }
+        return;
+      }
+
       final response = await http.get(
         Uri.parse('$_baseUrl/upload/document/$fileId'),
         headers: {
@@ -588,17 +591,10 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       if (response.statusCode >= 200 &&
           response.statusCode < 300 &&
           response.bodyBytes.isNotEmpty) {
-        final dir = await getTemporaryDirectory();
-        final fileName = _getFileName();
-        final fileExtension = _getFileExtension(fileName);
-        final preservedFileName =
-            'doc_${fileId}_${DateTime.now().millisecondsSinceEpoch}'
-            '${fileExtension.isNotEmpty ? '.$fileExtension' : '.pdf'}';
-        final file = File('${dir.path}/$preservedFileName');
-        await file.writeAsBytes(response.bodyBytes);
+        await cachedFile.writeAsBytes(response.bodyBytes);
         if (mounted) {
           setState(() {
-            _localPdfPath = file.path;
+            _localPdfPath = cachedFile.path;
           });
         }
       } else {
@@ -1418,547 +1414,640 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   @override
   Widget build(BuildContext context) {
     final fileName = _getFileName();
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F5F7),
-      appBar: const EForwardAppBar(
-        title: "APPROVAL DETAILS",
-        backgroundColor: Colors.white,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: const Color(0xFFF4F5F7),
+          appBar: const EForwardAppBar(
+            title: "APPROVAL DETAILS",
+            backgroundColor: Colors.white,
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                StatusPill(status: _getStatus()),
-                const SizedBox(width: 10),
-                Text(
-                  _getValue('reference_no', 'referenceNo'),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFFCC0000),
-                    letterSpacing: 1,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              _getValue('particulars', 'particulars'),
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.5,
-                color: Color(0xFF1A1A1A),
-                height: 1.2,
-              ),
-            ),
-            const SizedBox(height: 20),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: const Color(0xFFE8E8E8)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SectionLabel("DOCUMENT INFORMATION"),
-                  const SizedBox(height: 16),
-                  if (_isLoadingDetail)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 12),
-                        child: CircularProgressIndicator(
-                          color: Color(0xFFCC0000),
-                        ),
-                      ),
-                    )
-                  else ...[
-                    _buildInfoRow(
-                      Icons.person_outline,
-                      "REQUESTER",
-                      _getRequesterName(),
-                    ),
-                    const Divider(height: 24, color: Color(0xFFF0F0F0)),
-                    _buildInfoRow(
-                      Icons.calendar_today_outlined,
-                      "DATE SENT",
-                      _getDateSent(),
-                    ),
-                    const Divider(height: 24, color: Color(0xFFF0F0F0)),
-                    _buildInfoRow(
-                      Icons.update_outlined,
-                      "DATE UPDATED",
-                      _getDateUpdated(),
-                    ),
-                    const Divider(height: 24, color: Color(0xFFF0F0F0)),
-                    _buildInfoRow(
-                      Icons.label_outline,
-                      "PARTICULARS",
-                      _getValue('particulars', 'particulars'),
-                    ),
-                    const Divider(height: 24, color: Color(0xFFF0F0F0)),
-                    _buildInfoRow(
-                      Icons.tag,
-                      "REFERENCE NO",
+                Row(
+                  children: [
+                    StatusPill(status: _getStatus()),
+                    const SizedBox(width: 10),
+                    Text(
                       _getValue('reference_no', 'referenceNo'),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFCC0000),
+                        letterSpacing: 1,
+                      ),
                     ),
                   ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: const Color(0xFFE8E8E8)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SectionLabel("DOCUMENT TO SIGN"),
-                  const SizedBox(height: 14),
-                  if (_documentNotFound)
-                    Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: Colors.black12,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Icon(
-                            Icons.error_outline,
-                            color: Colors.black38,
-                            size: 22,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Text(
-                            "Document Not Found (404)",
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.black38,
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  else
-                    Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFCC0000).withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Icon(
-                            Icons.picture_as_pdf_outlined,
-                            color: Color(0xFFCC0000),
-                            size: 22,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            fileName,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF1A1A1A),
-                            ),
-                            softWrap: true,
-                            overflow: TextOverflow.visible,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: _localPdfPath != null
-                              ? _openMainDocument
-                              : null,
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: _localPdfPath != null
-                                  ? const Color(0xFFCC0000)
-                                  : Colors.black12,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Icon(
-                              Icons.visibility_outlined,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: const Color(0xFFE8E8E8)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SectionLabel("SUPPORTING DOCUMENTS"),
-                  const SizedBox(height: 12),
-                  Container(
-                    decoration: const BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(
-                          color: Color(0xFFE8E8E8),
-                          width: 1.5,
-                        ),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        _buildTab(
-                          label: "External Attachment",
-                          index: 0,
-                          count: _getAttachmentFiles().length,
-                        ),
-                        _buildTab(
-                          label: "Document Link",
-                          index: 1,
-                          count: _documentLinks.length,
-                        ),
-                      ],
-                    ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _getValue('particulars', 'particulars'),
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                    color: Color(0xFF1A1A1A),
+                    height: 1.2,
                   ),
-                  const SizedBox(height: 14),
-                  if (_selectedAttachmentTab == 0) ...[
-                    if (_getAttachmentFiles().isEmpty)
-                      const Text(
-                        'No attachments found.',
-                        style: TextStyle(fontSize: 11, color: Colors.black45),
-                      )
-                    else
-                      ..._getAttachmentFiles().map((attachment) {
-                        final name =
-                            attachment['original_name'] ??
-                            attachment['file_name'] ??
-                            'Document';
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 40,
-                                height: 40,
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: const Color(0xFFE8E8E8)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SectionLabel("DOCUMENT INFORMATION"),
+                      const SizedBox(height: 16),
+                      if (_isLoadingDetail)
+                        const SizedBox.shrink()
+                      else ...[
+                        _buildInfoRow(
+                          Icons.person_outline,
+                          "REQUESTER",
+                          _getRequesterName(),
+                        ),
+                        const Divider(height: 24, color: Color(0xFFF0F0F0)),
+                        _buildInfoRow(
+                          Icons.calendar_today_outlined,
+                          "DATE SENT",
+                          _getDateSent(),
+                        ),
+                        const Divider(height: 24, color: Color(0xFFF0F0F0)),
+                        _buildInfoRow(
+                          Icons.update_outlined,
+                          "DATE UPDATED",
+                          _getDateUpdated(),
+                        ),
+                        const Divider(height: 24, color: Color(0xFFF0F0F0)),
+                        _buildInfoRow(
+                          Icons.label_outline,
+                          "PARTICULARS",
+                          _getValue('particulars', 'particulars'),
+                        ),
+                        const Divider(height: 24, color: Color(0xFFF0F0F0)),
+                        _buildInfoRow(
+                          Icons.tag,
+                          "REFERENCE NO",
+                          _getValue('reference_no', 'referenceNo'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: const Color(0xFFE8E8E8)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SectionLabel("DOCUMENT TO SIGN"),
+                      const SizedBox(height: 14),
+                      if (_documentNotFound)
+                        Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: Colors.black12,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Icon(
+                                Icons.error_outline,
+                                color: Colors.black38,
+                                size: 22,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                "Document Not Found (404)",
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.black38,
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: const Color(
+                                  0xFFCC0000,
+                                ).withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Icon(
+                                Icons.picture_as_pdf_outlined,
+                                color: Color(0xFFCC0000),
+                                size: 22,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                fileName,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF1A1A1A),
+                                ),
+                                softWrap: true,
+                                overflow: TextOverflow.visible,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: _localPdfPath != null
+                                  ? _openMainDocument
+                                  : null,
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: const Color(
-                                    0xFFCC0000,
-                                  ).withOpacity(0.08),
+                                  color: _localPdfPath != null
+                                      ? const Color(0xFFCC0000)
+                                      : Colors.black12,
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: const Icon(
-                                  Icons.picture_as_pdf_outlined,
-                                  color: Color(0xFFCC0000),
-                                  size: 20,
+                                  Icons.visibility_outlined,
+                                  color: Colors.white,
+                                  size: 16,
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: const Color(0xFFE8E8E8)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SectionLabel("SUPPORTING DOCUMENTS"),
+                      const SizedBox(height: 12),
+                      Container(
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: Color(0xFFE8E8E8),
+                              width: 1.5,
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            _buildTab(
+                              label: "External Attachment",
+                              index: 0,
+                              count: _getAttachmentFiles().length,
+                            ),
+                            _buildTab(
+                              label: "Document Link",
+                              index: 1,
+                              count: _documentLinks.length,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      if (_selectedAttachmentTab == 0) ...[
+                        if (_getAttachmentFiles().isEmpty)
+                          const Text(
+                            'No attachments found.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.black45,
+                            ),
+                          )
+                        else
+                          ..._getAttachmentFiles().map((attachment) {
+                            final name =
+                                attachment['original_name'] ??
+                                attachment['file_name'] ??
+                                'Document';
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: const Color(
+                                        0xFFCC0000,
+                                      ).withOpacity(0.08),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Icon(
+                                      Icons.picture_as_pdf_outlined,
+                                      color: Color(0xFFCC0000),
+                                      size: 20,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          name,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF1A1A1A),
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _getFileTypeDisplayName(
+                                            name.toString(),
+                                          ),
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.black38,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  GestureDetector(
+                                    onTap: () => _viewAttachment(attachment),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFCC0000),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Icon(
+                                        Icons.visibility_outlined,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                      ] else ...[
+                        if (_isLoadingDocumentLinks)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Color(0xFFCC0000),
+                              ),
+                            ),
+                          )
+                        else if (_documentLinks.isEmpty)
+                          const Text(
+                            'No document links found.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.black45,
+                            ),
+                          )
+                        else
+                          ..._documentLinks.map((link) {
+                            final referenceNo =
+                                link['reference_no']
+                                        ?.toString()
+                                        .trim()
+                                        .isNotEmpty ==
+                                    true
+                                ? link['reference_no'].toString()
+                                : 'No reference';
+                            final linkFiles = _getDocumentLinkFiles(link);
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: const Color(0xFFE8E8E8),
+                                    width: 1,
+                                  ),
+                                  color: const Color(0xFFFAFAFA),
+                                ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      name,
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF1A1A1A),
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 9,
                                       ),
-                                      overflow: TextOverflow.ellipsis,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFFF3F3F4),
+                                        border: Border(
+                                          bottom: BorderSide(
+                                            color: Color(0xFFE8E8E8),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        borderRadius: BorderRadius.only(
+                                          topLeft: Radius.circular(6),
+                                          topRight: Radius.circular(6),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.link_rounded,
+                                            size: 13,
+                                            color: Color(0xFFCC0000),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            referenceNo,
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w800,
+                                              color: Color(0xFF1A1A1A),
+                                              letterSpacing: 0.3,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      _getFileTypeDisplayName(name.toString()),
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.black38,
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
+                                      child: Column(
+                                        children: linkFiles.asMap().entries.map((
+                                          entry,
+                                        ) {
+                                          final isLast =
+                                              entry.key == linkFiles.length - 1;
+                                          final file = entry.value;
+                                          final fileName =
+                                              file['original_name'] ??
+                                              file['file_name'] ??
+                                              'Document';
+                                          return Column(
+                                            children: [
+                                              Padding(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      vertical: 6,
+                                                    ),
+                                                child: Row(
+                                                  children: [
+                                                    Container(
+                                                      width: 32,
+                                                      height: 32,
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(
+                                                          0xFFCC0000,
+                                                        ).withOpacity(0.08),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              4,
+                                                            ),
+                                                      ),
+                                                      child: const Icon(
+                                                        Icons
+                                                            .insert_drive_file_outlined,
+                                                        color: Color(
+                                                          0xFFCC0000,
+                                                        ),
+                                                        size: 16,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 10),
+                                                    Expanded(
+                                                      child: Text(
+                                                        fileName.toString(),
+                                                        style: const TextStyle(
+                                                          fontSize: 11,
+                                                          color: Color(
+                                                            0xFF1A1A1A,
+                                                          ),
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                        ),
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    GestureDetector(
+                                                      onTap: () =>
+                                                          _viewAttachment(file),
+                                                      child: Container(
+                                                        padding:
+                                                            const EdgeInsets.all(
+                                                              7,
+                                                            ),
+                                                        decoration: BoxDecoration(
+                                                          color: const Color(
+                                                            0xFFCC0000,
+                                                          ),
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                4,
+                                                              ),
+                                                        ),
+                                                        child: const Icon(
+                                                          Icons
+                                                              .visibility_outlined,
+                                                          color: Colors.white,
+                                                          size: 15,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              if (!isLast)
+                                                const Divider(
+                                                  height: 1,
+                                                  color: Color(0xFFEEEEEE),
+                                                ),
+                                            ],
+                                          );
+                                        }).toList(),
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: () => _viewAttachment(attachment),
-                                child: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFCC0000),
+                            );
+                          }).toList(),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (_isPending())
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: const Color(0xFFE8E8E8)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SectionLabel("TAKE ACTION"),
+                        const SizedBox(height: 4),
+                        const Text(
+                          "Review the document above and take appropriate action.",
+                          style: TextStyle(fontSize: 11, color: Colors.black54),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed:
+                                    (_isSubmittingRevision ||
+                                        _localPdfPath == null)
+                                    ? null
+                                    : _handleApproveTap,
+                                icon: const Icon(
+                                  Icons.check,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                                label: const Text(
+                                  "APPROVE",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.5,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF059669),
+                                  disabledBackgroundColor: const Color(
+                                    0xFF059669,
+                                  ).withOpacity(0.5),
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(4),
                                   ),
-                                  child: const Icon(
-                                    Icons.visibility_outlined,
-                                    color: Colors.white,
-                                    size: 16,
-                                  ),
                                 ),
                               ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                  ] else ...[
-                    if (_isLoadingDocumentLinks)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Color(0xFFCC0000),
-                          ),
-                        ),
-                      )
-                    else if (_documentLinks.isEmpty)
-                      const Text(
-                        'No document links found.',
-                        style: TextStyle(fontSize: 11, color: Colors.black45),
-                      )
-                    else
-                      ..._documentLinks.map((link) {
-                        final referenceNo =
-                            link['reference_no']
-                                    ?.toString()
-                                    .trim()
-                                    .isNotEmpty ==
-                                true
-                            ? link['reference_no'].toString()
-                            : 'No reference';
-                        final linkFiles = _getDocumentLinkFiles(link);
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: const Color(0xFFE8E8E8),
-                                width: 1,
-                              ),
-                              color: const Color(0xFFFAFAFA),
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  width: double.infinity,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed:
+                                    (_isSubmittingRevision ||
+                                        _isSubmittingAttachmentRequest)
+                                    ? null
+                                    : _showRequestRevisionDialog,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color.fromARGB(
+                                    255,
+                                    199,
+                                    41,
+                                    30,
+                                  ),
+                                  elevation: 0,
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 12,
-                                    vertical: 9,
+                                    vertical: 12,
                                   ),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFF3F3F4),
-                                    border: Border(
-                                      bottom: BorderSide(
-                                        color: Color(0xFFE8E8E8),
-                                        width: 1,
-                                      ),
-                                    ),
-                                    borderRadius: BorderRadius.only(
-                                      topLeft: Radius.circular(6),
-                                      topRight: Radius.circular(6),
-                                    ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(4),
                                   ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.link_rounded,
-                                        size: 13,
-                                        color: Color(0xFFCC0000),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        referenceNo,
-                                        style: const TextStyle(
-                                          fontSize: 11,
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.refresh_outlined,
+                                      color: Colors.white,
+                                      size: 16,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Flexible(
+                                      child: Text(
+                                        "REQUEST REVISION",
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        softWrap: false,
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
                                           fontWeight: FontWeight.w800,
-                                          color: Color(0xFF1A1A1A),
-                                          letterSpacing: 0.3,
+                                          letterSpacing: 0.2,
                                         ),
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  child: Column(
-                                    children: linkFiles.asMap().entries.map((
-                                      entry,
-                                    ) {
-                                      final isLast =
-                                          entry.key == linkFiles.length - 1;
-                                      final file = entry.value;
-                                      final fileName =
-                                          file['original_name'] ??
-                                          file['file_name'] ??
-                                          'Document';
-                                      return Column(
-                                        children: [
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              vertical: 6,
-                                            ),
-                                            child: Row(
-                                              children: [
-                                                Container(
-                                                  width: 32,
-                                                  height: 32,
-                                                  decoration: BoxDecoration(
-                                                    color: const Color(
-                                                      0xFFCC0000,
-                                                    ).withOpacity(0.08),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          4,
-                                                        ),
-                                                  ),
-                                                  child: const Icon(
-                                                    Icons
-                                                        .insert_drive_file_outlined,
-                                                    color: Color(0xFFCC0000),
-                                                    size: 16,
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 10),
-                                                Expanded(
-                                                  child: Text(
-                                                    fileName.toString(),
-                                                    style: const TextStyle(
-                                                      fontSize: 11,
-                                                      color: Color(0xFF1A1A1A),
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 8),
-                                                GestureDetector(
-                                                  onTap: () =>
-                                                      _viewAttachment(file),
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets.all(7),
-                                                    decoration: BoxDecoration(
-                                                      color: const Color(
-                                                        0xFFCC0000,
-                                                      ),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            4,
-                                                          ),
-                                                    ),
-                                                    child: const Icon(
-                                                      Icons.visibility_outlined,
-                                                      color: Colors.white,
-                                                      size: 15,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          if (!isLast)
-                                            const Divider(
-                                              height: 1,
-                                              color: Color(0xFFEEEEEE),
-                                            ),
-                                        ],
-                                      );
-                                    }).toList(),
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
-                          ),
-                        );
-                      }).toList(),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (_isPending())
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border.all(color: const Color(0xFFE8E8E8)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SectionLabel("TAKE ACTION"),
-                    const SizedBox(height: 4),
-                    const Text(
-                      "Review the document above and take appropriate action.",
-                      style: TextStyle(fontSize: 11, color: Colors.black54),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
                           child: ElevatedButton.icon(
                             onPressed:
-                                (_isSubmittingRevision || _localPdfPath == null)
+                                (_isSubmittingRevision ||
+                                    _isSubmittingAttachmentRequest)
                                 ? null
-                                : _handleApproveTap,
+                                : _showRequestAttachmentDialog,
                             icon: const Icon(
-                              Icons.check,
-                              color: Colors.white,
+                              Icons.attach_file_outlined,
+                              color: Colors.black,
                               size: 16,
                             ),
-                            label: _isApproving
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
-                                      ),
-                                    ),
-                                  )
-                                : const Text(
-                                    "APPROVE",
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 1.5,
-                                    ),
-                                  ),
+                            label: const Text(
+                              "REQUEST ATTACHMENT",
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF059669),
-                              disabledBackgroundColor: const Color(
-                                0xFF059669,
-                              ).withOpacity(0.5),
+                              backgroundColor: Colors.white,
                               elevation: 0,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
@@ -1966,110 +2055,24 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(4),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed:
-                                (_isSubmittingRevision ||
-                                    _isSubmittingAttachmentRequest)
-                                ? null
-                                : _showRequestRevisionDialog,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color.fromARGB(
-                                255,
-                                199,
-                                41,
-                                30,
-                              ),
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 12,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.refresh_outlined,
-                                  color: Colors.white,
-                                  size: 16,
+                                side: const BorderSide(
+                                  color: Color.fromARGB(255, 199, 199, 199),
+                                  width: 1,
                                 ),
-                                SizedBox(width: 8),
-                                Flexible(
-                                  child: Text(
-                                    "REQUEST REVISION",
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    softWrap: false,
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 0.2,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed:
-                            (_isSubmittingRevision ||
-                                _isSubmittingAttachmentRequest)
-                            ? null
-                            : _showRequestAttachmentDialog,
-                        icon: const Icon(
-                          Icons.attach_file_outlined,
-                          color: Colors.black,
-                          size: 16,
-                        ),
-                        label: const Text(
-                          "REQUEST ATTACHMENT",
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4),
-                            side: const BorderSide(
-                              color: Color.fromARGB(255, 199, 199, 199),
-                              width: 1,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 24),
-          ],
+                  ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
         ),
-      ),
+        if (_isLoadingDetail || _isApproving) const LoadingOverlay(),
+      ],
     );
   }
 

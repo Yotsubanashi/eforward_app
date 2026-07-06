@@ -4,6 +4,7 @@ import '../../validators/password_validator.dart';
 import '../../validators/required_field_validator.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/eforward_app_bar.dart';
+import '../../widgets/loading_overlay.dart';
 import '../../widgets/section_label.dart';
 import 'login_screen.dart';
 
@@ -134,21 +135,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   Widget build(BuildContext context) {
     // Show loading indicator while verifying token
     if (_isVerifying) {
-      return Scaffold(
-        backgroundColor: const Color(0xFFF8F8F8),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
-              CircularProgressIndicator(color: Color(0xFFCC0000)),
-              SizedBox(height: 16),
-              Text(
-                'Verifying reset link...',
-                style: TextStyle(fontSize: 14, color: Color(0xFF1A1A1A)),
-              ),
-            ],
-          ),
-        ),
+      return const Stack(
+        children: [
+          Scaffold(backgroundColor: Color(0xFFF8F8F8)),
+          LoadingOverlay(),
+        ],
       );
     }
 
@@ -225,294 +216,309 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     }
 
     // Normal reset password form
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F8F8),
-      appBar: EForwardAppBar(
-        title: "SECURITY",
-        backgroundColor: const Color(0xFFF8F8F8),
-        onBackPressed: () => Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 8),
-
-            // Title
-            const Text(
-              "CREATE NEW\nPASSWORD",
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1,
-                height: 1.1,
-                color: Color(0xFF1A1A1A),
-              ),
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: const Color(0xFFF8F8F8),
+          appBar: EForwardAppBar(
+            title: "SECURITY",
+            backgroundColor: const Color(0xFFF8F8F8),
+            onBackPressed: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
             ),
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
 
-            // Red underline accent
-            Container(
-              margin: const EdgeInsets.only(top: 8, bottom: 16),
-              width: 40,
-              height: 3,
-              color: const Color(0xFFCC0000),
-            ),
-
-            // Subtitle
-            const Text(
-              "Your new password must be unique and adhere to institutional security protocols to protect your institutional assets.",
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.black45,
-                height: 1.6,
-              ),
-            ),
-
-            const SizedBox(height: 28),
-
-            // New Password Label
-            const Text(
-              "NEW PASSWORD",
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.5,
-                color: Color(0xFF1A1A1A),
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            // New Password Field
-            TextField(
-              controller: _newPasswordController,
-              obscureText: _obscureNew,
-              style: const TextStyle(fontSize: 13, color: Color(0xFF1A1A1A)),
-              decoration: InputDecoration(
-                hintText: "• • • • • • • •",
-                hintStyle: const TextStyle(color: Colors.black26, fontSize: 13),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscureNew
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
-                    size: 18,
-                    color: Colors.black38,
-                  ),
-                  onPressed: () => setState(() => _obscureNew = !_obscureNew),
-                ),
-                enabledBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.black26),
-                ),
-                focusedBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Color(0xFFCC0000)),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Confirm Password Label
-            const Text(
-              "CONFIRM NEW PASSWORD",
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.5,
-                color: Color(0xFF1A1A1A),
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            // Confirm Password Field
-            TextField(
-              controller: _confirmPasswordController,
-              obscureText: _obscureConfirm,
-              style: const TextStyle(fontSize: 13, color: Color(0xFF1A1A1A)),
-              decoration: InputDecoration(
-                hintText: "• • • • • • • •",
-                hintStyle: const TextStyle(color: Colors.black26, fontSize: 13),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscureConfirm
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
-                    size: 18,
-                    color: Colors.black38,
-                  ),
-                  onPressed: () =>
-                      setState(() => _obscureConfirm = !_obscureConfirm),
-                ),
-                enabledBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.black26),
-                ),
-                focusedBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Color(0xFFCC0000)),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Security Requirements Box
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: const Color(0xFFEEEEEE), width: 1),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SectionLabel(
-                    "SECURITY REQUIREMENTS",
+                // Title
+                const Text(
+                  "CREATE NEW\nPASSWORD",
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
+                    height: 1.1,
                     color: Color(0xFF1A1A1A),
                   ),
-                  const SizedBox(height: 12),
-                  _buildRequirement("At least 8 characters", _hasMinLength),
-                  _buildRequirement("Include a number (0-9)", _hasNumber),
-                  _buildRequirement(
-                    "Special character (!@#\$)",
-                    _hasSpecialChar,
-                  ),
-                  _buildRequirement("Mixed case (Aa)", _hasMixedCase),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 28),
-
-            // Reset Password Button
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _resetPassword,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFCC0000),
-                  disabledBackgroundColor: const Color(
-                    0xFFCC0000,
-                  ).withOpacity(0.7),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  elevation: 0,
                 ),
-                child: _isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Text(
-                            "RESET PASSWORD",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 2,
-                            ),
-                          ),
-                          SizedBox(width: 8),
-                          Icon(
-                            Icons.arrow_forward,
-                            color: Colors.white,
-                            size: 16,
-                          ),
-                        ],
-                      ),
-              ),
-            ),
 
-            const SizedBox(height: 16),
+                // Red underline accent
+                Container(
+                  margin: const EdgeInsets.only(top: 8, bottom: 16),
+                  width: 40,
+                  height: 3,
+                  color: const Color(0xFFCC0000),
+                ),
 
-            // Cancel
-            Center(
-              child: TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text(
-                  "CANCEL AND RETURN TO SETTINGS",
+                // Subtitle
+                const Text(
+                  "Your new password must be unique and adhere to institutional security protocols to protect your institutional assets.",
                   style: TextStyle(
+                    fontSize: 12,
                     color: Colors.black45,
-                    fontSize: 11,
-                    letterSpacing: 1.2,
-                    fontWeight: FontWeight.w600,
+                    height: 1.6,
                   ),
                 ),
-              ),
-            ),
 
-            const SizedBox(height: 24),
+                const SizedBox(height: 28),
 
-            // Account Protection Notice
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  left: BorderSide(color: const Color(0xFFCC0000), width: 3),
+                // New Password Label
+                const Text(
+                  "NEW PASSWORD",
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.5,
+                    color: Color(0xFF1A1A1A),
+                  ),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+                const SizedBox(height: 8),
+
+                // New Password Field
+                TextField(
+                  controller: _newPasswordController,
+                  obscureText: _obscureNew,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF1A1A1A),
                   ),
-                ],
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(
-                    Icons.account_circle_outlined,
-                    color: Color(0xFFCC0000),
-                    size: 20,
+                  decoration: InputDecoration(
+                    hintText: "• • • • • • • •",
+                    hintStyle: const TextStyle(
+                      color: Colors.black26,
+                      fontSize: 13,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureNew
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                        size: 18,
+                        color: Colors.black38,
+                      ),
+                      onPressed: () =>
+                          setState(() => _obscureNew = !_obscureNew),
+                    ),
+                    enabledBorder: const UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.black26),
+                    ),
+                    focusedBorder: const UnderlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFFCC0000)),
+                    ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
+                ),
+
+                const SizedBox(height: 24),
+
+                // Confirm Password Label
+                const Text(
+                  "CONFIRM NEW PASSWORD",
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.5,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Confirm Password Field
+                TextField(
+                  controller: _confirmPasswordController,
+                  obscureText: _obscureConfirm,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                  decoration: InputDecoration(
+                    hintText: "• • • • • • • •",
+                    hintStyle: const TextStyle(
+                      color: Colors.black26,
+                      fontSize: 13,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureConfirm
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                        size: 18,
+                        color: Colors.black38,
+                      ),
+                      onPressed: () =>
+                          setState(() => _obscureConfirm = !_obscureConfirm),
+                    ),
+                    enabledBorder: const UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.black26),
+                    ),
+                    focusedBorder: const UnderlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFFCC0000)),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Security Requirements Box
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(
+                      color: const Color(0xFFEEEEEE),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SectionLabel(
+                        "SECURITY REQUIREMENTS",
+                        color: Color(0xFF1A1A1A),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildRequirement("At least 8 characters", _hasMinLength),
+                      _buildRequirement("Include a number (0-9)", _hasNumber),
+                      _buildRequirement(
+                        "Special character (!@#\$)",
+                        _hasSpecialChar,
+                      ),
+                      _buildRequirement("Mixed case (Aa)", _hasMixedCase),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 28),
+
+                // Reset Password Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _resetPassword,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFCC0000),
+                      disabledBackgroundColor: const Color(
+                        0xFFCC0000,
+                      ).withOpacity(0.7),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
                         Text(
-                          "ACCOUNT PROTECTION",
+                          "RESET PASSWORD",
                           style: TextStyle(
-                            fontSize: 10,
+                            color: Colors.white,
+                            fontSize: 13,
                             fontWeight: FontWeight.w800,
-                            letterSpacing: 1.5,
-                            color: Color(0xFF1A1A1A),
+                            letterSpacing: 2,
                           ),
                         ),
-                        SizedBox(height: 6),
-                        Text(
-                          "Changing your password will sign you out of all other active sessions on multiple devices for your protection.",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.black54,
-                            height: 1.6,
-                          ),
+                        SizedBox(width: 8),
+                        Icon(
+                          Icons.arrow_forward,
+                          color: Colors.white,
+                          size: 16,
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
+                ),
 
-            const SizedBox(height: 24),
-          ],
+                const SizedBox(height: 16),
+
+                // Cancel
+                Center(
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text(
+                      "CANCEL AND RETURN TO SETTINGS",
+                      style: TextStyle(
+                        color: Colors.black45,
+                        fontSize: 11,
+                        letterSpacing: 1.2,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Account Protection Notice
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border(
+                      left: BorderSide(
+                        color: const Color(0xFFCC0000),
+                        width: 3,
+                      ),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.account_circle_outlined,
+                        color: Color(0xFFCC0000),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text(
+                              "ACCOUNT PROTECTION",
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.5,
+                                color: Color(0xFF1A1A1A),
+                              ),
+                            ),
+                            SizedBox(height: 6),
+                            Text(
+                              "Changing your password will sign you out of all other active sessions on multiple devices for your protection.",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.black54,
+                                height: 1.6,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
         ),
-      ),
+        if (_isLoading) const LoadingOverlay(),
+      ],
     );
   }
 

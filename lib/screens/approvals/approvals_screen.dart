@@ -13,7 +13,7 @@ import 'package:eforward_app/widgets/approval_card.dart';
 import 'package:eforward_app/widgets/app_empty_state.dart';
 import 'package:eforward_app/widgets/app_error_state.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
-import 'package:eforward_app/widgets/skeleton_loader.dart';
+import 'package:eforward_app/widgets/loading_overlay.dart';
 
 class ApprovalsPage extends StatefulWidget {
   final int initialTabIndex;
@@ -768,7 +768,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     required ScrollController scrollController,
   }) {
     if (isLoading) {
-      return const SkeletonApprovalList();
+      return const Stack(children: [LoadingOverlay()]);
     }
 
     if (error != null) {
