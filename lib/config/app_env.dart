@@ -1,4 +1,5 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:eforward_app/validators/email_validator.dart';
 
 class AppEnv {
   AppEnv._();
@@ -37,12 +38,10 @@ class AppEnv {
   /// Returns branding based on the user's email domain, falling back to
   /// the current app brand (from `.env`) when the domain does not match.
   static Map<String, String> getBrandingForEmail(String email) {
-    final lower = email.toLowerCase().trim();
-
-    if (lower.endsWith('@versatech.com.ph')) {
+    if (EmailValidator.isVersatechDomain(email)) {
       return _brandingConfig('VERSATECH');
     }
-    if (lower.endsWith('@ardentnetworks.com.ph')) {
+    if (EmailValidator.isArdentDomain(email)) {
       return _brandingConfig('ARDENT');
     }
 

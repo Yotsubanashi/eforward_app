@@ -75,5 +75,4 @@ class DefaultFirebaseOptions {
     authDomain: 'eforward-app.firebaseapp.com',
     storageBucket: 'eforward-app.firebasestorage.app',
   );
-
 }
