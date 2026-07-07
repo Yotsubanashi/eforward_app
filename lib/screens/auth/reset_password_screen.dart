@@ -222,181 +222,187 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           children: [
             const SizedBox(height: 8),
 
-          // Title
-          const Text(
-            "CREATE NEW\nPASSWORD",
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1,
-              height: 1.1,
-              color: Color(0xFF1A1A1A),
-            ),
-          ),
-
-          // Red underline accent
-          Container(
-            margin: const EdgeInsets.only(top: 8, bottom: 16),
-            width: 40,
-            height: 3,
-            color: const Color(0xFFCC0000),
-          ),
-
-          // Subtitle
-          const Text(
-            "Your new password must be unique and adhere to institutional security protocols to protect your institutional assets.",
-            style: TextStyle(fontSize: 12, color: Colors.black45, height: 1.6),
-          ),
-
-          const SizedBox(height: 28),
-
-          // New Password Label
-          const Text(
-            "NEW PASSWORD",
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.5,
-              color: Color(0xFF1A1A1A),
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // New Password Field
-          TextField(
-            controller: _newPasswordController,
-            obscureText: _obscureNew,
-            style: const TextStyle(fontSize: 13, color: Color(0xFF1A1A1A)),
-            decoration: InputDecoration(
-              hintText: "• • • • • • • •",
-              hintStyle: const TextStyle(color: Colors.black26, fontSize: 13),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _obscureNew
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
-                  size: 18,
-                  color: Colors.black38,
-                ),
-                onPressed: () => setState(() => _obscureNew = !_obscureNew),
-              ),
-              enabledBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.black26),
-              ),
-              focusedBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: Color(0xFFCC0000)),
+            // Title
+            const Text(
+              "CREATE NEW\nPASSWORD",
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1,
+                height: 1.1,
+                color: Color(0xFF1A1A1A),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          PasswordStrengthIndicator(password: _newPasswordController.text),
 
-          const SizedBox(height: 24),
-
-          // Confirm Password Label
-          const Text(
-            "CONFIRM NEW PASSWORD",
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.5,
-              color: Color(0xFF1A1A1A),
+            // Red underline accent
+            Container(
+              margin: const EdgeInsets.only(top: 8, bottom: 16),
+              width: 40,
+              height: 3,
+              color: const Color(0xFFCC0000),
             ),
-          ),
-          const SizedBox(height: 8),
 
-          // Confirm Password Field
-          TextField(
-            controller: _confirmPasswordController,
-            obscureText: _obscureConfirm,
-            style: const TextStyle(fontSize: 13, color: Color(0xFF1A1A1A)),
-            decoration: InputDecoration(
-              hintText: "• • • • • • • •",
-              hintStyle: const TextStyle(color: Colors.black26, fontSize: 13),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _obscureConfirm
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
-                  size: 18,
-                  color: Colors.black38,
-                ),
-                onPressed: () =>
-                    setState(() => _obscureConfirm = !_obscureConfirm),
-              ),
-              enabledBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.black26),
-              ),
-              focusedBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: Color(0xFFCC0000)),
+            // Subtitle
+            const Text(
+              "Your new password must be unique and adhere to institutional security protocols to protect your institutional assets.",
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.black45,
+                height: 1.6,
               ),
             ),
-          ),
-          PasswordMatchMessage(
-            newPassword: _newPasswordController.text,
-            confirmPassword: _confirmPasswordController.text,
-          ),
 
-          const SizedBox(height: 24),
+            const SizedBox(height: 28),
 
-          // Account Protection Notice
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border(
-                left: BorderSide(color: const Color(0xFFCC0000), width: 3),
+            // New Password Label
+            const Text(
+              "NEW PASSWORD",
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.5,
+                color: Color(0xFF1A1A1A),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.account_circle_outlined,
-                  color: Color(0xFFCC0000),
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        "ACCOUNT PROTECTION",
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.5,
-                          color: Color(0xFF1A1A1A),
-                        ),
-                      ),
-                      SizedBox(height: 6),
-                      Text(
-                        "Changing your password will sign you out of all other active sessions on multiple devices for your protection.",
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.black54,
-                          height: 1.6,
-                        ),
-                      ),
-                    ],
+            const SizedBox(height: 8),
+
+            // New Password Field
+            TextField(
+              controller: _newPasswordController,
+              obscureText: _obscureNew,
+              style: const TextStyle(fontSize: 13, color: Color(0xFF1A1A1A)),
+              decoration: InputDecoration(
+                hintText: "• • • • • • • •",
+                hintStyle: const TextStyle(color: Colors.black26, fontSize: 13),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscureNew
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    size: 18,
+                    color: Colors.black38,
                   ),
+                  onPressed: () => setState(() => _obscureNew = !_obscureNew),
                 ),
-              ],
+                enabledBorder: const UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.black26),
+                ),
+                focusedBorder: const UnderlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFFCC0000)),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(height: 12),
+            PasswordStrengthIndicator(password: _newPasswordController.text),
 
-          const SizedBox(height: 24),
-        ],
+            const SizedBox(height: 24),
+
+            // Confirm Password Label
+            const Text(
+              "CONFIRM NEW PASSWORD",
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.5,
+                color: Color(0xFF1A1A1A),
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // Confirm Password Field
+            TextField(
+              controller: _confirmPasswordController,
+              obscureText: _obscureConfirm,
+              style: const TextStyle(fontSize: 13, color: Color(0xFF1A1A1A)),
+              decoration: InputDecoration(
+                hintText: "• • • • • • • •",
+                hintStyle: const TextStyle(color: Colors.black26, fontSize: 13),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscureConfirm
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    size: 18,
+                    color: Colors.black38,
+                  ),
+                  onPressed: () =>
+                      setState(() => _obscureConfirm = !_obscureConfirm),
+                ),
+                enabledBorder: const UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.black26),
+                ),
+                focusedBorder: const UnderlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFFCC0000)),
+                ),
+              ),
+            ),
+            PasswordMatchMessage(
+              newPassword: _newPasswordController.text,
+              confirmPassword: _confirmPasswordController.text,
+            ),
+
+            const SizedBox(height: 24),
+
+            // Account Protection Notice
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border(
+                  left: BorderSide(color: const Color(0xFFCC0000), width: 3),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.account_circle_outlined,
+                    color: Color(0xFFCC0000),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          "ACCOUNT PROTECTION",
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.5,
+                            color: Color(0xFF1A1A1A),
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          "Changing your password will sign you out of all other active sessions on multiple devices for your protection.",
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.black54,
+                            height: 1.6,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 24),
+          ],
+        ),
       ),
+      bottomNavigationBar: _buildBottomActions(),
     );
   }
 
