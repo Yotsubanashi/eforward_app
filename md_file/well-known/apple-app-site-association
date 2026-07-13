@@ -3,7 +3,7 @@
     "apps": [],
     "details": [
       {
-        "appID": "REPLACE_WITH_APPLE_TEAM_ID.com.example.eforwardApp",
+        "appID": "K9973Z86YT.com.ardentnetworks.eforward",
         "paths": [ "/reset-password", "/reset-password/*" ]
       }
     ]

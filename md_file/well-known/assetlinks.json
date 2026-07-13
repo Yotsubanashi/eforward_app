@@ -3,7 +3,7 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "com.example.eforward_app",
+      "package_name": "com.ardentnetworks.eforward",
       "sha256_cert_fingerprints": [
         "0C:76:60:40:2F:D5:12:64:DA:62:84:46:CB:5B:47:FE:06:78:0F:4F:AD:D9:D4:AF:79:DE:4E:15:1B:05:94:66"
       ]

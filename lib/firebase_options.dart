@@ -51,20 +51,20 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyBaHdnDl6QXuWVtqLjuTO7zrcmgYiUY5oU',
-    appId: '1:616817065201:ios:28474eeabc93674120bd50',
+    appId: '1:616817065201:ios:cb3c7a94f859ac0020bd50',
     messagingSenderId: '616817065201',
     projectId: 'eforward-app',
     storageBucket: 'eforward-app.firebasestorage.app',
-    iosBundleId: 'com.example.eforwardApp',
+    iosBundleId: 'com.ardentnetworks.eforward',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyBaHdnDl6QXuWVtqLjuTO7zrcmgYiUY5oU',
-    appId: '1:616817065201:ios:28474eeabc93674120bd50',
+    appId: '1:616817065201:ios:cb3c7a94f859ac0020bd50',
     messagingSenderId: '616817065201',
     projectId: 'eforward-app',
     storageBucket: 'eforward-app.firebasestorage.app',
-    iosBundleId: 'com.example.eforwardApp',
+    iosBundleId: 'com.ardentnetworks.eforward',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
