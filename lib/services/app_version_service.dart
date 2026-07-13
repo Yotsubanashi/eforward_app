@@ -117,6 +117,11 @@ class AppVersionService {
   }
 }
 
+/// Brand accent used across the update dialog.
+const Color _kBrandRed = Color(0xFFCC0000);
+const Color _kInk = Color(0xFF1A1A1A);
+const Color _kMuted = Color(0xFF6B7280);
+
 /// Shows the force-update dialog. Returns `true` if the user tapped "Update Now".
 Future<bool> showForceUpdateDialog({
   required BuildContext context,
@@ -129,51 +134,272 @@ Future<bool> showForceUpdateDialog({
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
+    barrierColor: Colors.black.withOpacity(0.55),
     builder: (dialogContext) {
       return PopScope(
         canPop: false,
-        child: AlertDialog(
-          title: const Text('Update Required'),
-          content: Text(
-            'Your app version is outdated.\n\n'
-            'Current: $current\n'
-            'Latest: ${remote.latestVersion}\n\n'
-            'Tap "Update Now" to download and install the latest version.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                try {
-                  final svc = AppVersionService();
-                  final ok = await svc.launchDownload(remote.downloadUrl);
-                  svc.dispose();
-                  if (!dialogContext.mounted) return;
+        child: _ForceUpdateCard(
+          remote: remote,
+          current: current,
+          onUpdate: () async {
+            try {
+              final svc = AppVersionService();
+              final ok = await svc.launchDownload(remote.downloadUrl);
+              svc.dispose();
+              if (!dialogContext.mounted) return;
 
-                  if (!ok) {
-                    final messenger = ScaffoldMessenger.maybeOf(dialogContext);
-                    messenger?.showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Unable to open update link. Check the APK URL.',
-                        ),
-                      ),
-                    );
-                    return;
-                  }
+              if (!ok) {
+                final messenger = ScaffoldMessenger.maybeOf(dialogContext);
+                messenger?.showSnackBar(
+                  const SnackBar(
+                    content: Text('Unable to open update link. Please try again.'),
+                  ),
+                );
+                return;
+              }
 
-                  updateInitiated = true;
-                  Navigator.of(dialogContext).pop();
-                } catch (e) {
-                  debugPrint('Update launch failed: $e');
-                }
-              },
-              child: const Text('Update Now'),
-            ),
-          ],
+              updateInitiated = true;
+              Navigator.of(dialogContext).pop();
+            } catch (e) {
+              debugPrint('Update launch failed: $e');
+            }
+          },
         ),
       );
     },
   );
 
   return updateInitiated;
+}
+
+class _ForceUpdateCard extends StatefulWidget {
+  const _ForceUpdateCard({
+    required this.remote,
+    required this.current,
+    required this.onUpdate,
+  });
+
+  final AppVersionInfo remote;
+  final AppComparableVersion current;
+  final Future<void> Function() onUpdate;
+
+  @override
+  State<_ForceUpdateCard> createState() => _ForceUpdateCardState();
+}
+
+class _ForceUpdateCardState extends State<_ForceUpdateCard> {
+  bool _busy = false;
+
+  Future<void> _handleUpdate() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await widget.onUpdate();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 380),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 40,
+              offset: const Offset(0, 18),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header with brand gradient + icon badge.
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFE11414), _kBrandRed],
+                ),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    height: 72,
+                    width: 72,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.16),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.28),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.system_update_rounded,
+                      color: Colors.white,
+                      size: 36,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Update Required',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Body.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+              child: Column(
+                children: [
+                  const Text(
+                    'A newer version of the app is available. '
+                    'Please update to continue.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: _kMuted,
+                      fontSize: 14.5,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  _VersionRow(
+                    current: widget.current.toString(),
+                    latest: widget.remote.latestVersion.toString(),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: ElevatedButton(
+                      onPressed: _busy ? null : _handleUpdate,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _kBrandRed,
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: _kBrandRed.withOpacity(0.6),
+                        disabledForegroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      child: _busy
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.4,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Text('Update Now'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VersionRow extends StatelessWidget {
+  const _VersionRow({required this.current, required this.latest});
+
+  final String current;
+  final String latest;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF6F7F9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFEDEEF1)),
+      ),
+      child: Row(
+        children: [
+          Expanded(child: _VersionChip(label: 'Current', value: current)),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8),
+            child: Icon(Icons.arrow_forward_rounded, size: 18, color: _kMuted),
+          ),
+          Expanded(
+            child: _VersionChip(
+              label: 'Latest',
+              value: latest,
+              highlight: true,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VersionChip extends StatelessWidget {
+  const _VersionChip({
+    required this.label,
+    required this.value,
+    this.highlight = false,
+  });
+
+  final String label;
+  final String value;
+  final bool highlight;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: const TextStyle(
+            color: _kMuted,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.6,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: highlight ? _kBrandRed : _kInk,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
 }
