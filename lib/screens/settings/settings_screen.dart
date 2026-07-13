@@ -450,241 +450,243 @@ class _SettingsPageState extends State<SettingsPage> {
             onTap: (_) {},
           ),
           body: SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 20,
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 3,
-                        height: 18,
-                        color: const Color(0xFFCC0000),
-                      ),
-                      const SizedBox(width: 10),
-                      const Text(
-                        "EFORWARD SETTINGS",
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 2,
-                          color: Color(0xFFCC0000),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 20,
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 3,
+                          height: 18,
+                          color: const Color(0xFFCC0000),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 10),
+                        const Text(
+                          "EFORWARD SETTINGS",
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 2,
+                            color: Color(0xFFCC0000),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
 
-                const SizedBox(height: 40),
+                  const SizedBox(height: 40),
 
-                // Profile Section
-                Center(
-                  child: _isLoading
-                      ? const SizedBox.shrink()
-                      : Column(
-                          children: [
-                            // Initials Avatar
-                            CircleAvatar(
-                              radius: 60,
-                              backgroundColor: Colors.black,
-                              child: Text(
-                                _initials.isNotEmpty ? _initials : '?',
-                                style: const TextStyle(
-                                  fontSize: 36,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                  letterSpacing: 3,
+                  // Profile Section
+                  Center(
+                    child: _isLoading
+                        ? const SizedBox.shrink()
+                        : Column(
+                            children: [
+                              // Initials Avatar
+                              CircleAvatar(
+                                radius: 60,
+                                backgroundColor: Colors.black,
+                                child: Text(
+                                  _initials.isNotEmpty ? _initials : '?',
+                                  style: const TextStyle(
+                                    fontSize: 36,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                    letterSpacing: 3,
+                                  ),
                                 ),
                               ),
-                            ),
 
-                            const SizedBox(height: 16),
+                              const SizedBox(height: 16),
 
-                            // Full Name
-                            Text(
-                              _displayName.isNotEmpty ? _displayName : '—',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.5,
-                                color: Color(0xFF1A1A1A),
+                              // Full Name
+                              Text(
+                                _displayName.isNotEmpty ? _displayName : '—',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.5,
+                                  color: Color(0xFF1A1A1A),
+                                ),
                               ),
-                            ),
 
-                            const SizedBox(height: 4),
+                              const SizedBox(height: 4),
 
-                            // Email
-                            if (_email.isNotEmpty)
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                    Icons.email_outlined,
-                                    size: 13,
-                                    color: Colors.black38,
-                                  ),
-                                  const SizedBox(width: 5),
-                                  Text(
-                                    _email,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.black45,
-                                      letterSpacing: 0.3,
+                              // Email
+                              if (_email.isNotEmpty)
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(
+                                      Icons.email_outlined,
+                                      size: 13,
+                                      color: Colors.black38,
                                     ),
-                                  ),
-                                ],
-                              ),
-
-                            const SizedBox(height: 4),
-
-                            // Employee ID
-                            if (_employeeId.isNotEmpty)
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                    Icons.badge_outlined,
-                                    size: 13,
-                                    color: Colors.black38,
-                                  ),
-                                  const SizedBox(width: 5),
-                                  Text(
-                                    _employeeId,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.black45,
-                                      letterSpacing: 1,
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      _email,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.black45,
+                                        letterSpacing: 0.3,
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                          ],
-                        ),
-                ),
+                                  ],
+                                ),
 
-                const SizedBox(height: 32),
-                const Divider(height: 1, color: Color(0xFFEEEEEE)),
+                              const SizedBox(height: 4),
 
-                // Edit Profile
-                _buildMenuItem(
-                  context,
-                  icon: Icons.person_outline,
-                  iconColor: const Color(0xFFCC0000),
-                  label: "ACCOUNT",
-                  title: "EDIT PROFILE",
-                  trailing: const Icon(
-                    Icons.chevron_right,
-                    color: Color(0xFFAAAAAA),
-                    size: 20,
-                  ),
-                  onTap: _showEditProfileSheet,
-                ),
-
-                const Divider(height: 1, color: Color(0xFFEEEEEE)),
-
-                // Change Password
-                _buildMenuItem(
-                  context,
-                  icon: Icons.lock_outline,
-                  iconColor: const Color(0xFFCC0000),
-                  label: "SECURITY",
-                  title: "CHANGE PASSWORD",
-                  trailing: const Icon(
-                    Icons.chevron_right,
-                    color: Color(0xFFAAAAAA),
-                    size: 20,
-                  ),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ChangePasswordScreen(),
-                    ),
-                  ),
-                ),
-
-                const Divider(height: 1, color: Color(0xFFEEEEEE)),
-
-                _buildMenuItem(
-                  context,
-                  icon: Icons.fingerprint,
-                  iconColor: const Color(0xFFCC0000),
-                  label: "SECURITY",
-                  title: "BIOMETRIC/PIN UNLOCK",
-                  trailing: Switch(
-                    value: _biometricUnlockEnabled,
-                    onChanged: _onToggleBiometricUnlock,
-                    activeThumbColor: const Color(0xFFCC0000),
-                  ),
-                  onTap: () =>
-                      _onToggleBiometricUnlock(!_biometricUnlockEnabled),
-                ),
-
-                const Divider(height: 1, color: Color(0xFFEEEEEE)),
-
-                // Privacy Policy
-                _buildMenuItem(
-                  context,
-                  icon: Icons.privacy_tip_outlined,
-                  iconColor: const Color(0xFFCC0000),
-                  label: "LEGAL",
-                  title: "PRIVACY POLICY",
-                  trailing: const Icon(
-                    Icons.chevron_right,
-                    color: Color(0xFFAAAAAA),
-                    size: 20,
-                  ),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const PrivacyPolicyScreen(),
-                    ),
-                  ),
-                ),
-
-                const Divider(height: 1, color: Color(0xFFEEEEEE)),
-
-                // Logout
-                // Logout
-                _buildMenuItem(
-                  context,
-                  icon: Icons.logout,
-                  iconColor: const Color(0xFF555555),
-                  label: "SESSION MANAGEMENT",
-                  title: "LOGOUT",
-                  onTap: _logout,
-                ),
-
-                const Divider(height: 1, color: Color(0xFFEEEEEE)),
-
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Align(
-                    alignment: Alignment.center,
-                    child: FutureBuilder(
-                      future: PackageInfo.fromPlatform(),
-                      builder: (context, snapshot) {
-                        final version = snapshot.hasData
-                            ? 'Version ${snapshot.data!.version}'
-                            : 'Loading...';
-                        return Text(
-                          version,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFFAAAAAA),
-                            fontWeight: FontWeight.w600,
+                              // Employee ID
+                              if (_employeeId.isNotEmpty)
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(
+                                      Icons.badge_outlined,
+                                      size: 13,
+                                      color: Colors.black38,
+                                    ),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      _employeeId,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.black45,
+                                        letterSpacing: 1,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                            ],
                           ),
-                        );
-                      },
+                  ),
+
+                  const SizedBox(height: 32),
+                  const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+                  // Edit Profile
+                  _buildMenuItem(
+                    context,
+                    icon: Icons.person_outline,
+                    iconColor: const Color(0xFFCC0000),
+                    label: "ACCOUNT",
+                    title: "EDIT PROFILE",
+                    trailing: const Icon(
+                      Icons.chevron_right,
+                      color: Color(0xFFAAAAAA),
+                      size: 20,
+                    ),
+                    onTap: _showEditProfileSheet,
+                  ),
+
+                  const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+                  // Change Password
+                  _buildMenuItem(
+                    context,
+                    icon: Icons.lock_outline,
+                    iconColor: const Color(0xFFCC0000),
+                    label: "SECURITY",
+                    title: "CHANGE PASSWORD",
+                    trailing: const Icon(
+                      Icons.chevron_right,
+                      color: Color(0xFFAAAAAA),
+                      size: 20,
+                    ),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ChangePasswordScreen(),
+                      ),
                     ),
                   ),
-                ),
-              ],
+
+                  const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+                  _buildMenuItem(
+                    context,
+                    icon: Icons.fingerprint,
+                    iconColor: const Color(0xFFCC0000),
+                    label: "SECURITY",
+                    title: "BIOMETRIC/PIN UNLOCK",
+                    trailing: Switch(
+                      value: _biometricUnlockEnabled,
+                      onChanged: _onToggleBiometricUnlock,
+                      activeThumbColor: const Color(0xFFCC0000),
+                    ),
+                    onTap: () =>
+                        _onToggleBiometricUnlock(!_biometricUnlockEnabled),
+                  ),
+
+                  const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+                  // Privacy Policy
+                  _buildMenuItem(
+                    context,
+                    icon: Icons.privacy_tip_outlined,
+                    iconColor: const Color(0xFFCC0000),
+                    label: "LEGAL",
+                    title: "PRIVACY POLICY",
+                    trailing: const Icon(
+                      Icons.chevron_right,
+                      color: Color(0xFFAAAAAA),
+                      size: 20,
+                    ),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const PrivacyPolicyScreen(),
+                      ),
+                    ),
+                  ),
+
+                  const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+                  // Logout
+                  // Logout
+                  _buildMenuItem(
+                    context,
+                    icon: Icons.logout,
+                    iconColor: const Color(0xFF555555),
+                    label: "SESSION MANAGEMENT",
+                    title: "LOGOUT",
+                    onTap: _logout,
+                  ),
+
+                  const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Align(
+                      alignment: Alignment.center,
+                      child: FutureBuilder(
+                        future: PackageInfo.fromPlatform(),
+                        builder: (context, snapshot) {
+                          final version = snapshot.hasData
+                              ? 'Version ${snapshot.data!.version}'
+                              : 'Loading...';
+                          return Text(
+                            version,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFFAAAAAA),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
