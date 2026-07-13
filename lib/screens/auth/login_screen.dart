@@ -28,8 +28,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
-  // For the "two APKs" approach, branding is env-driven (fixed per build).
-  Map<String, String> _branding = AppEnv.defaultBranding;
+  // Single unified build: the login logo uses the env default branding; the
+  // per-user backend is chosen from the email domain at login time.
+  final Map<String, String> _branding = AppEnv.defaultBranding;
 
   @override
   void initState() {
@@ -54,7 +55,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   bool _isEmailAllowedForCurrentBrand(String email) {
-    return EmailValidator.isAllowedForBrand(email, AppEnv.appBrand);
+    // Unified single build: allow both Ardent and Versatech institutional
+    // domains. The correct backend is chosen from the domain at login time.
+    return EmailValidator.isKnownInstitutionalDomain(email);
   }
 
   String? _extractAccountStatus(Map<String, dynamic>? data) {
@@ -105,6 +108,10 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     setState(() => _isLoading = true);
+
+    // Route this login — and the whole session — to the correct backend based
+    // on the email domain (Ardent vs Versatech).
+    await AppEnv.selectBackendForEmail(email);
 
     final result = await _authApi.login(email: email, password: password);
 

@@ -1,4 +1,4 @@
-package com.example.eforward_app
+package com.ardentnetworks.eforward
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 

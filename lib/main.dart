@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'app.dart';
+import 'config/app_env.dart';
 import 'services/notifications/firebase_notification_service.dart';
 import 'services/app_lifecycle_service.dart';
 import 'firebase_options.dart';
@@ -17,6 +18,10 @@ void main() async {
     defaultValue: '.env',
   );
   await dotenv.load(fileName: dotenvFile);
+
+  // Restore the backend selected in a previous session (Ardent vs Versatech)
+  // BEFORE any API call, so the startup session check hits the right backend.
+  await AppEnv.restoreActiveBackend();
 
   // 1. Init Firebase first
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);

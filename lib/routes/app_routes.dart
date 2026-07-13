@@ -19,4 +19,5 @@ class AppRoutes {
   static const String notificationSettings = '/notification-settings';
   static const String forgotPassword = '/forgot-password';
   static const String changePassword = '/change-password';
+  static const String privacyPolicy = '/privacy-policy';
 }

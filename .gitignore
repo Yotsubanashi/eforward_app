@@ -12,8 +12,6 @@
 .swiftpm/
 **/xcshareddata/swiftpm/
 migrate_working_dir/
-google-services.json
-serviceAccountKey.json
 
 # IntelliJ related
 *.iml
@@ -30,10 +28,12 @@ serviceAccountKey.json
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
+.flutter-plugins
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
 /build/
+**/build/
 /coverage/
 
 # Symbolication related
@@ -47,7 +47,32 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# ─────────────────────────────────────────────────────────────
+# Secrets & release signing — NEVER commit these
+# ─────────────────────────────────────────────────────────────
 
-# Environment variable files
+# Environment variable files (keep the template .env.example tracked)
 .env
 .env.*
+!.env.example
+
+# Firebase config (contains project-specific keys; share out-of-band / via CI)
+google-services.json
+serviceAccountKey.json
+**/GoogleService-Info.plist
+
+# Android release signing (keystore + credentials)
+**/key.properties
+*.jks
+*.keystore
+
+# iOS signing
+*.mobileprovision
+*.p8
+*.p12
+*.certSigningRequest
+
+# Build outputs
+*.apk
+*.aab
+*.ipa

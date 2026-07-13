@@ -7,6 +7,7 @@ import '../screens/auth/login_screen.dart';
 import '../screens/dashboard/dashboard_screen.dart';
 import '../screens/document/sign_screen.dart';
 import '../screens/document/view_sign_screen.dart';
+import '../screens/legal/privacy_policy_screen.dart';
 import '../screens/notifications/notification_settings_screen.dart';
 import '../screens/notifications/notifications_screen.dart';
 import '../screens/settings/settings_screen.dart';
@@ -55,6 +56,9 @@ class RouteGenerator {
 
       case AppRoutes.changePassword:
         return MaterialPageRoute(builder: (_) => const ChangePasswordScreen());
+
+      case AppRoutes.privacyPolicy:
+        return MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen());
 
       default:
         return MaterialPageRoute(

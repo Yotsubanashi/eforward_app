@@ -247,6 +247,8 @@ class AuthApi {
     await prefs.remove(SharedPrefsKeys.userData);
     await prefs.remove(SharedPrefsKeys.employeeId);
     await prefs.remove(SharedPrefsKeys.fcmTokenCached);
+    // Reset the selected backend so the next user re-selects by their domain.
+    await AppEnv.clearActiveBackend();
     debugPrint('🧹 Local session and FCM cache cleared');
   }
 

@@ -1,0 +1,15 @@
+# Copy this file to `android/key.properties` and fill in your release keystore
+# details. `android/key.properties` and the *.jks keystore are gitignored —
+# never commit them.
+#
+# Generate a keystore once with:
+#   keytool -genkey -v -keystore eforward-release.jks -keyalg RSA -keysize 2048 \
+#           -validity 10000 -alias eforward
+#
+# Then place eforward-release.jks somewhere OUTSIDE the repo (or in android/app/
+# which is covered by the *.jks ignore rule) and point storeFile at it.
+
+storePassword=YOUR_KEYSTORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=eforward
+storeFile=/absolute/path/to/eforward-release.jks

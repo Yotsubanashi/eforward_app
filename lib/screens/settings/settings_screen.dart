@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/screens/auth/change_password_screen.dart';
 import 'package:eforward_app/screens/auth/login_screen.dart';
+import 'package:eforward_app/screens/legal/privacy_policy_screen.dart';
 import 'package:eforward_app/widgets/bottom_navigator.dart';
 import 'package:eforward_app/screens/notifications/notification_settings_screen.dart';
 import 'package:eforward_app/services/api/auth_api.dart';
@@ -624,24 +625,28 @@ class _SettingsPageState extends State<SettingsPage> {
                       _onToggleBiometricUnlock(!_biometricUnlockEnabled),
                 ),
 
-                // const Divider(height: 1, color: Color(0xFFEEEEEE)),
+                const Divider(height: 1, color: Color(0xFFEEEEEE)),
 
-                // _buildMenuItem(
-                //   context,
-                //   icon: Icons.notifications_active_outlined,
-                //   iconColor: const Color(0xFFCC0000),
-                //   label: "TESTING",
-                //   title: "PUSH NOTIFICATION TEST",
-                //   trailing: const Icon(
-                //     Icons.chevron_right,
-                //     color: Color(0xFFAAAAAA),
-                //     size: 20,
-                //   ),
-                //   onTap: () => Navigator.push(
-                //     context,
-                //     MaterialPageRoute(builder: (_) => const NotificationTestPage()),
-                //   ),
-                // ),
+                // Privacy Policy
+                _buildMenuItem(
+                  context,
+                  icon: Icons.privacy_tip_outlined,
+                  iconColor: const Color(0xFFCC0000),
+                  label: "LEGAL",
+                  title: "PRIVACY POLICY",
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    color: Color(0xFFAAAAAA),
+                    size: 20,
+                  ),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const PrivacyPolicyScreen(),
+                    ),
+                  ),
+                ),
+
                 const Divider(height: 1, color: Color(0xFFEEEEEE)),
 
                 // Logout
