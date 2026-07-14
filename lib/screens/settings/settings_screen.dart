@@ -32,6 +32,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String _employeeId = '';
   String _role = '';
   bool _isLoading = true;
+  bool _isLoggingOut = false;
   bool _biometricUnlockEnabled = false;
   bool _biometricAvailable = false;
 
@@ -400,6 +401,10 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _logout() async {
+    // Avoid double taps while the logout request is in flight.
+    if (_isLoggingOut) return;
+    setState(() => _isLoggingOut = true);
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final String? userId = prefs.getString('employee_id');
@@ -690,7 +695,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ),
-        if (_isLoading) const LoadingOverlay(),
+        if (_isLoading || _isLoggingOut) const LoadingOverlay(),
       ],
     );
   }

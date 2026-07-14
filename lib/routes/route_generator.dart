@@ -13,6 +13,43 @@ import '../screens/notifications/notifications_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import 'app_routes.dart';
 
+/// A [PageTransitionsBuilder] that cross-fades every pushed route instead of
+/// the platform default (a horizontal slide on iOS, a vertical rise on
+/// Android). Wired into [ThemeData.pageTransitionsTheme] so that *all*
+/// navigation across the app — not just the bottom-nav tabs — shares the same
+/// smooth fade. Applied to every [TargetPlatform] for a consistent feel.
+class FadePageTransitionsBuilder extends PageTransitionsBuilder {
+  const FadePageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    return FadeTransition(
+      opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+      child: child,
+    );
+  }
+}
+
+/// Shared [PageTransitionsTheme] that installs [FadePageTransitionsBuilder] for
+/// every platform. Set on the app's [ThemeData] so ordinary
+/// `Navigator.push(MaterialPageRoute(...))` calls transition consistently.
+const PageTransitionsTheme kFadePageTransitionsTheme = PageTransitionsTheme(
+  builders: {
+    TargetPlatform.android: FadePageTransitionsBuilder(),
+    TargetPlatform.iOS: FadePageTransitionsBuilder(),
+    TargetPlatform.macOS: FadePageTransitionsBuilder(),
+    TargetPlatform.windows: FadePageTransitionsBuilder(),
+    TargetPlatform.linux: FadePageTransitionsBuilder(),
+    TargetPlatform.fuchsia: FadePageTransitionsBuilder(),
+  },
+);
+
 /// Centralized [MaterialApp.onGenerateRoute] handler for the screens listed
 /// in [AppRoutes]. Screens outside that set keep navigating via direct
 /// `Navigator.push(MaterialPageRoute(...))` calls elsewhere in the app.

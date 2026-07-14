@@ -308,9 +308,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       // the user taps the eye icon.
                       enableSuggestions: false,
                       autocorrect: false,
-                      keyboardType: _obscurePassword
-                          ? TextInputType.visiblePassword
-                          : TextInputType.text,
+                      // Use plain text input. TextInputType.visiblePassword
+                      // asks the OS keyboard to render characters unmasked on
+                      // Android, which defeated obscureText and briefly showed
+                      // each typed letter. With plain text, obscureText fully
+                      // masks the field to dots.
+                      keyboardType: TextInputType.text,
                       decoration: InputDecoration(
                         hintText: "ENTER PASSWORD",
                         hintStyle: const TextStyle(

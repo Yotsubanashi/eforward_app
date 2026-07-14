@@ -293,6 +293,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
+      // Apply a consistent cross-fade to every page transition across the app,
+      // not just the bottom-nav tabs.
+      theme: ThemeData(pageTransitionsTheme: kFadePageTransitionsTheme),
       onGenerateRoute: RouteGenerator.onGenerateRoute,
       home: FutureBuilder<bool>(
         future: _hasSessionFuture,
