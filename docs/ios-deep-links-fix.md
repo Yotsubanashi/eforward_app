@@ -67,17 +67,99 @@ https://eforward.ardentnetworks.com.ph/.well-known/apple-app-site-association
 
 ## Example server config
 
-### nginx / openresty
+### nginx / openresty — step by step
 
-Place this **above** the SPA fallback `location /` block:
+**Step 1 — Create the AASA file on the server** (no `.json` extension):
+
+```bash
+sudo mkdir -p /var/www/eforward/.well-known
+sudo tee /var/www/eforward/.well-known/apple-app-site-association > /dev/null <<'EOF'
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "K9973Z86YT.com.ardentnetworks.eforward",
+        "paths": [ "/reset-password", "/reset-password/*" ]
+      }
+    ]
+  }
+}
+EOF
+sudo chmod 644 /var/www/eforward/.well-known/apple-app-site-association
+```
+
+**Step 2 — Add the location block to the server config** for
+`eforward.ardentnetworks.com.ph`.
+
+> ⚠️ The block **must come before** the SPA fallback `location /` block,
+> otherwise the Nuxt catch-all swallows the request and returns HTML. Use
+> `location =` (exact match) so it always wins.
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name eforward.ardentnetworks.com.ph;
+
+    # ... existing ssl_certificate / ssl_certificate_key lines stay as they are ...
+
+    # --- AASA file for iOS Universal Links (must be ABOVE "location /") ---
+    location = /.well-known/apple-app-site-association {
+        alias /var/www/eforward/.well-known/apple-app-site-association;  # no .json extension
+        default_type application/json;
+        add_header Cache-Control "public, max-age=3600";
+    }
+
+    # --- existing Nuxt / SPA fallback (leave as-is, keep it LAST) ---
+    location / {
+        try_files $uri $uri/ /index.html;
+        # ... or existing proxy_pass to the Nuxt server ...
+    }
+}
+```
+
+**Step 3 — Test the config and reload nginx** (reload does not drop connections):
+
+```bash
+sudo nginx -t          # must print "syntax is ok" / "test is successful"
+sudo systemctl reload nginx
+# openresty: sudo systemctl reload openresty
+```
+
+**Common gotcha:** if there is a separate `location ^~ /.well-known/ { ... }`
+block (e.g. for Let's Encrypt / certbot), an ACME block using `^~` can shadow
+this exact-match one. Keep the ACME challenge scoped to
+`/.well-known/acme-challenge/` only, so it does not capture the AASA path.
+
+### Nginx Proxy Manager (jc21 web UI) — recommended for this setup
+
+NPM proxies to a backend, so there is no easy file path to `alias`. Instead,
+**return the JSON inline** — no file to upload, no volume to mount.
+
+1. Open **Nginx Proxy Manager** → **Hosts** → **Proxy Hosts**.
+2. Click the **⋮ / Edit** on the host for `eforward.ardentnetworks.com.ph`.
+3. Go to the **Advanced** tab → **Custom Nginx Configuration** box.
+4. Paste this block and **Save**:
 
 ```nginx
 location = /.well-known/apple-app-site-association {
-    alias /var/www/eforward/apple-app-site-association;  # adjust path; no .json extension
     default_type application/json;
     add_header Cache-Control "public, max-age=3600";
+    return 200 '{"applinks":{"apps":[],"details":[{"appID":"K9973Z86YT.com.ardentnetworks.eforward","paths":["/reset-password","/reset-password/*"]}]}}';
 }
 ```
+
+Why this works:
+- `location =` is an **exact match**, so it wins over NPM's default `location /`
+  proxy block — the request never reaches the Nuxt backend.
+- `return 200 '…'` serves the body directly with **HTTP 200, no redirect**.
+- `default_type application/json` sets the content type Apple requires.
+
+Saving in NPM automatically runs `nginx -t` and reloads; if the config is bad,
+NPM shows an error and does **not** apply it. No shell access needed.
+
+> If the SSL certificate is terminated by NPM (it usually is), the HTTPS + valid
+> cert requirement is already satisfied — nothing else to do.
 
 ### Nuxt 3 (alternative, if serving from the Nuxt app itself)
 
