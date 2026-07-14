@@ -2,9 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- APNs environment. Xcode flips this to "production" for release/App Store builds. -->
+	<!-- APNs environment. Must be "production" for TestFlight / App Store builds
+	     so push tokens register with the production APNs servers. Switch back to
+	     "development" only for local debug push testing. -->
 	<key>aps-environment</key>
-	<string>development</string>
+	<string>production</string>
 	<!-- Universal Links: must live here (entitlements), NOT in Info.plist.
 	     Host must match the reset link domain exactly (no "-api"). -->
 	<key>com.apple.developer.associated-domains</key>

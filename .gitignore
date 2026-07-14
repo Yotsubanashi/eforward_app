@@ -76,3 +76,6 @@ serviceAccountKey.json
 *.apk
 *.aab
 *.ipa
+
+# Firebase hosting deploy cache
+.firebase/

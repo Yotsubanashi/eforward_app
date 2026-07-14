@@ -4,6 +4,11 @@
 <dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Privacy usage descriptions (required by App Store review). -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>E-Forward uses Face ID to securely unlock the app and protect your documents.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>E-Forward needs access to your photos so you can add a signature or image to your documents.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
