@@ -213,13 +213,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     debugPrint('Path: ${uri.path}');
     debugPrint('Query params: ${uri.queryParameters}');
 
-    // Matches both:
-    //   - Universal Link:  https://eforward.ardentnetworks.com.ph/reset-password?token=xxx
+    // Matches the reset-password link in all the forms it can arrive as:
+    //   - Universal Link:  https://eforward.ardentnetworks.com.ph/auth/reset-password/?token=xxx
+    //   - Older path:      https://eforward.ardentnetworks.com.ph/reset-password?token=xxx
     //   - Custom scheme:   eforward://reset-password?token=xxx
-    // For the custom scheme, "reset-password" arrives as the host, not the path,
-    // so we check both to be safe.
+    // For the custom scheme, "reset-password" arrives as the host, not the path.
+    // We normalize away a trailing slash and match on the path segment ending
+    // with "reset-password" so /auth/reset-password/ and /reset-password both
+    // work regardless of leading path or trailing slash.
+    final normalizedPath = uri.path.endsWith('/') && uri.path.length > 1
+        ? uri.path.substring(0, uri.path.length - 1)
+        : uri.path;
     final isResetPassword =
-        uri.path == '/auth/reset-password' || uri.host == 'reset-password';
+        normalizedPath.endsWith('/reset-password') ||
+        uri.host == 'reset-password';
 
     if (isResetPassword) {
       final token = uri.queryParameters['token'];

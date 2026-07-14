@@ -4,7 +4,7 @@
     "details": [
       {
         "appID": "K9973Z86YT.com.ardentnetworks.eforward",
-        "paths": [ "/reset-password", "/reset-password/*" ]
+        "paths": [ "/auth/reset-password", "/auth/reset-password/*", "/reset-password", "/reset-password/*" ]
       }
     ]
   }
