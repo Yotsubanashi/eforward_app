@@ -52,7 +52,7 @@
                 <data
                     android:scheme="https"
                     android:host="eforward.ardentnetworks.com.ph"
-                    android:pathPrefix="/reset-password" />
+                    android:pathPrefix="/auth/reset-password" />
             </intent-filter>
         </activity>
 

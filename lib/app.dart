@@ -219,7 +219,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // For the custom scheme, "reset-password" arrives as the host, not the path,
     // so we check both to be safe.
     final isResetPassword =
-        uri.path == '/reset-password' || uri.host == 'reset-password';
+        uri.path == '/auth/reset-password' || uri.host == 'reset-password';
 
     if (isResetPassword) {
       final token = uri.queryParameters['token'];
