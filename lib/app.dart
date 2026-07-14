@@ -213,8 +213,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     debugPrint('Path: ${uri.path}');
     debugPrint('Query params: ${uri.queryParameters}');
 
-    // Matches: {APP_BASE_URL}/reset-password?token=xxx
-    if (uri.path == '/reset-password') {
+    // Matches both:
+    //   - Universal Link:  https://eforward.ardentnetworks.com.ph/reset-password?token=xxx
+    //   - Custom scheme:   eforward://reset-password?token=xxx
+    // For the custom scheme, "reset-password" arrives as the host, not the path,
+    // so we check both to be safe.
+    final isResetPassword =
+        uri.path == '/reset-password' || uri.host == 'reset-password';
+
+    if (isResetPassword) {
       final token = uri.queryParameters['token'];
       debugPrint('Found token: $token');
 
