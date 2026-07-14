@@ -302,6 +302,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextField(
                       controller: _passwordController,
                       obscureText: _obscurePassword,
+                      // Prevent the keyboard's suggestion strip / autocorrect
+                      // from echoing the typed characters. Combined with
+                      // obscureText this keeps the password fully hidden unless
+                      // the user taps the eye icon.
+                      enableSuggestions: false,
+                      autocorrect: false,
+                      keyboardType: _obscurePassword
+                          ? TextInputType.visiblePassword
+                          : TextInputType.text,
                       decoration: InputDecoration(
                         hintText: "ENTER PASSWORD",
                         hintStyle: const TextStyle(
@@ -330,37 +339,50 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Remember Me Checkbox
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: Checkbox(
-                            value: _rememberMe,
-                            onChanged: _isLoading
-                                ? null
-                                : (val) => setState(
-                                    () => _rememberMe = val ?? false,
-                                  ),
-                            activeColor: Color(0xFFCC0000),
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
-                            side: const BorderSide(
-                              color: Colors.black38,
-                              width: 1.5,
+                    // Remember Me Checkbox — whole row is tappable so the label
+                    // toggles the checkbox too (larger, more reliable target).
+                    InkWell(
+                      onTap: _isLoading
+                          ? null
+                          : () => setState(() => _rememberMe = !_rememberMe),
+                      borderRadius: BorderRadius.circular(4),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: Checkbox(
+                                value: _rememberMe,
+                                onChanged: _isLoading
+                                    ? null
+                                    : (val) => setState(
+                                        () => _rememberMe = val ?? false,
+                                      ),
+                                activeColor: const Color(0xFFCC0000),
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                side: const BorderSide(
+                                  color: Colors.black38,
+                                  width: 1.5,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                              ),
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(3),
+                            const SizedBox(width: 8),
+                            const Text(
+                              "Remember Me",
+                              style: TextStyle(
+                                color: Colors.black54,
+                                fontSize: 15,
+                              ),
                             ),
-                          ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          "Remember Me",
-                          style: TextStyle(color: Colors.black54, fontSize: 15),
-                        ),
-                      ],
+                      ),
                     ),
                     const SizedBox(height: 20),
 

@@ -99,24 +99,42 @@ class FCMTokenService {
           'platform': Platform.isIOS ? 'ios' : 'android',
         };
 
-        // I-delete lang ang entry na match ang employee_id AT fcm_token
-        final response = await http.delete(
-          Uri.parse('$_baseUrl${ApiEndpoints.fcmToken}'),
-          headers: {
-            'Authorization': 'Bearer $accessToken',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode(payload),
-        );
+        // I-delete lang ang entry na match ang employee_id AT fcm_token.
+        // Wrapped separately so a network failure here still lets us
+        // invalidate the token on the device below.
+        try {
+          final response = await http.delete(
+            Uri.parse('$_baseUrl${ApiEndpoints.fcmToken}'),
+            headers: {
+              'Authorization': 'Bearer $accessToken',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(payload),
+          );
 
-        if (response.statusCode >= 200 && response.statusCode < 300) {
-          debugPrint('🗑️ Device token removed from SQL Backend');
+          if (response.statusCode >= 200 && response.statusCode < 300) {
+            debugPrint('🗑️ Device token removed from SQL Backend');
+          } else {
+            debugPrint(
+              '⚠️ Backend token delete failed (${response.statusCode}); '
+              'still invalidating token on device.',
+            );
+          }
+        } catch (e) {
+          debugPrint(
+            '⚠️ Backend token delete errored ($e); '
+            'still invalidating token on device.',
+          );
         }
-
-        // Invalidate on device level
-        await _messaging.deleteToken();
       }
+
+      // Always invalidate the token on the device on logout, even if the
+      // backend delete failed. This guarantees a logged-out device stops
+      // receiving pushes: the old token becomes undeliverable and a brand-new
+      // token is generated only after the next login re-registers it.
+      await _messaging.deleteToken();
+      await prefs.remove(SharedPrefsKeys.fcmTokenCached);
     } catch (e) {
       debugPrint('❌ Error during token removal: $e');
     }

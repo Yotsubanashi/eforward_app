@@ -19,6 +19,26 @@ import 'app_routes.dart';
 class RouteGenerator {
   RouteGenerator._();
 
+  /// Instant cross-fade used for switching between the bottom-navigation tabs.
+  ///
+  /// Bottom-nav destinations are peers, not a hierarchy, so the default
+  /// left/right page-slide (the "book" flip) is the wrong metaphor and feels
+  /// jarring on mobile. A short fade — with no slide — matches native tab
+  /// switching (Instagram, Twitter, etc.).
+  static PageRouteBuilder<dynamic> _tabRoute(
+    Widget page,
+    RouteSettings settings,
+  ) {
+    return PageRouteBuilder<dynamic>(
+      settings: settings,
+      transitionDuration: const Duration(milliseconds: 180),
+      reverseTransitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (context, animation, secondaryAnimation) => page,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+          FadeTransition(opacity: animation, child: child),
+    );
+  }
+
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
       case AppRoutes.login:
@@ -26,9 +46,7 @@ class RouteGenerator {
 
       case AppRoutes.dashboard:
         final userData = settings.arguments as Map<String, dynamic>?;
-        return MaterialPageRoute(
-          builder: (_) => DashboardPage(userData: userData),
-        );
+        return _tabRoute(DashboardPage(userData: userData), settings);
 
       case AppRoutes.approvals:
         final initialTabIndex = settings.arguments as int? ?? 0;
@@ -37,16 +55,16 @@ class RouteGenerator {
         );
 
       case AppRoutes.settings:
-        return MaterialPageRoute(builder: (_) => const SettingsPage());
+        return _tabRoute(const SettingsPage(), settings);
 
       case AppRoutes.sign:
-        return MaterialPageRoute(builder: (_) => const SignScreen());
+        return _tabRoute(const SignScreen(), settings);
 
       case AppRoutes.viewSign:
-        return MaterialPageRoute(builder: (_) => const ViewSignPage());
+        return _tabRoute(const ViewSignPage(), settings);
 
       case AppRoutes.notifications:
-        return MaterialPageRoute(builder: (_) => const NotificationsPage());
+        return _tabRoute(const NotificationsPage(), settings);
 
       case AppRoutes.notificationSettings:
         return MaterialPageRoute(builder: (_) => const NotificationTestPage());

@@ -263,6 +263,27 @@ class FirebaseNotificationService {
   // ── Misc helpers ──────────────────────────────────────────────────────────
   Future<String?> getFCMToken() async {
     try {
+      // On iOS the FCM token cannot be issued until APNs has handed Firebase a
+      // device token. On a fresh install / first open this can take a moment,
+      // so wait for the APNs token (with a few retries) before asking for FCM.
+      if (Platform.isIOS) {
+        String? apnsToken = await FirebaseMessaging.instance.getAPNSToken();
+        var attempts = 0;
+        while (apnsToken == null && attempts < 6) {
+          await Future.delayed(const Duration(milliseconds: 500));
+          apnsToken = await FirebaseMessaging.instance.getAPNSToken();
+          attempts++;
+        }
+        if (apnsToken == null) {
+          debugPrint(
+            '❌ APNs token still null — check that an APNs Auth Key (.p8) is '
+            'uploaded in Firebase Cloud Messaging and notifications are allowed.',
+          );
+          return null;
+        }
+        debugPrint('🍏 APNs token acquired');
+      }
+
       return await FirebaseMessaging.instance.getToken();
     } catch (e) {
       debugPrint('Error getting FCM token: $e');
