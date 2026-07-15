@@ -8,6 +8,7 @@ import 'package:eforward_app/screens/legal/privacy_policy_screen.dart';
 import 'package:eforward_app/widgets/bottom_navigator.dart';
 import 'package:eforward_app/screens/notifications/notification_settings_screen.dart';
 import 'package:eforward_app/services/api/auth_api.dart';
+import 'package:eforward_app/services/session_service.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
 import 'package:eforward_app/services/notifications/fcm_token_service.dart';
 import 'package:eforward_app/services/notifications/notifications_service.dart';
@@ -85,9 +86,7 @@ class _SettingsPageState extends State<SettingsPage> {
       try {
         final Map<String, dynamic> full = jsonDecode(userDataStr);
 
-        final userData = (full['user'] is Map<String, dynamic>)
-            ? full['user'] as Map<String, dynamic>
-            : full;
+        final userData = SessionService.normalizeUser(full);
 
         debugPrint('Settings loaded user: $userData');
 
@@ -267,9 +266,11 @@ class _SettingsPageState extends State<SettingsPage> {
                                     try {
                                       final Map<String, dynamic> full =
                                           jsonDecode(userDataStr);
-                                      final userData = (full['user'] is Map)
-                                          ? full['user'] as Map<String, dynamic>
-                                          : full;
+                                      // Mutates the nested object in place
+                                      // (data/user/flat) so the write lands at
+                                      // the same level the UI reads from.
+                                      final userData =
+                                          SessionService.normalizeUser(full);
                                       userData['fname'] = _firstName;
                                       userData['mname'] = _middleName;
                                       userData['lname'] = _lastName;

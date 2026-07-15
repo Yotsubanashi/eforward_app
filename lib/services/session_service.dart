@@ -7,6 +7,11 @@ class SessionService {
   SessionService._();
 
   static Map<String, dynamic> normalizeUser(Map<String, dynamic> decoded) {
+    // The user object arrives under `data` (the /auth/me refresh response),
+    // under `user` (the login response), or flat. Check in that order so a
+    // persisted+refreshed session resolves the same fields as a fresh login.
+    final data = decoded['data'];
+    if (data is Map<String, dynamic>) return data;
     final user = decoded['user'];
     return user is Map<String, dynamic> ? user : decoded;
   }
