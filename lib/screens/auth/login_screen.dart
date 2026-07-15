@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/app_env.dart';
@@ -24,6 +25,11 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _rememberMe = false;
   bool _isLoading = false;
 
+  // Quick-unlock (Face ID / PIN) buttons are only shown when the user enabled
+  // the unlock toggle in Settings AND a saved session still exists on the
+  // device (e.g. they cancelled the biometric prompt at startup).
+  bool _showQuickUnlock = false;
+
   final AuthApi _authApi = AuthApi();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -36,6 +42,62 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _loadRememberedEmail();
+    _refreshQuickUnlockAvailability();
+  }
+
+  Future<void> _refreshQuickUnlockAvailability() async {
+    final enabled = await SecureUnlockService.isEnabled();
+    final prefs = await SharedPreferences.getInstance();
+    final hasSession =
+        (prefs.getString('access_token')?.trim() ?? '').isNotEmpty;
+    if (!mounted) return;
+    setState(() => _showQuickUnlock = enabled && hasSession);
+  }
+
+  /// Handles the Face ID / PIN quick-unlock buttons: authenticate on the
+  /// device, then validate the saved session before entering. If the session
+  /// has expired, fall back to the normal password login.
+  Future<void> _handleQuickUnlock({required bool biometricOnly}) async {
+    setState(() => _isLoading = true);
+
+    final ok = await SecureUnlockService.authenticate(
+      biometricOnly: biometricOnly,
+    );
+    if (!mounted) return;
+    if (!ok) {
+      setState(() => _isLoading = false);
+      AppSnackbar.error(context, 'Authentication failed. Please try again.');
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('access_token')?.trim() ?? '';
+    final meResult = await _authApi.getMe(token: token);
+    if (!mounted) return;
+
+    if (meResult.isSuccess && meResult.data != null) {
+      final userDataStr = prefs.getString('user_data');
+      final userData = userDataStr != null && userDataStr.isNotEmpty
+          ? jsonDecode(userDataStr) as Map<String, dynamic>
+          : meResult.data;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DashboardPage(userData: userData),
+        ),
+      );
+      return;
+    }
+
+    // Session is no longer valid — require a fresh password login.
+    setState(() {
+      _isLoading = false;
+      _showQuickUnlock = false;
+    });
+    AppSnackbar.error(
+      context,
+      'Your session has expired. Please login with your password.',
+    );
   }
 
   void _loadRememberedEmail() async {
@@ -199,6 +261,35 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  Widget _buildUnlockButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onTap,
+  }) {
+    return SizedBox(
+      height: 48,
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 18, color: const Color(0xFFCC0000)),
+        label: Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFFCC0000),
+            fontSize: 12,
+            letterSpacing: 1.5,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: Color(0xFFCC0000)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -232,8 +323,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         children: [
                           Image.asset(
                             _branding['logo']!,
-                            width: 336,
-                            height: 144,
+                            width: 280,
+                            height: 120,
                             fit: BoxFit.contain,
                             errorBuilder: (context, error, stackTrace) {
                               debugPrint('❌ Logo load error: $error');
@@ -415,6 +506,65 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
+                    // Quick unlock (Face ID / PIN) — only when the Settings
+                    // toggle is enabled and a saved session exists. iOS offers
+                    // Face ID + PIN; Android offers PIN only.
+                    if (_showQuickUnlock) ...[
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Divider(color: Color(0xFFE8E8E8)),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              "OR UNLOCK WITH",
+                              style: TextStyle(
+                                color: Colors.black38,
+                                fontSize: 10,
+                                letterSpacing: 1.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          const Expanded(
+                            child: Divider(color: Color(0xFFE8E8E8)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          if (Platform.isIOS) ...[
+                            Expanded(
+                              child: _buildUnlockButton(
+                                icon: Icons.face,
+                                label: "FACE ID",
+                                onTap: _isLoading
+                                    ? null
+                                    : () => _handleQuickUnlock(
+                                        biometricOnly: true,
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                          ],
+                          Expanded(
+                            child: _buildUnlockButton(
+                              icon: Icons.pin_outlined,
+                              label: "PIN",
+                              onTap: _isLoading
+                                  ? null
+                                  : () => _handleQuickUnlock(
+                                      biometricOnly: false,
+                                    ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+
                     const SizedBox(height: 24),
 
                     // Forgot Password

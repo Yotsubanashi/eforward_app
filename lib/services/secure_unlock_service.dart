@@ -37,6 +37,32 @@ class SecureUnlockService {
     }
   }
 
+  /// Directly prompts the device for authentication, used by the login-screen
+  /// quick-unlock buttons. Unlike [authenticateAfterLogin] this does not short
+  /// circuit on the toggle/availability — the caller only shows the buttons
+  /// when unlock is enabled, and here a failure/cancel must return false so the
+  /// user stays on the login form.
+  ///
+  /// [biometricOnly] true drives the Face ID button; false allows the device
+  /// passcode/PIN (local_auth has no passcode-exclusive mode).
+  static Future<bool> authenticate({
+    required bool biometricOnly,
+    String reason = 'Authenticate to continue to your account',
+  }) async {
+    try {
+      return await _localAuth.authenticate(
+        localizedReason: reason,
+        options: AuthenticationOptions(
+          biometricOnly: biometricOnly,
+          stickyAuth: true,
+          useErrorDialogs: true,
+        ),
+      );
+    } on PlatformException {
+      return false;
+    }
+  }
+
   static Future<bool> authenticateAfterLogin() async {
     final enabled = await isEnabled();
     if (!enabled) return true;
