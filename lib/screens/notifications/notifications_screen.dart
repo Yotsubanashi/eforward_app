@@ -106,6 +106,7 @@ class _NotificationsPageState extends State<NotificationsPage>
         final notificationsList =
             (decoded['data'] as List?)
                 ?.map((e) => e as Map<String, dynamic>)
+                .where((n) => (n['is_read'] as bool? ?? false) == false)
                 .toList() ??
             [];
 
@@ -135,17 +136,15 @@ class _NotificationsPageState extends State<NotificationsPage>
   }
 
   Future<void> _markAsRead(String notificationId) async {
-    final success = await _notificationsService.markAsRead(notificationId);
-    if (success) {
+    // Optimistically remove from the list so it no longer appears.
+    if (mounted) {
       setState(() {
-        final index = _notifications.indexWhere(
-          (n) => n['notification_id'] == notificationId,
+        _notifications.removeWhere(
+          (n) => n['notification_id'].toString() == notificationId,
         );
-        if (index != -1) {
-          _notifications[index]['is_read'] = true;
-        }
       });
     }
+    await _notificationsService.markAsRead(notificationId);
   }
 
   Future<void> _markAllAsRead() async {
