@@ -43,7 +43,17 @@ class _LoginScreenState extends State<LoginScreen> {
     super.initState();
     _loadRememberedEmail();
     _refreshQuickUnlockAvailability();
+    // Rebuild so the Login button enables/disables as the fields change.
+    _emailController.addListener(_onCredentialsChanged);
+    _passwordController.addListener(_onCredentialsChanged);
   }
+
+  void _onCredentialsChanged() => setState(() {});
+
+  /// Login is only allowed once both fields have content.
+  bool get _canLogin =>
+      _emailController.text.trim().isNotEmpty &&
+      _passwordController.text.isNotEmpty;
 
   Future<void> _refreshQuickUnlockAvailability() async {
     final enabled = await SecureUnlockService.isEnabled();
@@ -292,6 +302,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    _emailController.removeListener(_onCredentialsChanged);
+    _passwordController.removeListener(_onCredentialsChanged);
     _emailController.dispose();
     _passwordController.dispose();
     _authApi.dispose();
@@ -485,7 +497,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: double.infinity,
                       height: 48,
                       child: ElevatedButton.icon(
-                        onPressed: _isLoading ? null : _handleLogin,
+                        onPressed: (_isLoading || !_canLogin)
+                            ? null
+                            : _handleLogin,
                         icon: const Icon(
                           Icons.arrow_forward,
                           color: Colors.white,
@@ -500,6 +514,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFCC0000),
+                          disabledBackgroundColor: const Color(
+                            0xFFCC0000,
+                          ).withOpacity(0.4),
+                          disabledForegroundColor: Colors.white70,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(4),
                           ),
