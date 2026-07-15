@@ -232,8 +232,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         children: [
                           Image.asset(
                             _branding['logo']!,
-                            width: 280,
-                            height: 120,
+                            width: 336,
+                            height: 144,
                             fit: BoxFit.contain,
                             errorBuilder: (context, error, stackTrace) {
                               debugPrint('❌ Logo load error: $error');
