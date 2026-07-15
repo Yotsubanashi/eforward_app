@@ -8,6 +8,7 @@ import 'package:eforward_app/screens/legal/privacy_policy_screen.dart';
 import 'package:eforward_app/widgets/bottom_navigator.dart';
 import 'package:eforward_app/screens/notifications/notification_settings_screen.dart';
 import 'package:eforward_app/services/api/auth_api.dart';
+import 'package:eforward_app/services/biometric_credential_store.dart';
 import 'package:eforward_app/services/session_service.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
 import 'package:eforward_app/services/notifications/fcm_token_service.dart';
@@ -74,6 +75,11 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     await SecureUnlockService.setEnabled(enabled);
+    // Turning the toggle off must forget the securely-stored login so the
+    // biometric login button can't reappear with stale credentials.
+    if (!enabled) {
+      await BiometricCredentialStore.clear();
+    }
     if (!mounted) return;
     setState(() => _biometricUnlockEnabled = enabled);
   }

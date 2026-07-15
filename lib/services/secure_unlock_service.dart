@@ -1,21 +1,16 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// The unlock method to surface on the login button, resolved from the device's
+/// enrolled biometrics.
+enum UnlockMethod { face, fingerprint, pin }
+
 class SecureUnlockService {
   static const String biometricEnabledKey = 'biometric_unlock_enabled';
   static final LocalAuthentication _localAuth = LocalAuthentication();
-  static const Set<String> _nonBlockingAuthErrorCodes = {
-    // No biometric template is enrolled on device.
-    'NotEnrolled',
-    'notEnrolled',
-    // No PIN/pattern/passcode is configured for device credentials.
-    'PasscodeNotSet',
-    'passcodeNotSet',
-    // Generic "no local auth available" style responses.
-    'NotAvailable',
-    'notAvailable',
-  };
 
   static Future<bool> isEnabled() async {
     final prefs = await SharedPreferences.getInstance();
@@ -35,6 +30,30 @@ class SecureUnlockService {
     } catch (_) {
       return false;
     }
+  }
+
+  /// Resolves which method to present on the login button:
+  ///   - iPhone with Face ID  -> [UnlockMethod.face]
+  ///   - Touch ID / Android fingerprint -> [UnlockMethod.fingerprint]
+  ///   - anything else (only device passcode) -> [UnlockMethod.pin]
+  static Future<UnlockMethod> resolveMethod() async {
+    List<BiometricType> types;
+    try {
+      types = await _localAuth.getAvailableBiometrics();
+    } catch (_) {
+      types = const [];
+    }
+
+    if (types.contains(BiometricType.face)) return UnlockMethod.face;
+    if (types.contains(BiometricType.fingerprint)) {
+      return UnlockMethod.fingerprint;
+    }
+    // Newer Android reports generic strong/weak rather than a concrete sensor.
+    if (types.contains(BiometricType.strong) ||
+        types.contains(BiometricType.weak)) {
+      return Platform.isIOS ? UnlockMethod.face : UnlockMethod.fingerprint;
+    }
+    return UnlockMethod.pin;
   }
 
   /// Directly prompts the device for authentication, used by the login-screen
@@ -59,32 +78,6 @@ class SecureUnlockService {
         ),
       );
     } on PlatformException {
-      return false;
-    }
-  }
-
-  static Future<bool> authenticateAfterLogin() async {
-    final enabled = await isEnabled();
-    if (!enabled) return true;
-
-    final available = await isAvailable();
-    if (!available) return true;
-
-    try {
-      return await _localAuth.authenticate(
-        localizedReason: 'Authenticate to continue to your account',
-        options: const AuthenticationOptions(
-          biometricOnly: false,
-          stickyAuth: true,
-          useErrorDialogs: true,
-        ),
-      );
-    } on PlatformException catch (e) {
-      // If there is no biometric/PIN configured on the device,
-      // don't block a valid username/password login.
-      if (_nonBlockingAuthErrorCodes.contains(e.code)) {
-        return true;
-      }
       return false;
     }
   }

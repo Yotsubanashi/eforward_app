@@ -1,9 +1,9 @@
 import 'dart:convert';
-import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/app_env.dart';
 import '../../services/api/auth_api.dart';
+import '../../services/biometric_credential_store.dart';
 import '../../services/notifications/fcm_token_service.dart';
 import '../../services/secure_unlock_service.dart';
 import '../../validators/email_validator.dart';
@@ -25,10 +25,11 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _rememberMe = false;
   bool _isLoading = false;
 
-  // Quick-unlock (Face ID / PIN) buttons are only shown when the user enabled
-  // the unlock toggle in Settings AND a saved session still exists on the
-  // device (e.g. they cancelled the biometric prompt at startup).
-  bool _showQuickUnlock = false;
+  // Biometric login button is shown only when the unlock toggle is on AND a
+  // credential was stored on a previous biometric-enabled login. [_unlockMethod]
+  // decides its label/icon (Face ID / Fingerprint / PIN) from the device.
+  bool _biometricLoginAvailable = false;
+  UnlockMethod _unlockMethod = UnlockMethod.pin;
 
   final AuthApi _authApi = AuthApi();
   final TextEditingController _emailController = TextEditingController();
@@ -42,7 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _loadRememberedEmail();
-    _refreshQuickUnlockAvailability();
+    _refreshBiometricLogin();
     // Rebuild so the Login button enables/disables as the fields change.
     _emailController.addListener(_onCredentialsChanged);
     _passwordController.addListener(_onCredentialsChanged);
@@ -55,23 +56,25 @@ class _LoginScreenState extends State<LoginScreen> {
       _emailController.text.trim().isNotEmpty &&
       _passwordController.text.isNotEmpty;
 
-  Future<void> _refreshQuickUnlockAvailability() async {
+  Future<void> _refreshBiometricLogin() async {
     final enabled = await SecureUnlockService.isEnabled();
-    final prefs = await SharedPreferences.getInstance();
-    final hasSession =
-        (prefs.getString('access_token')?.trim() ?? '').isNotEmpty;
+    final hasCreds = await BiometricCredentialStore.hasCredentials();
+    final method = await SecureUnlockService.resolveMethod();
     if (!mounted) return;
-    setState(() => _showQuickUnlock = enabled && hasSession);
+    setState(() {
+      _biometricLoginAvailable = enabled && hasCreds;
+      _unlockMethod = method;
+    });
   }
 
-  /// Handles the Face ID / PIN quick-unlock buttons: authenticate on the
-  /// device, then validate the saved session before entering. If the session
-  /// has expired, fall back to the normal password login.
-  Future<void> _handleQuickUnlock({required bool biometricOnly}) async {
+  /// Face ID / Fingerprint / PIN as an alternate way to log in: authenticate on
+  /// the device, then re-login with the securely-stored credentials.
+  Future<void> _handleBiometricLogin() async {
     setState(() => _isLoading = true);
 
     final ok = await SecureUnlockService.authenticate(
-      biometricOnly: biometricOnly,
+      biometricOnly: _unlockMethod != UnlockMethod.pin,
+      reason: 'Authenticate to log in to your account',
     );
     if (!mounted) return;
     if (!ok) {
@@ -80,33 +83,116 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('access_token')?.trim() ?? '';
-    final meResult = await _authApi.getMe(token: token);
+    final creds = await BiometricCredentialStore.read();
     if (!mounted) return;
-
-    if (meResult.isSuccess && meResult.data != null) {
-      final userDataStr = prefs.getString('user_data');
-      final userData = userDataStr != null && userDataStr.isNotEmpty
-          ? jsonDecode(userDataStr) as Map<String, dynamic>
-          : meResult.data;
-      Navigator.pushReplacement(
+    if (creds == null) {
+      setState(() {
+        _isLoading = false;
+        _biometricLoginAvailable = false;
+      });
+      AppSnackbar.error(
         context,
-        MaterialPageRoute(
-          builder: (context) => DashboardPage(userData: userData),
-        ),
+        'No saved login found. Please log in with your password.',
       );
       return;
     }
 
-    // Session is no longer valid — require a fresh password login.
-    setState(() {
-      _isLoading = false;
-      _showQuickUnlock = false;
-    });
-    AppSnackbar.error(
+    await AppEnv.selectBackendForEmail(creds.email);
+    final result = await _authApi.login(
+      email: creds.email,
+      password: creds.password,
+    );
+    if (!mounted) return;
+
+    if (!result.isSuccess) {
+      // Stored credential no longer works (e.g. password changed) — drop it so
+      // the button disappears and require a fresh password login.
+      await BiometricCredentialStore.clear();
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _biometricLoginAvailable = false;
+      });
+      AppSnackbar.error(
+        context,
+        'Saved login is no longer valid. Please log in with your password.',
+      );
+      return;
+    }
+
+    await _enterWithSession(
+      result: result,
+      email: creds.email,
+      password: creds.password,
+    );
+  }
+
+  /// Shared post-login persistence used by both password and biometric login:
+  /// stores the session, (re)stores the biometric credential when the toggle is
+  /// on, registers FCM, and enters the dashboard. Assumes the account-status
+  /// check already passed. Returns nothing; navigates on success.
+  Future<void> _enterWithSession({
+    required AuthLoginResult result,
+    required String email,
+    required String password,
+  }) async {
+    // Block inactive accounts regardless of how they authenticated (password
+    // or biometric).
+    final status = _extractAccountStatus(result.data);
+    if (status != null && _inactiveStatuses.contains(status)) {
+      setState(() => _isLoading = false);
+      AppSnackbar.error(
+        context,
+        'Your account is inactive. Please contact support.',
+      );
+      return;
+    }
+
+    final token =
+        result.data?['accessToken'] ??
+        result.data?['access_token'] ??
+        result.data?['token'];
+    final refreshToken =
+        result.data?['refreshToken'] ?? result.data?['refresh_token'];
+
+    if (token != null && token.toString().isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('access_token', token.toString());
+      if (refreshToken != null && refreshToken.toString().isNotEmpty) {
+        await prefs.setString('refresh_token', refreshToken.toString());
+      }
+      if (result.data != null) {
+        await prefs.setString('user_data', jsonEncode(result.data));
+
+        final user = result.data!['user'] is Map
+            ? result.data!['user']
+            : result.data;
+        final userId =
+            user['id']?.toString() ??
+            user['employee_id']?.toString() ??
+            user['employeeId']?.toString();
+
+        if (userId != null) {
+          await prefs.setString('employee_id', userId);
+          await FCMTokenService.registerToken(userId);
+        }
+      }
+    }
+
+    // Persist (or refresh) the credential for biometric login when the toggle
+    // is on; otherwise make sure nothing stale is left behind.
+    if (await SecureUnlockService.isEnabled()) {
+      await BiometricCredentialStore.save(email: email, password: password);
+    } else {
+      await BiometricCredentialStore.clear();
+    }
+
+    if (!mounted) return;
+    Navigator.pushReplacement(
       context,
-      'Your session has expired. Please login with your password.',
+      MaterialPageRoute(
+        builder: (context) => DashboardPage(userData: result.data),
+      ),
     );
   }
 
@@ -196,80 +282,36 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    final status = _extractAccountStatus(result.data);
-    final inactiveStatuses = <String>{
-      'ITV',
-      'INACTIVE',
-      'INA',
-      'DISABLED',
-      'DEACTIVATED',
-      'SUSPENDED',
-      'BLOCKED',
-    };
-
-    if (status != null && inactiveStatuses.contains(status)) {
-      setState(() => _isLoading = false);
-      AppSnackbar.error(
-        context,
-        'Your account is inactive. Please contact support.',
-      );
-      return;
-    }
-
     _saveRememberMe(email);
     debugPrint('Login success: ${result.data}');
 
-    final token =
-        result.data?['accessToken'] ??
-        result.data?['access_token'] ??
-        result.data?['token'];
-    final refreshToken =
-        result.data?['refreshToken'] ?? result.data?['refresh_token'];
-
-    if (token != null && token.toString().isNotEmpty) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('access_token', token.toString());
-      if (refreshToken != null && refreshToken.toString().isNotEmpty) {
-        await prefs.setString('refresh_token', refreshToken.toString());
-      }
-      if (result.data != null) {
-        await prefs.setString('user_data', jsonEncode(result.data));
-
-        final user = result.data!['user'] is Map
-            ? result.data!['user']
-            : result.data;
-        final userId =
-            user['id']?.toString() ??
-            user['employee_id']?.toString() ??
-            user['employeeId']?.toString();
-
-        if (userId != null) {
-          await prefs.setString('employee_id', userId);
-          await FCMTokenService.registerToken(userId);
-        }
-      }
-    }
-
-    if (!mounted) return;
-
-    final isUnlocked = await SecureUnlockService.authenticateAfterLogin();
-    if (!mounted) return;
-    if (!isUnlocked) {
-      setState(() => _isLoading = false);
-      AppSnackbar.error(
-        context,
-        'Authentication cancelled. Please login again.',
-      );
-      return;
-    }
-
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => DashboardPage(userData: result.data),
-      ),
-    );
+    // Biometrics are an alternate login method, not a gate: a successful
+    // password login enters directly (storing the credential for next time
+    // when the unlock toggle is on).
+    await _enterWithSession(result: result, email: email, password: password);
   }
+
+  static const Set<String> _inactiveStatuses = {
+    'ITV',
+    'INACTIVE',
+    'INA',
+    'DISABLED',
+    'DEACTIVATED',
+    'SUSPENDED',
+    'BLOCKED',
+  };
+
+  IconData get _unlockMethodIcon => switch (_unlockMethod) {
+    UnlockMethod.face => Icons.face,
+    UnlockMethod.fingerprint => Icons.fingerprint,
+    UnlockMethod.pin => Icons.pin_outlined,
+  };
+
+  String get _unlockMethodLabel => switch (_unlockMethod) {
+    UnlockMethod.face => "LOG IN WITH FACE ID",
+    UnlockMethod.fingerprint => "LOG IN WITH FINGERPRINT",
+    UnlockMethod.pin => "LOG IN WITH PIN",
+  };
 
   Widget _buildUnlockButton({
     required IconData icon,
@@ -277,6 +319,7 @@ class _LoginScreenState extends State<LoginScreen> {
     required VoidCallback? onTap,
   }) {
     return SizedBox(
+      width: double.infinity,
       height: 48,
       child: OutlinedButton.icon(
         onPressed: onTap,
@@ -524,20 +567,20 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
-                    // Quick unlock (Face ID / PIN) — only when the Settings
-                    // toggle is enabled and a saved session exists. iOS offers
-                    // Face ID + PIN; Android offers PIN only.
-                    if (_showQuickUnlock) ...[
+                    // Biometric login — an alternate way to sign in, shown only
+                    // after a biometric-enabled login stored a credential. The
+                    // method (Face ID / Fingerprint / PIN) follows the device.
+                    if (_biometricLoginAvailable) ...[
                       const SizedBox(height: 20),
                       Row(
                         children: [
                           const Expanded(
                             child: Divider(color: Color(0xFFE8E8E8)),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 12),
                             child: Text(
-                              "OR UNLOCK WITH",
+                              "OR LOG IN WITH",
                               style: TextStyle(
                                 color: Colors.black38,
                                 fontSize: 10,
@@ -552,34 +595,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          if (Platform.isIOS) ...[
-                            Expanded(
-                              child: _buildUnlockButton(
-                                icon: Icons.face,
-                                label: "FACE ID",
-                                onTap: _isLoading
-                                    ? null
-                                    : () => _handleQuickUnlock(
-                                        biometricOnly: true,
-                                      ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                          ],
-                          Expanded(
-                            child: _buildUnlockButton(
-                              icon: Icons.pin_outlined,
-                              label: "PIN",
-                              onTap: _isLoading
-                                  ? null
-                                  : () => _handleQuickUnlock(
-                                      biometricOnly: false,
-                                    ),
-                            ),
-                          ),
-                        ],
+                      _buildUnlockButton(
+                        icon: _unlockMethodIcon,
+                        label: _unlockMethodLabel,
+                        onTap: _isLoading ? null : _handleBiometricLogin,
                       ),
                     ],
 

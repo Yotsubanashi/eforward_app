@@ -105,8 +105,10 @@ class _DashboardPageState extends State<DashboardPage> {
                   height: 50,
                   child: ElevatedButton(
                     onPressed: () async {
-                      final success =
-                          await SecureUnlockService.authenticateAfterLogin();
+                      final success = await SecureUnlockService.authenticate(
+                        biometricOnly: false,
+                        reason: 'Authenticate to enable quick login',
+                      );
                       if (success) {
                         await SecureUnlockService.setEnabled(true);
                         if (mounted) {

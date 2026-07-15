@@ -11,7 +11,6 @@ import 'screens/dashboard/dashboard_screen.dart';
 import 'services/api/auth_api.dart';
 import 'services/app_version_service.dart';
 import 'services/notifications/fcm_token_service.dart';
-import 'services/secure_unlock_service.dart';
 import 'services/session_service.dart';
 import 'routes/route_generator.dart';
 
@@ -260,9 +259,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         FCMTokenService.registerToken(userId);
       }
 
-      final isUnlocked = await SecureUnlockService.authenticateAfterLogin();
+      // Biometrics are an alternate login method (see LoginScreen), not an
+      // app-open gate: a valid saved session enters directly.
       authApi.dispose();
-      return isUnlocked;
+      return true;
     }
 
     // Access token might be expired, try refresh token once.
@@ -286,7 +286,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         SharedPrefsKeys.userData,
         jsonEncode(meAfterRefresh.data),
       );
-      return SecureUnlockService.authenticateAfterLogin();
+      return true;
     }
 
     await prefs.remove(SharedPrefsKeys.accessToken);
