@@ -219,15 +219,20 @@ class _DocumentSignScreenState extends State<DocumentSignScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            doc['label'],
-                            style: const TextStyle(
-                              fontSize: 10,
-                              color: Colors.black45,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.8,
+                          Expanded(
+                            child: Text(
+                              doc['label'],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Colors.black45,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.8,
+                              ),
                             ),
                           ),
+                          const SizedBox(width: 8),
                           Text(
                             "${(doc['progress'] * 100).toInt()}%",
                             style: const TextStyle(
@@ -709,28 +714,30 @@ class _DocumentSignScreenState extends State<DocumentSignScreen> {
       children: [
         Icon(icon, size: 13, color: Colors.black38),
         const SizedBox(width: 8),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 9,
-                color: Colors.black38,
-                letterSpacing: 1.2,
-                fontWeight: FontWeight.w700,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 9,
+                  color: Colors.black38,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF1A1A1A),
-                fontWeight: FontWeight.w600,
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF1A1A1A),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );

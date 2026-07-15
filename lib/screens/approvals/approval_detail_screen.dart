@@ -1363,6 +1363,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 index == 0 ? Icons.attach_file_rounded : Icons.link_rounded,
@@ -1370,14 +1371,20 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                 color: isSelected ? const Color(0xFFCC0000) : Colors.black38,
               ),
               const SizedBox(width: 5),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                  color: isSelected ? const Color(0xFFCC0000) : Colors.black45,
-                  letterSpacing: 0.3,
+              Flexible(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                    color: isSelected
+                        ? const Color(0xFFCC0000)
+                        : Colors.black45,
+                    letterSpacing: 0.3,
+                  ),
                 ),
               ),
               if (count > 0) ...[
