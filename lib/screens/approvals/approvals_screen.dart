@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:eforward_app/config/app_env.dart';
+import 'package:eforward_app/utils/manila_time.dart';
 import 'package:eforward_app/constants/api_endpoints.dart';
 import 'package:eforward_app/screens/dashboard/dashboard_screen.dart';
 import 'package:flutter/material.dart';
@@ -393,20 +394,10 @@ class _ApprovalsPageState extends State<ApprovalsPage>
   }
 
   // ─── Normalize API fields to consistent keys ──────────────────────────────
-  DateTime? _parseApiDate(String raw) {
-    if (raw.trim().isEmpty) return null;
-    try {
-      // Keep API clock values exactly as sent (ignore timezone shifting).
-      var normalized = raw.trim();
-      normalized = normalized.replaceFirst(RegExp(r'(Z|[+-]\d{2}:\d{2})$'), '');
-      return DateTime.parse(normalized);
-    } catch (_) {
-      return null;
-    }
-  }
+  DateTime? _parseApiDate(String raw) => ManilaTime.parse(raw);
 
   String _relativeDate(DateTime dt) {
-    final now = DateTime.now();
+    final now = ManilaTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final target = DateTime(dt.year, dt.month, dt.day);
     final diff = today.difference(target).inDays;

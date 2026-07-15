@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:eforward_app/screens/approvals/approval_detail_screen.dart';
+import 'package:eforward_app/utils/manila_time.dart';
 import 'package:eforward_app/services/notifications/fcm_token_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:eforward_app/screens/approvals/approvals_screen.dart';
@@ -285,23 +286,13 @@ class _DashboardPageState extends State<DashboardPage> {
   // Handles dot-separated format: 2026.04.22T11:07:10.000Z
   String _formatDateTime(String? raw) {
     if (raw == null || raw.isEmpty) return '—';
-    try {
-      final datePart = raw.substring(0, 10).replaceAll('.', '-');
-      final rest = raw.substring(10);
-      // Strip timezone suffix so we treat the clock value as-is
-      final stripped = (datePart + rest).replaceFirst(
-        RegExp(r'(Z|[+-]\d{2}:\d{2})$'),
-        '',
-      );
-      final dt = DateTime.parse(stripped);
-      return _relativeDate(dt);
-    } catch (_) {
-      return raw;
-    }
+    final dt = ManilaTime.parse(raw);
+    if (dt == null) return raw;
+    return _relativeDate(dt);
   }
 
   String _relativeDate(DateTime dt) {
-    final now = DateTime.now();
+    final now = ManilaTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final target = DateTime(dt.year, dt.month, dt.day);
     final diff = today.difference(target).inDays;

@@ -16,6 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import 'package:eforward_app/config/app_env.dart';
+import 'package:eforward_app/utils/manila_time.dart';
 import 'package:eforward_app/screens/approvals/approvals_screen.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
@@ -559,17 +560,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 
   // ── Date helpers ──────────────────────────────────────────────────────────
 
-  DateTime? _parseApiDate(String? raw) {
-    final value = (raw ?? '').trim();
-    if (value.isEmpty || value == 'null') return null;
-    try {
-      return DateTime.parse(
-        value.replaceFirst(RegExp(r'(Z|[+-]\d{2}:\d{2})$'), ''),
-      );
-    } catch (_) {
-      return null;
-    }
-  }
+  DateTime? _parseApiDate(String? raw) => ManilaTime.parse(raw);
 
   DateTime? _resolveSigningApiTime() {
     final routing = widget.item['routing'];

@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:eforward_app/config/app_env.dart';
+import 'package:eforward_app/utils/manila_time.dart';
 import 'package:eforward_app/screens/approvals/excel_viewer/excel_viewer_screen.dart';
 import 'package:eforward_app/screens/approvals/pdf_signer/pdf_signer_screen.dart';
 import 'package:eforward_app/services/api/approvals_api.dart';
@@ -1093,17 +1094,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     return widget.item['requester']?.toString() ?? '—';
   }
 
-  DateTime? _parseApiDate(String raw) {
-    if (raw.trim().isEmpty || raw == 'null') return null;
-    try {
-      // Parse with the timezone intact (Z / +08:00) and convert to the
-      // device's local time. Stripping the suffix treated UTC timestamps as
-      // local, which shifted the displayed time by the UTC offset.
-      return DateTime.parse(raw.trim()).toLocal();
-    } catch (_) {
-      return null;
-    }
-  }
+  DateTime? _parseApiDate(String raw) => ManilaTime.parse(raw);
 
   Map<String, dynamic> _signerItemData() {
     final data = _detail?['data'];

@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/widgets/bottom_navigator.dart';
+import 'package:eforward_app/utils/manila_time.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
@@ -167,7 +168,7 @@ class _ViewSignPageState extends State<ViewSignPage>
 
       if (result.rawDate != null && result.rawDate!.isNotEmpty) {
         try {
-          final parsed = DateTime.parse(result.rawDate!).toLocal();
+          final parsed = ManilaTime.parse(result.rawDate!) ?? ManilaTime.now();
           final months = [
             'JAN',
             'FEB',

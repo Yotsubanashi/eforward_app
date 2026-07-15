@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
+import 'package:eforward_app/utils/manila_time.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
 
@@ -88,7 +89,7 @@ class _DocumentSignScreenState extends State<DocumentSignScreen> {
     }
 
     // Generate timestamp in Philippine time (PHT/GMT+8)
-    final now = DateTime.now().toUtc().add(const Duration(hours: 8));
+    final now = ManilaTime.now();
     _signedTimestamp = '${DateFormat('MMM dd, yyyy · HH:mm').format(now)} PHT';
 
     setState(() => _showSignatureOverlay = true);
