@@ -11,6 +11,7 @@ import 'screens/dashboard/dashboard_screen.dart';
 import 'services/api/auth_api.dart';
 import 'services/app_version_service.dart';
 import 'services/notifications/fcm_token_service.dart';
+import 'services/secure_unlock_service.dart';
 import 'services/session_service.dart';
 import 'routes/route_generator.dart';
 
@@ -36,6 +37,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   DateTime? _lastVersionPromptAt;
   DateTime? _suppressVersionPromptUntil;
 
+  // Re-lock on resume: when the app is backgrounded/multitasked while a session
+  // is active and the unlock toggle is on, require biometrics/PIN to return.
+  bool _appLocked = false;
+  bool _unlocking = false;
+
   @override
   void initState() {
     super.initState();
@@ -53,7 +59,38 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _recheckVersionAfterResume();
+      if (_appLocked) _promptAppUnlock();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _lockIfAuthenticated();
     }
+  }
+
+  /// On leaving the foreground, raise the lock if the user is logged in and has
+  /// the unlock toggle on. The overlay shows immediately so app-switcher
+  /// previews don't leak the session content.
+  Future<void> _lockIfAuthenticated() async {
+    if (_appLocked || _unlocking) return;
+    if (!await SecureUnlockService.isEnabled()) return;
+    final prefs = await SharedPreferences.getInstance();
+    final hasSession =
+        (prefs.getString(SharedPrefsKeys.accessToken)?.trim() ?? '').isNotEmpty;
+    if (!hasSession || !mounted) return;
+    setState(() => _appLocked = true);
+  }
+
+  /// Prompt for biometrics/PIN to clear the lock. Stays locked (with a retry
+  /// button on the overlay) if authentication is cancelled or fails.
+  Future<void> _promptAppUnlock() async {
+    if (_unlocking) return;
+    _unlocking = true;
+    final ok = await SecureUnlockService.authenticate(
+      biometricOnly: false,
+      reason: 'Unlock E-Forward',
+    );
+    _unlocking = false;
+    if (!mounted) return;
+    if (ok) setState(() => _appLocked = false);
   }
 
   void _scheduleInitialVersionCheck() {
@@ -304,6 +341,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // not just the bottom-nav tabs.
       theme: ThemeData(pageTransitionsTheme: kFadePageTransitionsTheme),
       onGenerateRoute: RouteGenerator.onGenerateRoute,
+      builder: (context, child) {
+        return Stack(
+          children: [
+            if (child != null) child,
+            if (_appLocked) _buildLockOverlay(),
+          ],
+        );
+      },
       home: FutureBuilder<bool>(
         future: _hasSessionFuture,
         builder: (context, snapshot) {
@@ -321,6 +366,66 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           _scheduleInitialVersionCheck();
           return const LoginScreen();
         },
+      ),
+    );
+  }
+
+  Widget _buildLockOverlay() {
+    return Positioned.fill(
+      child: Material(
+        color: Colors.white,
+        child: SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.lock_outline,
+                  size: 48,
+                  color: Color(0xFFCC0000),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  "E-FORWARD LOCKED",
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  "Authenticate to continue",
+                  style: TextStyle(fontSize: 12, color: Colors.black45),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    onPressed: _unlocking ? null : _promptAppUnlock,
+                    icon: const Icon(Icons.lock_open, color: Colors.white),
+                    label: const Text(
+                      "UNLOCK",
+                      style: TextStyle(
+                        color: Colors.white,
+                        letterSpacing: 2,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFCC0000),
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
