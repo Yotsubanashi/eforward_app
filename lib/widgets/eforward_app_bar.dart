@@ -14,6 +14,7 @@ class EForwardAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.backgroundColor,
     this.onBackPressed,
     this.showBackButton = true,
+    this.showBrand = true,
     this.foregroundColor = const Color(0xFF1A1A1A),
   });
 
@@ -22,6 +23,10 @@ class EForwardAppBar extends StatelessWidget implements PreferredSizeWidget {
   final Color foregroundColor;
   final VoidCallback? onBackPressed;
   final bool showBackButton;
+
+  /// Whether to show the "E-FORWARD" brand chip on the right. A few screens
+  /// (e.g. Approval Details) intentionally hide it.
+  final bool showBrand;
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -50,26 +55,32 @@ class EForwardAppBar extends StatelessWidget implements PreferredSizeWidget {
                 color: foregroundColor,
               ),
             ),
-      actions: const [
-        Padding(
-          padding: EdgeInsets.only(right: 16),
-          child: Row(
-            children: [
-              Icon(Icons.shield_outlined, color: Color(0xFFCC0000), size: 16),
-              SizedBox(width: 4),
-              Text(
-                "E-FORWARD",
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.5,
-                  color: Color(0xFFCC0000),
+      actions: showBrand
+          ? const [
+              Padding(
+                padding: EdgeInsets.only(right: 16),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.shield_outlined,
+                      color: Color(0xFFCC0000),
+                      size: 16,
+                    ),
+                    SizedBox(width: 4),
+                    Text(
+                      "E-FORWARD",
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.5,
+                        color: Color(0xFFCC0000),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
-      ],
+            ]
+          : null,
     );
   }
 }

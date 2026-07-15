@@ -1428,6 +1428,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           appBar: const EForwardAppBar(
             title: "APPROVAL DETAILS",
             backgroundColor: Colors.white,
+            showBrand: false,
           ),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
