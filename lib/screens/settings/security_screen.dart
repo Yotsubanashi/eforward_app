@@ -1,7 +1,13 @@
-import 'package:flutter/material.dart';
+import 'dart:convert';
 
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../config/app_env.dart';
+import '../../services/api/auth_api.dart';
 import '../../services/biometric_credential_store.dart';
 import '../../services/secure_unlock_service.dart';
+import '../../services/session_service.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/eforward_app_bar.dart';
 
@@ -19,6 +25,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
   bool _biometricEnabled = false;
   bool _biometricAvailable = false;
   bool _twoFactorEnabled = false;
+  final AuthApi _authApi = AuthApi();
 
   @override
   void initState() {
@@ -48,14 +55,186 @@ class _SecurityScreenState extends State<SecurityScreen> {
       return;
     }
 
-    await SecureUnlockService.setEnabled(enabled);
-    // Turning it off must forget the securely-stored login so the biometric
-    // login button can't reappear with stale credentials.
+    // Turning it OFF: forget the securely-stored login so the biometric login
+    // button can't reappear with stale credentials.
     if (!enabled) {
+      await SecureUnlockService.setEnabled(false);
       await BiometricCredentialStore.clear();
+      if (!mounted) return;
+      setState(() => _biometricEnabled = false);
+      return;
     }
+
+    // Turning it ON: the login-screen biometric button replays a securely
+    // stored email+password. That credential is normally captured at the last
+    // password login, but if the app was updated while already signed in (or a
+    // keychain write was lost) none exists — and biometric login would fail
+    // with "log in with your email and password once". Guarantee one is armed
+    // here so enabling the toggle always yields a working passwordless login.
+    final hasCreds = await BiometricCredentialStore.hasCredentials();
+    if (!hasCreds) {
+      final armed = await _armCredentialWithPassword();
+      // If the user cancelled or the password was wrong, leave the toggle OFF.
+      if (!armed) return;
+    }
+
+    await SecureUnlockService.setEnabled(true);
     if (!mounted) return;
-    setState(() => _biometricEnabled = enabled);
+    setState(() => _biometricEnabled = true);
+  }
+
+  /// Captures the email+password used by biometric login when none is stored
+  /// yet. Reads the email from the active session and asks the user to confirm
+  /// their password once, verifies it against the backend, and — only on
+  /// success — stores it in the secure enclave. Returns true when a credential
+  /// was armed.
+  Future<bool> _armCredentialWithPassword() async {
+    final email = await _currentSessionEmail();
+    if (!mounted) return false;
+    if (email == null || email.isEmpty) {
+      AppSnackbar.error(
+        context,
+        'Could not find your account email. Please log out and sign in again.',
+      );
+      return false;
+    }
+
+    final password = await _promptForPassword(email);
+    if (!mounted) return false;
+    if (password == null || password.isEmpty) return false; // cancelled
+
+    // Route to the correct backend for this email, then verify the password.
+    await AppEnv.selectBackendForEmail(email);
+    final result = await _authApi.login(email: email, password: password);
+    if (!mounted) return false;
+    if (!result.isSuccess) {
+      AppSnackbar.error(
+        context,
+        'Incorrect password. Biometric login was not enabled.',
+      );
+      return false;
+    }
+
+    await BiometricCredentialStore.save(email: email, password: password);
+    if (mounted) {
+      AppSnackbar.info(context, 'Biometric login is set up. You can now sign in without your password.');
+    }
+    return true;
+  }
+
+  /// Pulls the signed-in user's email out of the persisted `user_data`.
+  Future<String?> _currentSessionEmail() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('user_data');
+      if (raw == null) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+      final user = SessionService.normalizeUser(decoded);
+      for (final key in [
+        'email',
+        'email_address',
+        'emailAddress',
+        'user_email',
+        'username',
+      ]) {
+        final v = user[key];
+        if (v != null && v.toString().trim().isNotEmpty) {
+          return v.toString().trim();
+        }
+      }
+    } catch (e) {
+      debugPrint('Read session email failed: $e');
+    }
+    return null;
+  }
+
+  /// One-time password confirmation dialog used to arm biometric login.
+  Future<String?> _promptForPassword(String email) async {
+    final controller = TextEditingController();
+    bool obscure = true;
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setLocal) {
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              shape: const RoundedRectangleBorder(),
+              title: const Text(
+                'CONFIRM PASSWORD',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1,
+                  color: Color(0xFF1A1A1A),
+                ),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Enter the password for $email once to turn on biometric login. You won\'t need to type it again.',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.black54,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller,
+                    obscureText: obscure,
+                    autofocus: true,
+                    onSubmitted: (v) => Navigator.pop(dialogContext, v.trim()),
+                    decoration: InputDecoration(
+                      hintText: 'Password',
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                      focusedBorder: const OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFFCC0000)),
+                      ),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          obscure ? Icons.visibility_off : Icons.visibility,
+                          size: 18,
+                          color: Colors.black45,
+                        ),
+                        onPressed: () => setLocal(() => obscure = !obscure),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, null),
+                  child: const Text(
+                    'CANCEL',
+                    style: TextStyle(color: Colors.black54),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () =>
+                      Navigator.pop(dialogContext, controller.text.trim()),
+                  child: const Text(
+                    'CONFIRM',
+                    style: TextStyle(
+                      color: Color(0xFFCC0000),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    controller.dispose();
+    return result;
   }
 
   Future<void> _onToggleTwoFactor(bool enabled) async {
