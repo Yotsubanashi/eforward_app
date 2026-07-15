@@ -141,6 +141,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           appBar: EForwardAppBar(
             title: "SECURITY",
             backgroundColor: const Color(0xFFF8F8F8),
+            showBrand: false,
             onBackPressed: () => Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (_) => const SettingsPage()),

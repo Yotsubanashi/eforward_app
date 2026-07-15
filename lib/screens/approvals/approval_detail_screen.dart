@@ -15,6 +15,7 @@ import 'package:eforward_app/utils/manila_time.dart';
 import 'package:eforward_app/screens/approvals/excel_viewer/excel_viewer_screen.dart';
 import 'package:eforward_app/screens/approvals/pdf_signer/pdf_signer_screen.dart';
 import 'package:eforward_app/services/api/approvals_api.dart';
+import 'package:eforward_app/services/session_service.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
@@ -53,6 +54,15 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
 
   Map<String, dynamic>? _detail;
   List<Map<String, dynamic>> _documentLinks = [];
+
+  // Identity of the logged-in user, used to find THIS user's step in the
+  // approval workflow so the action buttons hide once they've already signed.
+  final Set<String> _currentUserIds = {};
+  String _currentUserName = '';
+  // True when the logged-in user's own approval step is already actioned
+  // (approved/rejected). The overall routing stays PENDING until every step is
+  // done, so we must not rely on the routing status alone to show the buttons.
+  bool _currentUserActed = false;
   final TextEditingController _revisionRemarksController =
       TextEditingController();
   final TextEditingController _attachmentRemarksController =
@@ -63,7 +73,38 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   @override
   void initState() {
     super.initState();
+    _loadCurrentUserIdentity();
     _fetchApprovalDetail();
+  }
+
+  // Read the logged-in user's ids and full name from the persisted session so
+  // we can match them against an entry in the approval workflow (`details`).
+  Future<void> _loadCurrentUserIdentity() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('user_data');
+      if (raw == null) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return;
+      final user = SessionService.normalizeUser(decoded);
+
+      final ids = <String>{};
+      for (final key in ['id', 'employee_id', 'employeeId', 'emp_id']) {
+        final val = user[key];
+        if (val != null && val.toString().trim().isNotEmpty) {
+          ids.add(val.toString().trim());
+        }
+      }
+      final name = _joinName(user['fname'], user['mname'], user['lname']);
+
+      _currentUserIds
+        ..clear()
+        ..addAll(ids);
+      _currentUserName = name;
+      if (mounted) setState(() => _currentUserActed = _computeCurrentUserActed());
+    } catch (e) {
+      debugPrint('Load current user identity error: $e');
+    }
   }
 
   @override
@@ -473,6 +514,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           setState(() {
             _detail = decoded is Map<String, dynamic> ? decoded : null;
             _isLoadingDetail = false;
+            _currentUserActed = _computeCurrentUserActed();
           });
           await _loadPdfFromApi(decoded);
           await _fetchDocumentLinks();
@@ -562,18 +604,37 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         return;
       }
 
-      // Cache on disk keyed only by fileId (no timestamp) so reopening the
-      // same document reuses the local copy instead of re-downloading it
-      // from the network every time.
+      // Cache on disk keyed by fileId AND a version token derived from the
+      // file's last-updated metadata. The SIGNED file is REGENERATED every time
+      // an approver signs, and the backend may reuse the same file_id — so a
+      // cache keyed on fileId alone would keep serving the pre-signature copy
+      // and the newest signature would be missing on the phone (it still shows
+      // correctly on the web, which never caches). Folding the version token
+      // into the filename busts the cache whenever the file changes. When the
+      // downloadable file is a SIGNED file and NO version token is available, we
+      // skip the cache entirely and always re-download, so a freshly signed
+      // document is never shown stale.
+      final downloadable = _getDownloadableFile();
+      final isSignedFile =
+          downloadable?['file_type']?.toString().toUpperCase() == 'SIGNED';
+      final versionToken = _getFileVersionToken(downloadable);
+
       final dir = await getTemporaryDirectory();
       final fileName = _getFileName();
       final fileExtension = _getFileExtension(fileName);
+      final ext = fileExtension.isNotEmpty ? '.$fileExtension' : '.pdf';
       final cachedFileName =
-          'doc_$fileId${fileExtension.isNotEmpty ? '.$fileExtension' : '.pdf'}';
+          'doc_$fileId${versionToken.isNotEmpty ? '_$versionToken' : ''}$ext';
       final cachedFile = File('${dir.path}/$cachedFileName');
 
-      if (await cachedFile.exists() && await cachedFile.length() > 0) {
-        debugPrint('Using cached document for file $fileId');
+      // Only trust the on-disk cache when it can't go stale: either the key is
+      // version-pinned, or the file isn't a (mutable) SIGNED file.
+      final canUseCache = versionToken.isNotEmpty || !isSignedFile;
+
+      if (canUseCache &&
+          await cachedFile.exists() &&
+          await cachedFile.length() > 0) {
+        debugPrint('Using cached document for file $fileId ($cachedFileName)');
         if (mounted) {
           setState(() {
             _localPdfPath = cachedFile.path;
@@ -739,6 +800,33 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       }
     }
     return null;
+  }
+
+  // A short, filesystem-safe token that changes whenever the file's content
+  // changes, taken from whatever "last updated" metadata the backend provides.
+  // Used to version the on-disk PDF cache so a re-signed document busts it.
+  String _getFileVersionToken(Map<dynamic, dynamic>? file) {
+    if (file == null) return '';
+    for (final key in [
+      'updated_at',
+      'date_updated',
+      'updatedAt',
+      'date_modified',
+      'modified_at',
+      'last_modified',
+      'version',
+      'revision',
+      'date_created',
+      'created_at',
+    ]) {
+      final val = file[key];
+      if (val != null &&
+          val.toString().trim().isNotEmpty &&
+          val.toString() != 'null') {
+        return val.toString().replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+      }
+    }
+    return '';
   }
 
   // Future<void> _loadPdfLocal() async {
@@ -1172,7 +1260,11 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         ),
       ),
     );
-    if (mounted) setState(() => _isApproving = false);
+    if (!mounted) return;
+    setState(() => _isApproving = false);
+    // Re-pull the routing so that, if this user just signed, the action buttons
+    // disappear and the freshly signed document (not a stale cache) is loaded.
+    await _fetchApprovalDetail();
   }
 
   String _formatDate(String raw) {
@@ -1260,7 +1352,142 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
 
   bool _isPending() {
     if (widget.isFromHistory) return false;
+    // Even while the overall routing is still PENDING (later approvers haven't
+    // signed yet), the CURRENT user must not see Approve / Request Revision once
+    // their own step is done — re-approving only triggers a backend
+    // "not authorized / not your turn" error.
+    if (_currentUserActed) return false;
     return _getStatus() == 'PND';
+  }
+
+  // The per-approver workflow rows returned by the routing endpoint.
+  List<Map<String, dynamic>> _getDetailsList() {
+    final data = _detail?['data'] ?? _detail;
+    if (data is Map) {
+      final details = data['details'];
+      if (details is List) {
+        return details.whereType<Map<String, dynamic>>().toList();
+      }
+    }
+    return [];
+  }
+
+  String _joinName(dynamic first, dynamic middle, dynamic last) {
+    return [first, middle, last]
+        .map((p) => p?.toString().trim() ?? '')
+        .where((p) => p.isNotEmpty)
+        .join(' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  // The approver's display name for a workflow row, pulled from whichever shape
+  // the backend uses (flat fname/lname, a nested person object, or a name key).
+  String _entryApproverName(Map<String, dynamic> entry) {
+    final direct = _joinName(entry['fname'], entry['mname'], entry['lname']);
+    if (direct.isNotEmpty) return direct;
+    for (final key in [
+      'emp',
+      'employee',
+      'user',
+      'approver',
+      'signatory',
+      'reviewer',
+      'to_emp',
+      'to_user',
+    ]) {
+      final v = entry[key];
+      if (v is Map) {
+        final n = _joinName(v['fname'], v['mname'], v['lname']);
+        if (n.isNotEmpty) return n;
+        final full = v['name'] ?? v['full_name'] ?? v['fullname'];
+        if (full != null && full.toString().trim().isNotEmpty) {
+          return full.toString().trim();
+        }
+      }
+    }
+    final full =
+        entry['approver_name'] ?? entry['name'] ?? entry['full_name'];
+    if (full != null && full.toString().trim().isNotEmpty) {
+      return full.toString().trim();
+    }
+    return '';
+  }
+
+  // Employee/user ids referenced by a workflow row, for matching the logged-in
+  // user. Only id-bearing keys tied to a person are considered.
+  Set<String> _entryApproverIds(Map<String, dynamic> entry) {
+    final ids = <String>{};
+    void addFrom(Map map) {
+      map.forEach((key, value) {
+        final k = key.toString().toLowerCase();
+        if (value is Map) {
+          if (k.contains('emp') ||
+              k.contains('user') ||
+              k.contains('approver') ||
+              k.contains('signatory') ||
+              k.contains('reviewer')) {
+            final id = value['id'] ??
+                value['employee_id'] ??
+                value['emp_id'] ??
+                value['user_id'];
+            if (id != null && id.toString().trim().isNotEmpty) {
+              ids.add(id.toString().trim());
+            }
+          }
+          return;
+        }
+        if (value == null) return;
+        final v = value.toString().trim();
+        if (v.isEmpty) return;
+        final isPersonId = k.contains('id') &&
+            (k.contains('emp') ||
+                k.contains('user') ||
+                k.contains('approver') ||
+                k.contains('signatory') ||
+                k.contains('reviewer'));
+        if (isPersonId) ids.add(v);
+      });
+    }
+
+    addFrom(entry);
+    return ids;
+  }
+
+  // The workflow row that belongs to the logged-in user, if any.
+  Map<String, dynamic>? _currentUserDetail() {
+    final details = _getDetailsList();
+    if (details.isEmpty) return null;
+    final myName = _currentUserName.toLowerCase();
+    for (final entry in details) {
+      if (_currentUserIds.isNotEmpty &&
+          _entryApproverIds(entry).any(_currentUserIds.contains)) {
+        return entry;
+      }
+      if (myName.isNotEmpty) {
+        final n = _entryApproverName(entry).toLowerCase();
+        if (n.isNotEmpty && n == myName) return entry;
+      }
+    }
+    return null;
+  }
+
+  // True when the logged-in user's own step is already approved/rejected.
+  // Returns false when the user's step can't be identified, so we fall back to
+  // the routing-status behavior instead of hiding the buttons incorrectly.
+  bool _computeCurrentUserActed() {
+    final entry = _currentUserDetail();
+    if (entry == null) return false;
+    final status = entry['status']?.toString().toUpperCase().trim() ?? '';
+    if (status.startsWith('APP') ||
+        status == 'APV' ||
+        status.startsWith('REJ') ||
+        status == 'REJECTED') {
+      return true;
+    }
+    final actionDate = entry['action_date']?.toString().trim() ?? '';
+    if (actionDate.isNotEmpty && actionDate != 'null') return true;
+    return false;
   }
 
   String _getDateSent() {

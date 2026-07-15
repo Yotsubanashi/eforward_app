@@ -27,6 +27,7 @@ class LegalDocumentScreen extends StatelessWidget {
     required this.effectiveDate,
     required this.intro,
     required this.sections,
+    this.showBrand = true,
   });
 
   final String appBarTitle;
@@ -34,6 +35,7 @@ class LegalDocumentScreen extends StatelessWidget {
   final String effectiveDate;
   final List<String> intro;
   final List<LegalSection> sections;
+  final bool showBrand;
 
   static const Color _red = Color(0xFFCC0000);
   static const Color _dark = Color(0xFF1A1A1A);
@@ -42,7 +44,11 @@ class LegalDocumentScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: EForwardAppBar(title: appBarTitle, backgroundColor: Colors.white),
+      appBar: EForwardAppBar(
+        title: appBarTitle,
+        backgroundColor: Colors.white,
+        showBrand: showBrand,
+      ),
       body: SafeArea(
         top: false,
         child: SingleChildScrollView(

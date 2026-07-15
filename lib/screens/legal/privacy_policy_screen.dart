@@ -14,6 +14,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const LegalDocumentScreen(
       appBarTitle: 'PRIVACY POLICY',
+      showBrand: false,
       documentTitle: 'Privacy Policy',
       effectiveDate: 'July 10, 2026',
       intro: [

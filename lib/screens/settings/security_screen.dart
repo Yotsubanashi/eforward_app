@@ -78,6 +78,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
       appBar: const EForwardAppBar(
         title: "SECURITY",
         backgroundColor: Colors.white,
+        showBrand: false,
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

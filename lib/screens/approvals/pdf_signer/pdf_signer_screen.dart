@@ -29,8 +29,21 @@ List<List<double>> _parsePdfPageSizes(Uint8List bytes) {
   final doc = PdfDocument(inputBytes: bytes);
   final sizes = <List<double>>[];
   for (int i = 0; i < doc.pages.count; i++) {
-    final s = doc.pages[i].size;
-    sizes.add([s.width, s.height]);
+    final page = doc.pages[i];
+    final s = page.size;
+    // Syncfusion's page.size reports the UN-rotated MediaBox, but every PDF
+    // viewer displays the page with its /Rotate applied. For 90°/270° the
+    // visible page has width/height swapped (portrait scan shown landscape).
+    // Return the VISUAL size so the on-screen overlay rect matches what the
+    // user sees — the rotation-aware stamping (see _drawImageOnPage) maps the
+    // same visual fractions back onto the un-rotated page.
+    final rot = page.rotation;
+    if (rot == PdfPageRotateAngle.rotateAngle90 ||
+        rot == PdfPageRotateAngle.rotateAngle270) {
+      sizes.add([s.height, s.width]);
+    } else {
+      sizes.add([s.width, s.height]);
+    }
   }
   doc.dispose();
   return sizes;
@@ -620,6 +633,66 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   //
   // No viewport-to-PDF ratio math is needed.
 
+  // Stamp [bitmap] onto [page] at a rectangle given in VISUAL (rotation-applied)
+  // fractions of the page — 0..1 of the page as the user sees it on screen.
+  //
+  // Syncfusion draws in the page's UN-rotated coordinate space and page.size is
+  // the un-rotated MediaBox, while viewers apply the page's /Rotate. To make the
+  // stamp appear exactly where it was placed AND upright, we translate+rotate the
+  // graphics state by the page rotation before drawing, and express the target
+  // rect in visual space (width/height swapped for 90°/270°). Derivation, y-down
+  // top-left origin (matches Syncfusion's drawImage/translateTransform space):
+  //   R=0   : identity
+  //   R=90  : translate(0, ph),  rotate(-90)
+  //   R=180 : translate(pw, ph), rotate(180)
+  //   R=270 : translate(pw, 0),  rotate(90)
+  // where pw/ph are the un-rotated page dimensions.
+  void _drawImageOnPage(
+    PdfPage page,
+    PdfBitmap bitmap, {
+    required double fracX,
+    required double fracY,
+    required double fracW,
+    required double fracH,
+  }) {
+    final pw = page.size.width; // un-rotated
+    final ph = page.size.height; // un-rotated
+    final rot = page.rotation;
+    final swap =
+        rot == PdfPageRotateAngle.rotateAngle90 ||
+        rot == PdfPageRotateAngle.rotateAngle270;
+    final vw = swap ? ph : pw; // visual (displayed) width
+    final vh = swap ? pw : ph; // visual (displayed) height
+
+    final rect = Rect.fromLTWH(
+      fracX * vw,
+      fracY * vh,
+      fracW * vw,
+      fracH * vh,
+    );
+
+    final g = page.graphics;
+    final state = g.save();
+    switch (rot) {
+      case PdfPageRotateAngle.rotateAngle90:
+        g.translateTransform(0, ph);
+        g.rotateTransform(-90);
+        break;
+      case PdfPageRotateAngle.rotateAngle180:
+        g.translateTransform(pw, ph);
+        g.rotateTransform(180);
+        break;
+      case PdfPageRotateAngle.rotateAngle270:
+        g.translateTransform(pw, 0);
+        g.rotateTransform(90);
+        break;
+      case PdfPageRotateAngle.rotateAngle0:
+        break;
+    }
+    g.drawImage(bitmap, rect);
+    g.restore(state);
+  }
+
   Future<File?> _generateSignedPdf() async {
     final capturedSignature = await _captureWidget(_signatureKey);
     if (capturedSignature == null) {
@@ -649,30 +722,33 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 
       final document = PdfDocument(inputBytes: pdfBytes);
       final page = document.pages[_currentPage];
-      final pdfW = page.size.width;
-      final pdfH = page.size.height;
 
-      // FIX: use fracH computed from the fixed aspect ratio, not a stored value
-      final sigFracH = _sigFracHComputed;
-      final sigRect = Rect.fromLTWH(
-        _sigFracX * pdfW,
-        _sigFracY * pdfH,
-        _sigFracW * pdfW,
-        sigFracH * pdfH,
+      // The overlay fractions are stored in VISUAL (rotation-applied) page
+      // space — the same space _pdfRect uses on screen — so stamping must map
+      // them back onto the un-rotated page and counter-rotate the image, or a
+      // /Rotate'd page renders the signature sideways/upside-down in every
+      // viewer. _drawImageOnPage handles all four rotations (0/90/180/270).
+      _drawImageOnPage(
+        page,
+        PdfBitmap(capturedSignature),
+        // FIX: use fracH computed from the fixed aspect ratio, not a stored value
+        fracX: _sigFracX,
+        fracY: _sigFracY,
+        fracW: _sigFracW,
+        fracH: _sigFracHComputed,
       );
-      page.graphics.drawImage(PdfBitmap(capturedSignature), sigRect);
 
       if (_remarks.trim().isNotEmpty) {
         final capturedComment = await _captureWidget(_commentKey);
         if (capturedComment != null) {
-          final cmtFracH = _cmtFracHComputed;
-          final cmtRect = Rect.fromLTWH(
-            _cmtFracX * pdfW,
-            _cmtFracY * pdfH,
-            _cmtFracW * pdfW,
-            cmtFracH * pdfH,
+          _drawImageOnPage(
+            page,
+            PdfBitmap(capturedComment),
+            fracX: _cmtFracX,
+            fracY: _cmtFracY,
+            fracW: _cmtFracW,
+            fracH: _cmtFracHComputed,
           );
-          page.graphics.drawImage(PdfBitmap(capturedComment), cmtRect);
         }
       }
 
