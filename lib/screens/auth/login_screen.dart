@@ -57,12 +57,14 @@ class _LoginScreenState extends State<LoginScreen> {
       _passwordController.text.isNotEmpty;
 
   Future<void> _refreshBiometricLogin() async {
+    // Show the biometric icon whenever the unlock toggle is on (like the
+    // UnionBank login). If no credential is stored yet, tapping it asks the
+    // user to log in with a password once first.
     final enabled = await SecureUnlockService.isEnabled();
-    final hasCreds = await BiometricCredentialStore.hasCredentials();
     final method = await SecureUnlockService.resolveMethod();
     if (!mounted) return;
     setState(() {
-      _biometricLoginAvailable = enabled && hasCreds;
+      _biometricLoginAvailable = enabled;
       _unlockMethod = method;
     });
   }
@@ -86,13 +88,10 @@ class _LoginScreenState extends State<LoginScreen> {
     final creds = await BiometricCredentialStore.read();
     if (!mounted) return;
     if (creds == null) {
-      setState(() {
-        _isLoading = false;
-        _biometricLoginAvailable = false;
-      });
+      setState(() => _isLoading = false);
       AppSnackbar.error(
         context,
-        'No saved login found. Please log in with your password.',
+        'Log in with your email and password once to set up biometric login.',
       );
       return;
     }
@@ -179,13 +178,10 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     }
 
-    // Persist (or refresh) the credential for biometric login when the toggle
-    // is on; otherwise make sure nothing stale is left behind.
-    if (await SecureUnlockService.isEnabled()) {
-      await BiometricCredentialStore.save(email: email, password: password);
-    } else {
-      await BiometricCredentialStore.clear();
-    }
+    // Remember the credential so biometric login works the moment the unlock
+    // toggle is turned on (even if it's enabled later from Settings). It is
+    // cleared when the toggle is turned off or the credential is rejected.
+    await BiometricCredentialStore.save(email: email, password: password);
 
     if (!mounted) return;
     Navigator.pushReplacement(
@@ -285,9 +281,25 @@ class _LoginScreenState extends State<LoginScreen> {
     _saveRememberMe(email);
     debugPrint('Login success: ${result.data}');
 
-    // Biometrics are an alternate login method, not a gate: a successful
-    // password login enters directly (storing the credential for next time
-    // when the unlock toggle is on).
+    // Two-factor: when enabled, require a device biometric/PIN check as a second
+    // factor after the password before entering. (Skipped for the biometric
+    // login button, which is already a biometric factor.)
+    if (await SecureUnlockService.isTwoFactorEnabled()) {
+      final verified = await SecureUnlockService.authenticate(
+        biometricOnly: false,
+        reason: "Verify it's you to finish signing in",
+      );
+      if (!mounted) return;
+      if (!verified) {
+        setState(() => _isLoading = false);
+        AppSnackbar.error(
+          context,
+          'Two-factor verification failed. Please try again.',
+        );
+        return;
+      }
+    }
+
     await _enterWithSession(result: result, email: email, password: password);
   }
 
@@ -304,44 +316,14 @@ class _LoginScreenState extends State<LoginScreen> {
   IconData get _unlockMethodIcon => switch (_unlockMethod) {
     UnlockMethod.face => Icons.face,
     UnlockMethod.fingerprint => Icons.fingerprint,
-    UnlockMethod.pin => Icons.pin_outlined,
+    UnlockMethod.pin => Icons.dialpad,
   };
 
-  String get _unlockMethodLabel => switch (_unlockMethod) {
-    UnlockMethod.face => "LOG IN WITH FACE ID",
-    UnlockMethod.fingerprint => "LOG IN WITH FINGERPRINT",
-    UnlockMethod.pin => "LOG IN WITH PIN",
+  String get _unlockMethodShortLabel => switch (_unlockMethod) {
+    UnlockMethod.face => "Face ID",
+    UnlockMethod.fingerprint => "Fingerprint",
+    UnlockMethod.pin => "PIN",
   };
-
-  Widget _buildUnlockButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback? onTap,
-  }) {
-    return SizedBox(
-      width: double.infinity,
-      height: 48,
-      child: OutlinedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, size: 18, color: const Color(0xFFCC0000)),
-        label: Text(
-          label,
-          style: const TextStyle(
-            color: Color(0xFFCC0000),
-            fontSize: 12,
-            letterSpacing: 1.5,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        style: OutlinedButton.styleFrom(
-          side: const BorderSide(color: Color(0xFFCC0000)),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ),
-      ),
-    );
-  }
 
   @override
   void dispose() {
@@ -567,38 +549,46 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
-                    // Biometric login — an alternate way to sign in, shown only
-                    // after a biometric-enabled login stored a credential. The
-                    // method (Face ID / Fingerprint / PIN) follows the device.
+                    // Biometric login — a tappable Face ID / Fingerprint / PIN
+                    // icon shown whenever the unlock toggle is on (UnionBank
+                    // style). The icon follows the device's enrolled method.
                     if (_biometricLoginAvailable) ...[
-                      const SizedBox(height: 20),
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: Divider(color: Color(0xFFE8E8E8)),
-                          ),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 12),
-                            child: Text(
-                              "OR LOG IN WITH",
-                              style: TextStyle(
-                                color: Colors.black38,
-                                fontSize: 10,
-                                letterSpacing: 1.5,
-                                fontWeight: FontWeight.w700,
+                      const SizedBox(height: 24),
+                      Center(
+                        child: GestureDetector(
+                          onTap: _isLoading ? null : _handleBiometricLogin,
+                          behavior: HitTestBehavior.opaque,
+                          child: Column(
+                            children: [
+                              Container(
+                                width: 60,
+                                height: 60,
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: const Color(0xFFCC0000),
+                                    width: 1.5,
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(
+                                  _unlockMethodIcon,
+                                  size: 30,
+                                  color: const Color(0xFFCC0000),
+                                ),
                               ),
-                            ),
+                              const SizedBox(height: 8),
+                              Text(
+                                _unlockMethodShortLabel,
+                                style: const TextStyle(
+                                  color: Colors.black54,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ],
                           ),
-                          const Expanded(
-                            child: Divider(color: Color(0xFFE8E8E8)),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      _buildUnlockButton(
-                        icon: _unlockMethodIcon,
-                        label: _unlockMethodLabel,
-                        onTap: _isLoading ? null : _handleBiometricLogin,
+                        ),
                       ),
                     ],
 

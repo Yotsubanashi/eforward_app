@@ -5,15 +5,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/screens/auth/change_password_screen.dart';
 import 'package:eforward_app/screens/auth/login_screen.dart';
 import 'package:eforward_app/screens/legal/privacy_policy_screen.dart';
+import 'package:eforward_app/screens/settings/security_screen.dart';
 import 'package:eforward_app/widgets/bottom_navigator.dart';
 import 'package:eforward_app/screens/notifications/notification_settings_screen.dart';
 import 'package:eforward_app/services/api/auth_api.dart';
-import 'package:eforward_app/services/biometric_credential_store.dart';
 import 'package:eforward_app/services/session_service.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
 import 'package:eforward_app/services/notifications/fcm_token_service.dart';
 import 'package:eforward_app/services/notifications/notifications_service.dart';
-import 'package:eforward_app/services/secure_unlock_service.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -35,8 +34,6 @@ class _SettingsPageState extends State<SettingsPage> {
   String _role = '';
   bool _isLoading = true;
   bool _isLoggingOut = false;
-  bool _biometricUnlockEnabled = false;
-  bool _biometricAvailable = false;
 
   String get _displayName =>
       '$_firstName${_middleName.isNotEmpty ? ' $_middleName' : ''} $_lastName'
@@ -52,36 +49,6 @@ class _SettingsPageState extends State<SettingsPage> {
   void initState() {
     super.initState();
     _loadUserData();
-    _loadSecuritySettings();
-  }
-
-  Future<void> _loadSecuritySettings() async {
-    final enabled = await SecureUnlockService.isEnabled();
-    final available = await SecureUnlockService.isAvailable();
-    if (!mounted) return;
-    setState(() {
-      _biometricUnlockEnabled = enabled && available;
-      _biometricAvailable = available;
-    });
-  }
-
-  Future<void> _onToggleBiometricUnlock(bool enabled) async {
-    if (enabled && !_biometricAvailable) {
-      AppSnackbar.error(
-        context,
-        'Biometric unlock is not available on this device. Device PIN will be used when supported.',
-      );
-      return;
-    }
-
-    await SecureUnlockService.setEnabled(enabled);
-    // Turning the toggle off must forget the securely-stored login so the
-    // biometric login button can't reappear with stale credentials.
-    if (!enabled) {
-      await BiometricCredentialStore.clear();
-    }
-    if (!mounted) return;
-    setState(() => _biometricUnlockEnabled = enabled);
   }
 
   Future<void> _loadUserData() async {
@@ -625,17 +592,19 @@ class _SettingsPageState extends State<SettingsPage> {
 
                   _buildMenuItem(
                     context,
-                    icon: Icons.fingerprint,
+                    icon: Icons.security,
                     iconColor: const Color(0xFFCC0000),
                     label: "SECURITY",
-                    title: "BIOMETRIC/PIN UNLOCK",
-                    trailing: Switch(
-                      value: _biometricUnlockEnabled,
-                      onChanged: _onToggleBiometricUnlock,
-                      activeThumbColor: const Color(0xFFCC0000),
+                    title: "SECURITY SETTINGS",
+                    trailing: const Icon(
+                      Icons.chevron_right,
+                      color: Color(0xFFAAAAAA),
+                      size: 20,
                     ),
-                    onTap: () =>
-                        _onToggleBiometricUnlock(!_biometricUnlockEnabled),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SecurityScreen()),
+                    ),
                   ),
 
                   const Divider(height: 1, color: Color(0xFFEEEEEE)),

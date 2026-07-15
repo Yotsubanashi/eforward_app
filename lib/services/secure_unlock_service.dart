@@ -9,7 +9,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 enum UnlockMethod { face, fingerprint, pin }
 
 class SecureUnlockService {
+  // Enables biometric/PIN as an alternate *login* method (the login button).
   static const String biometricEnabledKey = 'biometric_unlock_enabled';
+  // Two-factor: require a device biometric/PIN check *after* the password on
+  // every email+password login.
+  static const String twoFactorEnabledKey = 'two_factor_enabled';
   static final LocalAuthentication _localAuth = LocalAuthentication();
 
   static Future<bool> isEnabled() async {
@@ -20,6 +24,16 @@ class SecureUnlockService {
   static Future<void> setEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(biometricEnabledKey, value);
+  }
+
+  static Future<bool> isTwoFactorEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(twoFactorEnabledKey) ?? false;
+  }
+
+  static Future<void> setTwoFactorEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(twoFactorEnabledKey, value);
   }
 
   static Future<bool> isAvailable() async {
