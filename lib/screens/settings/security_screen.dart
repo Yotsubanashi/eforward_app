@@ -7,7 +7,6 @@ import '../../config/app_env.dart';
 import '../../services/api/auth_api.dart';
 import '../../services/biometric_credential_store.dart';
 import '../../services/secure_unlock_service.dart';
-import '../../services/session_service.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/eforward_app_bar.dart';
 
@@ -126,29 +125,66 @@ class _SecurityScreenState extends State<SecurityScreen> {
     return true;
   }
 
-  /// Pulls the signed-in user's email out of the persisted `user_data`.
+  /// Resolves the signed-in user's email from every place it might live, in
+  /// order of reliability: the persisted `user_data` profile (searched across
+  /// all of the backend's nestings), the remembered login email, and finally
+  /// any email already armed for biometric login. Returning null here is what
+  /// triggers the "Could not find your account email" error, so we cast a wide
+  /// net before giving up.
   Future<String?> _currentSessionEmail() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // 1) The persisted profile. The backend nests the user under `data`, under
+    // `user`, or flat, and the email key name has varied — so scan the whole
+    // decoded payload rather than trusting a single shape.
     try {
-      final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString('user_data');
-      if (raw == null) return null;
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) return null;
-      final user = SessionService.normalizeUser(decoded);
-      for (final key in [
-        'email',
-        'email_address',
-        'emailAddress',
-        'user_email',
-        'username',
-      ]) {
-        final v = user[key];
-        if (v != null && v.toString().trim().isNotEmpty) {
-          return v.toString().trim();
-        }
+      if (raw != null) {
+        final email = _findEmailDeep(jsonDecode(raw));
+        if (email != null) return email;
       }
     } catch (e) {
       debugPrint('Read session email failed: $e');
+    }
+
+    // 2) The email typed at the last login (present when "remember me" was on).
+    final saved = prefs.getString('saved_email')?.trim();
+    if (saved != null && saved.isNotEmpty) return saved;
+
+    // 3) An email already stored for biometric login, if any.
+    final stored = (await BiometricCredentialStore.readEmail())?.trim();
+    if (stored != null && stored.isNotEmpty) return stored;
+
+    return null;
+  }
+
+  /// Recursively searches a decoded JSON node for an email under any of the
+  /// known key names, at any nesting depth. Requires an '@' so a numeric or
+  /// handle-style `username` isn't mistaken for an email address.
+  static const _emailKeys = {
+    'email',
+    'email_address',
+    'emailAddress',
+    'user_email',
+    'username',
+  };
+  String? _findEmailDeep(dynamic node) {
+    if (node is Map) {
+      for (final entry in node.entries) {
+        if (_emailKeys.contains(entry.key)) {
+          final v = entry.value?.toString().trim() ?? '';
+          if (v.contains('@')) return v;
+        }
+      }
+      for (final v in node.values) {
+        final found = _findEmailDeep(v);
+        if (found != null) return found;
+      }
+    } else if (node is List) {
+      for (final v in node) {
+        final found = _findEmailDeep(v);
+        if (found != null) return found;
+      }
     }
     return null;
   }
