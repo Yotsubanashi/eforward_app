@@ -66,17 +66,14 @@ class _SecurityScreenState extends State<SecurityScreen> {
     }
 
     // Turning it ON: the login-screen biometric button replays a securely
-    // stored email+password. That credential is normally captured at the last
-    // password login, but if the app was updated while already signed in (or a
-    // keychain write was lost) none exists — and biometric login would fail
-    // with "log in with your email and password once". Guarantee one is armed
-    // here so enabling the toggle always yields a working passwordless login.
-    final hasCreds = await BiometricCredentialStore.hasCredentials();
-    if (!hasCreds) {
-      final armed = await _armCredentialWithPassword();
-      // If the user cancelled or the password was wrong, leave the toggle OFF.
-      if (!armed) return;
-    }
+    // stored email+password. Always capture and verify a fresh credential here
+    // (don't trust a possibly-stale or lost keychain entry) so enabling the
+    // toggle ALWAYS leaves a valid email+password stored — the Face ID button
+    // can then sign in with no password prompt and no dead-ends.
+    final armed = await _armCredentialWithPassword();
+    // If the user cancelled or the password was wrong, leave the toggle OFF so
+    // biometric login is never enabled without a stored credential.
+    if (!armed) return;
 
     await SecureUnlockService.setEnabled(true);
     if (!mounted) return;
@@ -116,6 +113,13 @@ class _SecurityScreenState extends State<SecurityScreen> {
     }
 
     await BiometricCredentialStore.save(email: email, password: password);
+    // Also stash the refresh token so the Face ID button can restore the
+    // session with no password replay at all (preferred path).
+    final refreshToken =
+        result.data?['refreshToken'] ?? result.data?['refresh_token'];
+    if (refreshToken != null && refreshToken.toString().trim().isNotEmpty) {
+      await BiometricCredentialStore.saveRefreshToken(refreshToken.toString());
+    }
     if (mounted) {
       AppSnackbar.info(context, 'Biometric login is set up. You can now sign in without your password.');
     }

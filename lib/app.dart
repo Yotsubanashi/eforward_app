@@ -10,6 +10,7 @@ import 'screens/auth/reset_password_screen.dart';
 import 'screens/dashboard/dashboard_screen.dart';
 import 'services/api/auth_api.dart';
 import 'services/app_version_service.dart';
+import 'services/biometric_credential_store.dart';
 import 'services/notifications/fcm_token_service.dart';
 import 'services/secure_unlock_service.dart';
 import 'services/session_service.dart';
@@ -277,6 +278,23 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
+  /// Mirrors the current session's refresh token into the secure enclave when
+  /// biometric unlock is enabled, so the login-screen Face ID button can later
+  /// restore the session without a password. No-op when the toggle is off or no
+  /// refresh token is stored.
+  Future<void> _captureRefreshTokenForBiometric(SharedPreferences prefs) async {
+    try {
+      if (!await SecureUnlockService.isEnabled()) return;
+      final refreshToken =
+          prefs.getString(SharedPrefsKeys.refreshToken)?.trim() ?? '';
+      if (refreshToken.isNotEmpty) {
+        await BiometricCredentialStore.saveRefreshToken(refreshToken);
+      }
+    } catch (e) {
+      debugPrint('Capture refresh token for biometric failed: $e');
+    }
+  }
+
   Future<bool> _hasSavedSession() async {
     final authApi = AuthApi();
     final prefs = await SharedPreferences.getInstance();
@@ -295,6 +313,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       if (userId != null) {
         FCMTokenService.registerToken(userId);
       }
+
+      // While we have a live session and biometric is on, stash the refresh
+      // token so the login-screen Face ID button can restore the session later
+      // with no password prompt — even if the user never did a password login
+      // on this build (e.g. app was updated while already signed in).
+      await _captureRefreshTokenForBiometric(prefs);
 
       // Biometrics are an alternate login method (see LoginScreen), not an
       // app-open gate: a valid saved session enters directly.
@@ -323,6 +347,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         SharedPrefsKeys.userData,
         jsonEncode(meAfterRefresh.data),
       );
+      await _captureRefreshTokenForBiometric(prefs);
       return true;
     }
 

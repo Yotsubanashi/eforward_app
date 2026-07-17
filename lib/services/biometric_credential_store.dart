@@ -16,6 +16,10 @@ class BiometricCredentialStore {
 
   static const _emailKey = 'biometric_login_email';
   static const _passwordKey = 'biometric_login_password';
+  // A refresh token captured from a live session. Lets biometric login restore
+  // the session WITHOUT replaying a password (so no password dialog is needed),
+  // as long as the backend still honours the token.
+  static const _refreshTokenKey = 'biometric_refresh_token';
 
   // Every operation is wrapped so a secure-storage failure (e.g. the native
   // plugin not yet registered after adding the dependency, or a Keystore
@@ -45,6 +49,19 @@ class BiometricCredentialStore {
     }
   }
 
+  /// Reads just the stored login email (without requiring the password to be
+  /// present). Used to select the correct backend before a token refresh.
+  static Future<String?> readEmail() async {
+    try {
+      final email = await _storage.read(key: _emailKey);
+      if (email == null || email.isEmpty) return null;
+      return email;
+    } catch (e) {
+      debugPrint('BiometricCredentialStore.readEmail failed: $e');
+      return null;
+    }
+  }
+
   static Future<bool> hasCredentials() async {
     try {
       final email = await _storage.read(key: _emailKey);
@@ -55,10 +72,33 @@ class BiometricCredentialStore {
     }
   }
 
+  /// Stores a refresh token captured from the active session, used for
+  /// password-free biometric login.
+  static Future<void> saveRefreshToken(String token) async {
+    if (token.trim().isEmpty) return;
+    try {
+      await _storage.write(key: _refreshTokenKey, value: token.trim());
+    } catch (e) {
+      debugPrint('BiometricCredentialStore.saveRefreshToken failed: $e');
+    }
+  }
+
+  static Future<String?> readRefreshToken() async {
+    try {
+      final token = await _storage.read(key: _refreshTokenKey);
+      if (token == null || token.trim().isEmpty) return null;
+      return token.trim();
+    } catch (e) {
+      debugPrint('BiometricCredentialStore.readRefreshToken failed: $e');
+      return null;
+    }
+  }
+
   static Future<void> clear() async {
     try {
       await _storage.delete(key: _emailKey);
       await _storage.delete(key: _passwordKey);
+      await _storage.delete(key: _refreshTokenKey);
     } catch (e) {
       debugPrint('BiometricCredentialStore.clear failed: $e');
     }

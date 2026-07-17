@@ -594,7 +594,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     context,
                     icon: Icons.security,
                     iconColor: const Color(0xFFCC0000),
-                    label: "SECURITY",
+                    label: "AUTHENTICATION",
                     title: "SECURITY SETTINGS",
                     trailing: const Icon(
                       Icons.chevron_right,

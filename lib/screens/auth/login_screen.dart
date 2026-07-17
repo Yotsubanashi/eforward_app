@@ -5,6 +5,7 @@ import '../../config/app_env.dart';
 import '../../services/api/auth_api.dart';
 import '../../services/biometric_credential_store.dart';
 import '../../services/notifications/fcm_token_service.dart';
+import '../../services/session_service.dart';
 import '../../services/secure_unlock_service.dart';
 import '../../validators/email_validator.dart';
 import '../../validators/required_field_validator.dart';
@@ -85,15 +86,25 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    // Preferred path: restore the session straight from the stored refresh
+    // token — no password, no dialog. This is the true "Face ID unlock".
+    if (await _tryBiometricRefreshLogin()) return;
+    if (!mounted) return;
+
     final creds = await BiometricCredentialStore.read();
     if (!mounted) return;
     if (creds == null) {
-      // Biometric is enabled but no credential is stored yet — happens when the
-      // toggle was turned on before a password login captured one (e.g. the app
-      // was updated while already signed in). Rather than dead-ending, set it up
-      // right here: the device auth already passed, so confirm the password once
-      // and from now on this button logs in with no typing.
-      await _setupBiometricThenLogin();
+      // Face ID passed but there is no stored credential/token to log in with.
+      // Enabling the toggle in Security Settings arms one, so this should not
+      // happen — if it does, don't fall back to a password dialog. Surface an
+      // error and stop; the user re-enables biometric login by signing in with
+      // their password once.
+      setState(() => _isLoading = false);
+      AppSnackbar.error(
+        context,
+        'Biometric login is not set up. Log in with your email and password '
+        'once to enable it.',
+      );
       return;
     }
 
@@ -127,131 +138,63 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  /// One-time biometric setup from the login button when no credential is
-  /// stored yet. Uses the typed/remembered email, confirms the password once,
-  /// verifies it, stores it securely (via [_enterWithSession]) and enters. After
-  /// this, [_handleBiometricLogin] logs in with no typing.
-  Future<void> _setupBiometricThenLogin() async {
+  /// Restores the session from a securely-stored refresh token so biometric
+  /// login needs no password and shows no dialog. Returns true (and navigates
+  /// into the dashboard) on success; false when there is no usable token or the
+  /// backend rejected it, so the caller can fall back to the stored password.
+  Future<bool> _tryBiometricRefreshLogin() async {
+    final refreshToken = await BiometricCredentialStore.readRefreshToken();
+    if (refreshToken == null) return false;
+
+    // Route to the correct backend (Ardent vs Versatech) before hitting the
+    // refresh endpoint. On a logged-out launch the active backend was cleared,
+    // so without this the refresh could hit the wrong host and fail — dropping
+    // us back to the password path. The email is stored alongside the token.
+    final email = await BiometricCredentialStore.readEmail();
+    if (email != null) await AppEnv.selectBackendForEmail(email);
+
+    final result = await _authApi.refresh(token: refreshToken);
+    if (!mounted || !result.isSuccess) return false;
+
+    final newAccess =
+        (result.data?['accessToken'] ??
+                result.data?['access_token'] ??
+                result.data?['token'])
+            ?.toString()
+            .trim();
+    if (newAccess == null || newAccess.isEmpty) return false;
+    final newRefresh =
+        (result.data?['refreshToken'] ?? result.data?['refresh_token'])
+            ?.toString()
+            .trim();
+
     final prefs = await SharedPreferences.getInstance();
-    final email = _emailController.text.trim().isNotEmpty
-        ? _emailController.text.trim()
-        : (prefs.getString('saved_email')?.trim() ?? '');
-    if (!mounted) return;
-    if (email.isEmpty) {
-      setState(() => _isLoading = false);
-      AppSnackbar.error(
-        context,
-        'Type your email first, then use $_unlockMethodShortLabel to set up biometric login.',
-      );
-      return;
+    await prefs.setString('access_token', newAccess);
+    if (newRefresh != null && newRefresh.isNotEmpty) {
+      await prefs.setString('refresh_token', newRefresh);
+      await BiometricCredentialStore.saveRefreshToken(newRefresh);
     }
 
-    final password = await _promptForPassword(email);
-    if (!mounted) return;
-    if (password == null || password.isEmpty) {
-      setState(() => _isLoading = false);
-      return; // cancelled
+    // Load the profile the dashboard needs.
+    final me = await _authApi.getMe(token: newAccess);
+    if (!mounted || !me.isSuccess || me.data == null) return false;
+
+    await prefs.setString('user_data', jsonEncode(me.data));
+    // /auth/me nests the user under `data` (login nests it under `user`);
+    // normalizeUser resolves either shape so the employee id is found.
+    final user = SessionService.normalizeUser(me.data!);
+    final userId = SessionService.extractEmployeeId(user);
+    if (userId != null) {
+      await prefs.setString('employee_id', userId);
+      await FCMTokenService.registerToken(userId);
     }
 
-    await AppEnv.selectBackendForEmail(email);
-    final result = await _authApi.login(email: email, password: password);
-    if (!mounted) return;
-    if (!result.isSuccess) {
-      setState(() => _isLoading = false);
-      AppSnackbar.error(context, result.message);
-      return;
-    }
-
-    // _enterWithSession stores the biometric credential and navigates in.
-    await _enterWithSession(result: result, email: email, password: password);
-  }
-
-  /// One-time password confirmation used to arm biometric login.
-  Future<String?> _promptForPassword(String email) async {
-    final controller = TextEditingController();
-    bool obscure = true;
-    final result = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setLocal) {
-            return AlertDialog(
-              backgroundColor: Colors.white,
-              shape: const RoundedRectangleBorder(),
-              title: const Text(
-                'CONFIRM PASSWORD',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1,
-                  color: Color(0xFF1A1A1A),
-                ),
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Enter the password for $email once to finish setting up biometric login. You won\'t need to type it again.',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.black54,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: controller,
-                    obscureText: obscure,
-                    autofocus: true,
-                    onSubmitted: (v) => Navigator.pop(dialogContext, v.trim()),
-                    decoration: InputDecoration(
-                      hintText: 'Password',
-                      isDense: true,
-                      border: const OutlineInputBorder(),
-                      focusedBorder: const OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFFCC0000)),
-                      ),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          obscure ? Icons.visibility_off : Icons.visibility,
-                          size: 18,
-                          color: Colors.black45,
-                        ),
-                        onPressed: () => setLocal(() => obscure = !obscure),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext, null),
-                  child: const Text(
-                    'CANCEL',
-                    style: TextStyle(color: Colors.black54),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () =>
-                      Navigator.pop(dialogContext, controller.text.trim()),
-                  child: const Text(
-                    'CONFIRM',
-                    style: TextStyle(
-                      color: Color(0xFFCC0000),
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
+    if (!mounted) return false;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => DashboardPage(userData: me.data)),
     );
-    controller.dispose();
-    return result;
+    return true;
   }
 
   /// Shared post-login persistence used by both password and biometric login:
@@ -310,6 +253,12 @@ class _LoginScreenState extends State<LoginScreen> {
     // toggle is turned on (even if it's enabled later from Settings). It is
     // cleared when the toggle is turned off or the credential is rejected.
     await BiometricCredentialStore.save(email: email, password: password);
+    // Also stash the refresh token so the biometric button can restore the
+    // session with NO password prompt (preferred path). Falls back to the
+    // stored password only if the token is expired/revoked.
+    if (refreshToken != null && refreshToken.toString().trim().isNotEmpty) {
+      await BiometricCredentialStore.saveRefreshToken(refreshToken.toString());
+    }
 
     if (!mounted) return;
     Navigator.pushReplacement(
