@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:eforward_app/config/app_env.dart';
+import 'package:eforward_app/services/session_expiry_service.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -100,6 +101,12 @@ class _NotificationsPageState extends State<NotificationsPage>
       );
 
       if (!mounted) return;
+
+      if (SessionExpiryService().isUnauthorized(response.statusCode)) {
+        setState(() => _isLoading = false);
+        await SessionExpiryService().handleUnauthorized();
+        return;
+      }
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(response.body);

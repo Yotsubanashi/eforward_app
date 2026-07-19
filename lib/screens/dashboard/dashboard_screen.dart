@@ -10,6 +10,7 @@ import 'package:eforward_app/config/app_env.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/services/secure_unlock_service.dart';
+import 'package:eforward_app/services/session_expiry_service.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/approval_card.dart';
 import 'package:eforward_app/widgets/app_empty_state.dart';
@@ -327,6 +328,12 @@ class _DashboardPageState extends State<DashboardPage> {
       );
 
       if (!mounted) return;
+
+      if (SessionExpiryService().isUnauthorized(response.statusCode)) {
+        setState(() => _isLoadingPending = false);
+        await SessionExpiryService().handleUnauthorized();
+        return;
+      }
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(response.body);

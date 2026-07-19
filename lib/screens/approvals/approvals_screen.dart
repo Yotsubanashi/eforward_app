@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/widgets/bottom_navigator.dart';
 import 'package:eforward_app/screens/approvals/approval_detail_screen.dart';
 import 'package:eforward_app/constants/shared_prefs_keys.dart';
+import 'package:eforward_app/services/session_expiry_service.dart';
 import 'package:eforward_app/widgets/approval_card.dart';
 import 'package:eforward_app/widgets/app_empty_state.dart';
 import 'package:eforward_app/widgets/app_error_state.dart';
@@ -161,6 +162,11 @@ class _ApprovalsPageState extends State<ApprovalsPage>
 
       if (!mounted) return;
 
+      if (SessionExpiryService().isUnauthorized(response.statusCode)) {
+        await SessionExpiryService().handleUnauthorized();
+        return;
+      }
+
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(response.body);
         final rawList = _extractList(decoded);
@@ -224,6 +230,11 @@ class _ApprovalsPageState extends State<ApprovalsPage>
 
       if (!mounted) return;
 
+      if (SessionExpiryService().isUnauthorized(response.statusCode)) {
+        await SessionExpiryService().handleUnauthorized();
+        return;
+      }
+
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(response.body);
         final rawList = _extractList(decoded);
@@ -282,6 +293,11 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       );
 
       if (!mounted) return;
+
+      if (SessionExpiryService().isUnauthorized(response.statusCode)) {
+        await SessionExpiryService().handleUnauthorized();
+        return;
+      }
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(response.body);
@@ -344,6 +360,11 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       );
 
       if (!mounted) return;
+
+      if (SessionExpiryService().isUnauthorized(response.statusCode)) {
+        await SessionExpiryService().handleUnauthorized();
+        return;
+      }
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(response.body);

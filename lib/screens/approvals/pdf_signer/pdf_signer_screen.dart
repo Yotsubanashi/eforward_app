@@ -16,6 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import 'package:eforward_app/config/app_env.dart';
+import 'package:eforward_app/services/session_expiry_service.dart';
 import 'package:eforward_app/utils/manila_time.dart';
 import 'package:eforward_app/screens/approvals/approvals_screen.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
@@ -832,6 +833,11 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       debugPrint('Approve body:   ${response.body}');
 
       if (!mounted) return;
+      if (SessionExpiryService().isUnauthorized(response.statusCode)) {
+        setState(() => _isSubmitting = false);
+        await SessionExpiryService().handleUnauthorized();
+        return;
+      }
       if (response.statusCode >= 200 && response.statusCode < 300) {
         setState(() => _isSubmitting = false);
         Navigator.pushAndRemoveUntil(

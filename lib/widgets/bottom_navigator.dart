@@ -5,6 +5,7 @@ import 'package:eforward_app/config/app_env.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/services/notifications/notifications_service.dart';
+import 'package:eforward_app/services/session_expiry_service.dart';
 import 'package:eforward_app/constants/shared_prefs_keys.dart';
 import 'package:eforward_app/constants/api_endpoints.dart';
 import 'package:eforward_app/routes/app_routes.dart';
@@ -135,6 +136,10 @@ class _BottomNavigatorState extends State<BottomNavigator> {
               Uri.parse('${AppEnv.apiBaseUrl}${ApiEndpoints.signatureImage}'),
               headers: {'Authorization': 'Bearer $token'},
             );
+            if (SessionExpiryService().isUnauthorized(response.statusCode)) {
+              await SessionExpiryService().handleUnauthorized();
+              return;
+            }
             if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
               hasSignature = true;
               await prefs.setBool('has_signature', true); // save for next time

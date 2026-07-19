@@ -16,6 +16,7 @@ import 'package:eforward_app/screens/approvals/excel_viewer/excel_viewer_screen.
 import 'package:eforward_app/screens/approvals/pdf_signer/pdf_signer_screen.dart';
 import 'package:eforward_app/services/api/approvals_api.dart';
 import 'package:eforward_app/services/session_service.dart';
+import 'package:eforward_app/services/session_expiry_service.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
@@ -422,6 +423,12 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       );
 
       if (!mounted) return;
+      if (SessionExpiryService().isUnauthorized(response.statusCode)) {
+        Navigator.pop(dialogContext);
+        setState(() => _isSubmittingRevision = false);
+        await SessionExpiryService().handleUnauthorized();
+        return;
+      }
       if (response.statusCode >= 200 && response.statusCode < 300) {
         Navigator.pop(dialogContext);
         setState(() => _isSubmittingRevision = false);
@@ -504,6 +511,12 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
           'Accept': 'application/json',
         },
       );
+      if (mounted &&
+          SessionExpiryService().isUnauthorized(response.statusCode)) {
+        setState(() => _isLoadingDetail = false);
+        await SessionExpiryService().handleUnauthorized();
+        return;
+      }
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(response.body);
         final data = decoded['data'];

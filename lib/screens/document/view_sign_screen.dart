@@ -14,6 +14,7 @@ import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
 import '../../config/app_env.dart';
 import '../../services/api/auth_api.dart';
+import '../../services/session_expiry_service.dart';
 import 'widgets/signature_painter.dart';
 
 // ─── View Sign Page ───────────────────────────────────────────────────────────
@@ -155,6 +156,12 @@ class _ViewSignPageState extends State<ViewSignPage>
     final result = await _authApi.getSignature(token: token);
 
     if (!mounted) return;
+
+    if (SessionExpiryService().isUnauthorized(result.statusCode)) {
+      setState(() => _isLoadingSignature = false);
+      await SessionExpiryService().handleUnauthorized();
+      return;
+    }
 
     if (result.isSuccess) {
       if (result.imageBytes != null && result.imageBytes!.isNotEmpty) {
