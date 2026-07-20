@@ -73,6 +73,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _lockIfAuthenticated() async {
     if (_appLocked || _unlocking) return;
     if (!await SecureUnlockService.isEnabled()) return;
+    // Never raise a lock the device can't clear. Without a screen lock there is
+    // nothing to authenticate against, so the overlay would trap the user in
+    // the app with no way back to their session.
+    if (!await SecureUnlockService.isAvailable()) return;
     final prefs = await SharedPreferences.getInstance();
     final hasSession =
         (prefs.getString(SharedPrefsKeys.accessToken)?.trim() ?? '').isNotEmpty;
@@ -85,13 +89,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _promptAppUnlock() async {
     if (_unlocking) return;
     _unlocking = true;
+    // Escape hatch for a lock raised before the screen lock was removed: with
+    // nothing left to authenticate against, drop the overlay rather than
+    // stranding the user behind a prompt that can never succeed.
+    if (!await SecureUnlockService.isAvailable()) {
+      _unlocking = false;
+      if (mounted) setState(() => _appLocked = false);
+      return;
+    }
     final ok = await SecureUnlockService.authenticate(
       biometricOnly: false,
       reason: 'Unlock E-Forward',
     );
     _unlocking = false;
     if (!mounted) return;
-    if (ok) setState(() => _appLocked = false);
+    if (ok.success) setState(() => _appLocked = false);
   }
 
   void _scheduleInitialVersionCheck() {

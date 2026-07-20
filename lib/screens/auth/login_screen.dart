@@ -21,7 +21,7 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   bool _obscurePassword = true;
   bool _rememberMe = false;
   bool _isLoading = false;
@@ -43,11 +43,19 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadRememberedEmail();
     _refreshBiometricLogin();
     // Rebuild so the Login button enables/disables as the fields change.
     _emailController.addListener(_onCredentialsChanged);
     _passwordController.addListener(_onCredentialsChanged);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The user may have left to add a screen lock in device settings after we
+    // told them to; pick the button back up as soon as they return.
+    if (state == AppLifecycleState.resumed) _refreshBiometricLogin();
   }
 
   void _onCredentialsChanged() => setState(() {});
@@ -58,14 +66,17 @@ class _LoginScreenState extends State<LoginScreen> {
       _passwordController.text.isNotEmpty;
 
   Future<void> _refreshBiometricLogin() async {
-    // Show the biometric icon whenever the unlock toggle is on (like the
-    // UnionBank login). If no credential is stored yet, tapping it asks the
-    // user to log in with a password once first.
+    // Show the biometric icon when the unlock toggle is on AND the device can
+    // still authenticate. The availability half matters because a screen lock
+    // can be removed after the toggle was turned on — offering the button then
+    // would dead-end, since there is nothing to fall back to once the user has
+    // no PIN, pattern, password, or enrolled biometric.
     final enabled = await SecureUnlockService.isEnabled();
+    final available = await SecureUnlockService.isAvailable();
     final method = await SecureUnlockService.resolveMethod();
     if (!mounted) return;
     setState(() {
-      _biometricLoginAvailable = enabled;
+      _biometricLoginAvailable = enabled && available;
       _unlockMethod = method;
     });
   }
@@ -75,14 +86,18 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleBiometricLogin() async {
     setState(() => _isLoading = true);
 
-    final ok = await SecureUnlockService.authenticate(
+    final unlock = await SecureUnlockService.authenticate(
       biometricOnly: _unlockMethod != UnlockMethod.pin,
       reason: 'Authenticate to log in to your account',
     );
     if (!mounted) return;
-    if (!ok) {
+    if (!unlock.success) {
       setState(() => _isLoading = false);
-      AppSnackbar.error(context, 'Authentication failed. Please try again.');
+      // The OS already told the user why it rejected a cancel/bad scan; only
+      // speak up when we have something they can act on.
+      if (!unlock.cancelled) {
+        AppSnackbar.error(context, unlock.message!);
+      }
       return;
     }
 
@@ -362,17 +377,31 @@ class _LoginScreenState extends State<LoginScreen> {
     // Two-factor: when enabled, require a device biometric/PIN check as a second
     // factor after the password before entering. (Skipped for the biometric
     // login button, which is already a biometric factor.)
+    //
+    // Only enforce it while the device can still satisfy it. A user who enabled
+    // two-factor and later removed their screen lock has no way to pass this
+    // check and no way to reach Settings to turn it off — the correct password
+    // would lock them out of their own account permanently. Their screen lock
+    // is gone, so the second factor no longer exists: drop the stale flag and
+    // let the password stand on its own.
+    if (await SecureUnlockService.isTwoFactorEnabled() &&
+        !await SecureUnlockService.isAvailable()) {
+      await SecureUnlockService.setTwoFactorEnabled(false);
+      debugPrint('Two-factor cleared: device no longer has a screen lock.');
+    }
+
     if (await SecureUnlockService.isTwoFactorEnabled()) {
       final verified = await SecureUnlockService.authenticate(
         biometricOnly: false,
         reason: "Verify it's you to finish signing in",
       );
       if (!mounted) return;
-      if (!verified) {
+      if (!verified.success) {
         setState(() => _isLoading = false);
         AppSnackbar.error(
           context,
-          'Two-factor verification failed. Please try again.',
+          verified.message ??
+              'Two-factor verification was cancelled. Please try again.',
         );
         return;
       }
@@ -397,14 +426,12 @@ class _LoginScreenState extends State<LoginScreen> {
     UnlockMethod.pin => Icons.dialpad,
   };
 
-  String get _unlockMethodShortLabel => switch (_unlockMethod) {
-    UnlockMethod.face => "Face ID",
-    UnlockMethod.fingerprint => "Fingerprint",
-    UnlockMethod.pin => "PIN",
-  };
+  String get _unlockMethodShortLabel =>
+      SecureUnlockService.labelFor(_unlockMethod);
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _emailController.removeListener(_onCredentialsChanged);
     _passwordController.removeListener(_onCredentialsChanged);
     _emailController.dispose();

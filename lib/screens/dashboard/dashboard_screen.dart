@@ -111,7 +111,7 @@ class _DashboardPageState extends State<DashboardPage> {
                         biometricOnly: false,
                         reason: 'Authenticate to enable quick login',
                       );
-                      if (success) {
+                      if (success.success) {
                         await SecureUnlockService.setEnabled(true);
                         if (mounted) {
                           AppSnackbar.success(
@@ -119,11 +119,8 @@ class _DashboardPageState extends State<DashboardPage> {
                             'Biometric/PIN unlock enabled.',
                           );
                         }
-                      } else if (mounted) {
-                        AppSnackbar.error(
-                          context,
-                          'Unable to enable biometric unlock right now.',
-                        );
+                      } else if (mounted && !success.cancelled) {
+                        AppSnackbar.error(context, success.message!);
                       }
                       if (Navigator.of(dialogContext).canPop()) {
                         Navigator.of(dialogContext).pop();

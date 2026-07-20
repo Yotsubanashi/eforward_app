@@ -19,17 +19,38 @@ class SecurityScreen extends StatefulWidget {
   State<SecurityScreen> createState() => _SecurityScreenState();
 }
 
-class _SecurityScreenState extends State<SecurityScreen> {
+class _SecurityScreenState extends State<SecurityScreen>
+    with WidgetsBindingObserver {
   bool _loading = true;
   bool _biometricEnabled = false;
   bool _biometricAvailable = false;
   bool _twoFactorEnabled = false;
   final AuthApi _authApi = AuthApi();
 
+  /// Both switches depend on the device being able to authenticate the user.
+  /// Without a screen lock there is no fallback for either one, so we say
+  /// exactly what to fix — in the platform's own wording — rather than failing
+  /// at the prompt.
+  String get _noScreenLockMessage => SecureUnlockService.screenLockSetupMessage;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Re-enable the switches without a restart once the user comes back from
+    // adding a screen lock in device settings.
+    if (state == AppLifecycleState.resumed) _load();
   }
 
   Future<void> _load() async {
@@ -38,7 +59,9 @@ class _SecurityScreenState extends State<SecurityScreen> {
     final twoFactor = await SecureUnlockService.isTwoFactorEnabled();
     if (!mounted) return;
     setState(() {
-      _biometricEnabled = enabled && available;
+      // Show what is actually stored, not what is currently usable. Masking a
+      // stored "on" as "off" would leave the user unable to turn it back off.
+      _biometricEnabled = enabled;
       _biometricAvailable = available;
       _twoFactorEnabled = twoFactor;
       _loading = false;
@@ -47,10 +70,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
 
   Future<void> _onToggleBiometric(bool enabled) async {
     if (enabled && !_biometricAvailable) {
-      AppSnackbar.error(
-        context,
-        'Biometric unlock is not available on this device. Device PIN will be used when supported.',
-      );
+      AppSnackbar.error(context, _noScreenLockMessage);
       return;
     }
 
@@ -200,10 +220,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
 
   Future<void> _onToggleTwoFactor(bool enabled) async {
     if (enabled && !_biometricAvailable) {
-      AppSnackbar.error(
-        context,
-        'Two-factor needs biometrics or a device PIN set up on this device.',
-      );
+      AppSnackbar.error(context, _noScreenLockMessage);
       return;
     }
     await SecureUnlockService.setTwoFactorEnabled(enabled);
@@ -230,19 +247,25 @@ class _SecurityScreenState extends State<SecurityScreen> {
                   _toggleTile(
                     icon: Icons.fingerprint,
                     title: "BIOMETRIC / FINGERPRINT / PIN UNLOCK",
-                    subtitle:
-                        "Use Face ID, fingerprint, or your device PIN as a quick way to log in.",
+                    subtitle: _biometricAvailable
+                        ? "Use Face ID, fingerprint, or your device PIN as a quick way to log in."
+                        : _noScreenLockMessage,
                     value: _biometricEnabled,
                     onChanged: _onToggleBiometric,
+                    // Turning OFF must stay possible even with no screen lock,
+                    // otherwise a stale "on" setting can never be cleared.
+                    enabled: _biometricAvailable || _biometricEnabled,
                   ),
                   const Divider(height: 1, color: Color(0xFFEEEEEE)),
                   _toggleTile(
                     icon: Icons.verified_user_outlined,
                     title: "TWO-FACTOR AUTHENTICATION",
-                    subtitle:
-                        "After your email and password, confirm with Face ID, fingerprint, or your device PIN each time you log in.",
+                    subtitle: _biometricAvailable
+                        ? "After your email and password, confirm with Face ID, fingerprint, or your device PIN each time you log in."
+                        : _noScreenLockMessage,
                     value: _twoFactorEnabled,
                     onChanged: _onToggleTwoFactor,
+                    enabled: _biometricAvailable || _twoFactorEnabled,
                   ),
                   const Divider(height: 1, color: Color(0xFFEEEEEE)),
                 ],
@@ -278,7 +301,11 @@ class _SecurityScreenState extends State<SecurityScreen> {
     required String subtitle,
     required bool value,
     required ValueChanged<bool> onChanged,
+    bool enabled = true,
   }) {
+    // When disabled the row still taps through to [onChanged], which explains
+    // what's missing — silently swallowing the tap would leave the user with no
+    // idea why the switch won't move.
     return InkWell(
       onTap: () => onChanged(!value),
       child: Padding(
@@ -293,7 +320,11 @@ class _SecurityScreenState extends State<SecurityScreen> {
                 color: const Color(0xFFF5F5F5),
                 border: Border.all(color: const Color(0xFFEEEEEE)),
               ),
-              child: Icon(icon, size: 18, color: const Color(0xFFCC0000)),
+              child: Icon(
+                icon,
+                size: 18,
+                color: enabled ? const Color(0xFFCC0000) : Colors.black26,
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -302,11 +333,11 @@ class _SecurityScreenState extends State<SecurityScreen> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.8,
-                      color: Color(0xFF1A1A1A),
+                      color: enabled ? const Color(0xFF1A1A1A) : Colors.black38,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -324,7 +355,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
             const SizedBox(width: 8),
             Switch(
               value: value,
-              onChanged: onChanged,
+              onChanged: enabled ? onChanged : null,
               activeThumbColor: const Color(0xFFCC0000),
             ),
           ],
