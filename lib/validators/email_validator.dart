@@ -1,21 +1,15 @@
-/// Institutional email-domain rules shared by login access control
-/// ([EmailValidator.isKnownInstitutionalDomain]) and per-domain backend /
-/// branding selection (`AppEnv.brandForEmail`, `AppEnv.getBrandingForEmail`) —
-/// so the same domain suffixes aren't hardcoded independently in each place.
+import 'package:eforward_app/config/tenant.dart';
+
+/// Email-domain rules for login access control.
+///
+/// The app is open to any institutional domain — access is granted to any email
+/// with a usable, routable domain, and that domain decides which backend the
+/// session talks to (see [TenantResolver] / `AppEnv.selectBackendForEmail`).
 class EmailValidator {
   EmailValidator._();
 
-  static const String ardentDomain = '@ardentnetworks.com.ph';
-  static const String versatechDomain = '@versatech.com.ph';
-
-  static bool isArdentDomain(String email) =>
-      email.toLowerCase().trim().endsWith(ardentDomain);
-
-  static bool isVersatechDomain(String email) =>
-      email.toLowerCase().trim().endsWith(versatechDomain);
-
-  /// Whether [email] belongs to either supported institution (Ardent or
-  /// Versatech). Used by the unified single-build login to allow both.
+  /// Whether [email] has a usable domain the app can route to. Returns false
+  /// only for malformed emails with no dotted domain part.
   static bool isKnownInstitutionalDomain(String email) =>
-      isArdentDomain(email) || isVersatechDomain(email);
+      TenantResolver.domainOf(email) != null;
 }

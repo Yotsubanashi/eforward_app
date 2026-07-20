@@ -9,7 +9,11 @@ class SharedPrefsKeys {
   static const String employeeId = 'employee_id';
   static const String fcmTokenCached = 'fcm_token_cached';
 
-  /// Brand ('ARDENT' | 'VERSATECH') selected from the signed-in user's email
-  /// domain, used to route the whole session to the correct backend API.
-  static const String activeBrand = 'active_brand';
+  /// Email domain of the tenant selected from the signed-in user's email,
+  /// used to route the whole session to that tenant's backend API.
+  static const String activeTenantDomain = 'active_tenant_domain';
+
+  /// Deprecated: the previous brand-based routing key. Read once on startup to
+  /// migrate old sessions to [activeTenantDomain]; no longer written.
+  static const String legacyActiveBrand = 'active_brand';
 }

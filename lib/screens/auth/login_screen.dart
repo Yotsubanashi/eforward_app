@@ -286,8 +286,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   bool _isEmailAllowedForCurrentBrand(String email) {
-    // Unified single build: allow both Ardent and Versatech institutional
-    // domains. The correct backend is chosen from the domain at login time.
+    // Open multi-tenant build: allow any email with a valid, routable domain.
+    // Emails with no usable domain are rejected here; the backend for the
+    // domain is derived at login time (AppEnv.selectBackendForEmail).
     return EmailValidator.isKnownInstitutionalDomain(email);
   }
 
