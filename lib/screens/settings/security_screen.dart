@@ -190,91 +190,12 @@ class _SecurityScreenState extends State<SecurityScreen> {
   }
 
   /// One-time password confirmation dialog used to arm biometric login.
-  Future<String?> _promptForPassword(String email) async {
-    final controller = TextEditingController();
-    bool obscure = true;
-    final result = await showDialog<String>(
+  Future<String?> _promptForPassword(String email) {
+    return showDialog<String>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setLocal) {
-            return AlertDialog(
-              backgroundColor: Colors.white,
-              shape: const RoundedRectangleBorder(),
-              title: const Text(
-                'CONFIRM PASSWORD',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1,
-                  color: Color(0xFF1A1A1A),
-                ),
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Enter the password for $email once to turn on biometric login. You won\'t need to type it again.',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.black54,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: controller,
-                    obscureText: obscure,
-                    autofocus: true,
-                    onSubmitted: (v) => Navigator.pop(dialogContext, v.trim()),
-                    decoration: InputDecoration(
-                      hintText: 'Password',
-                      isDense: true,
-                      border: const OutlineInputBorder(),
-                      focusedBorder: const OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFFCC0000)),
-                      ),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          obscure ? Icons.visibility_off : Icons.visibility,
-                          size: 18,
-                          color: Colors.black45,
-                        ),
-                        onPressed: () => setLocal(() => obscure = !obscure),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext, null),
-                  child: const Text(
-                    'CANCEL',
-                    style: TextStyle(color: Colors.black54),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () =>
-                      Navigator.pop(dialogContext, controller.text.trim()),
-                  child: const Text(
-                    'CONFIRM',
-                    style: TextStyle(
-                      color: Color(0xFFCC0000),
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (dialogContext) => _ConfirmPasswordDialog(email: email),
     );
-    controller.dispose();
-    return result;
   }
 
   Future<void> _onToggleTwoFactor(bool enabled) async {
@@ -409,6 +330,107 @@ class _SecurityScreenState extends State<SecurityScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Password confirmation dialog for arming biometric login. This is a widget
+/// rather than an inline `StatefulBuilder` so the controller's lifetime is tied
+/// to the dialog's element: disposing it when `showDialog` returns would kill
+/// the controller while the route's exit transition is still rebuilding the
+/// TextField, which throws "A TextEditingController was used after being
+/// disposed".
+class _ConfirmPasswordDialog extends StatefulWidget {
+  const _ConfirmPasswordDialog({required this.email});
+
+  final String email;
+
+  @override
+  State<_ConfirmPasswordDialog> createState() => _ConfirmPasswordDialogState();
+}
+
+class _ConfirmPasswordDialogState extends State<_ConfirmPasswordDialog> {
+  final TextEditingController _controller = TextEditingController();
+  bool _obscure = true;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit(String value) => Navigator.pop(context, value.trim());
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(),
+      title: const Text(
+        'CONFIRM PASSWORD',
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 1,
+          color: Color(0xFF1A1A1A),
+        ),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Enter the password for ${widget.email} once to turn on biometric login. You won\'t need to type it again.',
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.black54,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _controller,
+            obscureText: _obscure,
+            autofocus: true,
+            onSubmitted: _submit,
+            decoration: InputDecoration(
+              hintText: 'Password',
+              isDense: true,
+              border: const OutlineInputBorder(),
+              focusedBorder: const OutlineInputBorder(
+                borderSide: BorderSide(color: Color(0xFFCC0000)),
+              ),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscure ? Icons.visibility_off : Icons.visibility,
+                  size: 18,
+                  color: Colors.black45,
+                ),
+                onPressed: () => setState(() => _obscure = !_obscure),
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, null),
+          child: const Text(
+            'CANCEL',
+            style: TextStyle(color: Colors.black54),
+          ),
+        ),
+        TextButton(
+          onPressed: () => _submit(_controller.text),
+          child: const Text(
+            'CONFIRM',
+            style: TextStyle(
+              color: Color(0xFFCC0000),
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
