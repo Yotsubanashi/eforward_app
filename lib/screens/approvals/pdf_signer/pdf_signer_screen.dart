@@ -136,6 +136,9 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 
   // ── Signer info ───────────────────────────────────────────────────────────
   String _signerName = '';
+  // Used to find THIS user's row in routing `details`, which is where a
+  // pre-configured signature placement (sign_x/y/width/height/page) lives.
+  String _signerEmployeeId = '';
 
   // ── PDF controller ────────────────────────────────────────────────────────
   PDFViewController? _pdfController;
@@ -391,6 +394,11 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
           userData['last_name'] ??
           userData['lastName'] ??
           '';
+      final empId =
+          userData['employee_id'] ??
+          userData['employeeId'] ??
+          userData['emp_id'] ??
+          '';
       if (mounted) {
         setState(() {
           _signerName = [first, last]
@@ -398,6 +406,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
               .where((p) => p.isNotEmpty)
               .join(' ')
               .trim();
+          _signerEmployeeId = empId.toString().trim();
         });
       }
     } catch (e) {
@@ -529,6 +538,108 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     }
   }
 
+  // ── Pre-configured signature placement ────────────────────────────────────
+  //
+  // A routing can carry a placement chosen by whoever set the document up. The
+  // approver's row in `details` exposes it three ways, in priority order:
+  //   1. `effective_sign` {x, y, width, height, page} — the backend's already
+  //      resolved placement (it applies the template fallback server-side), so
+  //      this is what we trust first.
+  //   2. the row's own `sign_x/y/width/height/page`, and
+  //   3. the template's `default_sign_*` values.
+  // Any of these may be null — that's the common case — in which case we fall
+  // back to the compact hardcoded default seeded in _enterSigningMode().
+  //
+  // All values are fractions of the page (0.0–1.0), the same space this screen
+  // POSTs back on approve.
+  //
+  // The box is sized by WIDTH: the overlay height always follows the fixed
+  // capture aspect ratio (_sigFracHComputed) so the preview is never stretched
+  // relative to what gets stamped. A configured height is still used — when a
+  // placement defines height but no width, the width is derived back out of it
+  // (see _enterSigningMode) so the signature ends up the intended size.
+
+  /// Reads `key` off `map` as a placement fraction (0.0–1.0).
+  ///
+  /// Values greater than 1 are assumed to be absolute PDF points and are
+  /// converted using `pageExtent`, so the resolver works whether the backend
+  /// stores fractions (what this app POSTs on approve) or raw points.
+  double? _placementFraction(Map map, String key, double pageExtent) {
+    final raw = map[key];
+    if (raw == null) return null;
+    final value = raw is num ? raw.toDouble() : double.tryParse(raw.toString());
+    if (value == null || value <= 0) return null;
+    final frac = value > 1.0 ? (pageExtent > 0 ? value / pageExtent : 0) : value;
+    if (frac <= 0 || frac > 1) return null;
+    return frac.toDouble();
+  }
+
+  /// This approver's row in the routing `details` list, if present.
+  Map? get _ownDetailRow {
+    final details = widget.item['details'];
+    if (details is! List || _signerEmployeeId.isEmpty) return null;
+    for (final row in details) {
+      if (row is Map &&
+          row['employee_id']?.toString().trim() == _signerEmployeeId) {
+        return row;
+      }
+    }
+    return null;
+  }
+
+  /// Placement to seed the overlay with, or null to use the hardcoded default.
+  /// Sources are consulted in priority order and each field resolves
+  /// independently, so a partially-configured placement still contributes
+  /// whatever it does define.
+  ({double? x, double? y, double? w, double? h, int? page})?
+  _resolvePlacementPreset() {
+    final row = _ownDetailRow;
+    final effective = row?['effective_sign'];
+    final template = widget.item['template'];
+    // Each entry is (map, keyPrefix): `effective_sign` uses bare names
+    // (x/y/width/page), the detail row prefixes them with `sign_`, and the
+    // template with `default_sign_`.
+    final sources = <(Map, String)>[
+      if (effective is Map) (effective, ''),
+      if (row != null) (row, 'sign_'),
+      if (template is Map) (template, 'default_sign_'),
+    ];
+    if (sources.isEmpty) return null;
+
+    // Page extents are only needed to convert point-based values; fall back to
+    // the first page's size when the current page hasn't been measured yet.
+    final sizes = _pdfPageSizes;
+    final pageW = _pdfPageWidth > 0
+        ? _pdfPageWidth
+        : (sizes != null && sizes.isNotEmpty ? sizes.first.width : 0.0);
+    final pageH = _pdfPageHeight > 0
+        ? _pdfPageHeight
+        : (sizes != null && sizes.isNotEmpty ? sizes.first.height : 0.0);
+
+    double? x, y, w, h;
+    int? page;
+    for (final (map, prefix) in sources) {
+      x ??= _placementFraction(map, '${prefix}x', pageW);
+      y ??= _placementFraction(map, '${prefix}y', pageH);
+      w ??= _placementFraction(map, '${prefix}width', pageW);
+      h ??= _placementFraction(map, '${prefix}height', pageH);
+      if (page == null) {
+        final rawPage = map['${prefix}page'];
+        final parsed = rawPage is num
+            ? rawPage.toInt()
+            : int.tryParse(rawPage?.toString() ?? '');
+        // Stored page numbers are 1-BASED (the web placement UI labels this
+        // signature "PAGE 1"), while _signaturePage / PDFViewController are
+        // 0-based. Convert here so a configured page 1 lands on page 1.
+        if (parsed != null && parsed >= 1) page = parsed - 1;
+      }
+    }
+    if (x == null && y == null && w == null && h == null && page == null) {
+      return null;
+    }
+    return (x: x, y: y, w: w, h: h, page: page);
+  }
+
   void _enterSigningMode() {
     if (_isLoadingSignature) {
       setState(() {
@@ -545,22 +656,33 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       );
       return;
     }
-    final targetPage = _currentPage;
+    final preset = _resolvePlacementPreset();
+    // A configured sign_page pins signing to that page; otherwise signing locks
+    // onto the page the reviewer is currently viewing.
+    final targetPage = (preset?.page ?? _currentPage).clamp(0, _totalPages - 1);
     setState(() {
       _isSigningMode = true;
       _signedAt = DateTime.now();
-      // Lock signing onto the page the reviewer is currently viewing.
       _signaturePage = targetPage;
+      _currentPage = targetPage;
       // Recompute the PDF rect for CONTAIN fit now that we're signing, so the
       // overlay is seeded against the same geometry that gets stamped.
       _applyCurrentPageSize();
       _updatePdfRect();
-      // Default positions (fraction of PDF rect). Start compact so the
-      // signature sits on a signature line without overlapping existing text;
-      // the reviewer can enlarge with the corner handle if needed.
-      _sigFracX = 0.05;
-      _sigFracY = 0.80;
-      _sigFracW = 0.30;
+      // Seed from the routing's configured placement when it has one, else fall
+      // back to a compact default so the signature sits on a signature line
+      // without overlapping existing text; the reviewer can drag/enlarge either
+      // way with the corner handle.
+      _sigFracX = preset?.x ?? 0.05;
+      _sigFracY = preset?.y ?? 0.80;
+      // Width drives the box. If the placement only defines a height, invert
+      // _sigFracHComputed to get the width that yields that height at the
+      // signature's fixed aspect ratio.
+      final presetH = preset?.h;
+      final derivedW = (presetH != null && _pdfRectW > 0)
+          ? (presetH * _kSigAspectRatio * _pdfRectH) / _pdfRectW
+          : null;
+      _sigFracW = (preset?.w ?? derivedW ?? 0.30).clamp(_kMinSigFracW, 1.0);
       _cmtFracX = 0.05;
       _cmtFracY = 0.60;
       _cmtFracW = 0.45;
