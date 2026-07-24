@@ -79,3 +79,8 @@ serviceAccountKey.json
 
 # Firebase hosting deploy cache
 .firebase/
+
+# App Store screenshot working artifacts
+appstore_screenshots/_crop_check.png
+appstore_screenshots/_current.png
+appstore_screenshots/iphone_run.log
