@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../config/app_env.dart';
 import '../../services/api/auth_api.dart';
 import '../../services/biometric_credential_store.dart';
@@ -340,6 +341,22 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     return null;
   }
 
+  // Public web pages opened from the login footer. Both are served by Firebase
+  // Hosting (cleanUrls) from public/privacy.html and public/support.html, and
+  // are the same URLs registered in App Store Connect / Play Console.
+  static final Uri _privacyUrl =
+      Uri.parse('https://eforward.ardentnetworks.com.ph/privacy');
+  static final Uri _supportUrl =
+      Uri.parse('https://eforward.ardentnetworks.com.ph/support');
+
+  /// Opens [url] in the device browser, surfacing a snackbar if it can't launch.
+  Future<void> _openUrl(Uri url) async {
+    final launched = await launchUrl(url, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      AppSnackbar.error(context, 'Could not open $url');
+    }
+  }
+
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -438,6 +455,27 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     _passwordController.dispose();
     _authApi.dispose();
     super.dispose();
+  }
+
+  /// A grey footer text link matching the Forgot Password style, sized to its
+  /// label so two can sit side by side in a centered row without wrapping.
+  Widget _footerLink(String label, {required VoidCallback onPressed}) {
+    return TextButton(
+      onPressed: _isLoading ? null : onPressed,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.black54,
+          fontSize: 12,
+          letterSpacing: 1.5,
+        ),
+      ),
+    );
   }
 
   @override
@@ -697,17 +735,20 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
                       ),
                     ],
 
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
 
-                    // Forgot Password
+                    // Forgot Password — kept directly under the login button,
+                    // its natural place.
                     Center(
                       child: TextButton(
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ForgotPasswordScreen(),
-                          ),
-                        ),
+                        onPressed: _isLoading
+                            ? null
+                            : () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const ForgotPasswordScreen(),
+                                ),
+                              ),
                         child: const Text(
                           "FORGOT PASSWORD",
                           style: TextStyle(
@@ -717,6 +758,65 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
                           ),
                         ),
                       ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // "NEED AN ACCOUNT?" section label with divider rules — sets
+                    // off the support/legal footer from the sign-in actions.
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Divider(
+                            color: Color(0xFFEEEEEE),
+                            thickness: 1,
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: const Text(
+                            "NEED AN ACCOUNT?",
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ),
+                        const Expanded(
+                          child: Divider(
+                            color: Color(0xFFEEEEEE),
+                            thickness: 1,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Contact Support and Privacy Policy side by side, centered
+                    // with a divider between them. Contact Support tells users
+                    // (and App Store reviewers) how to obtain an account, since
+                    // there is no self-signup; Privacy Policy must be reachable
+                    // before login for store review. Both open hosted pages.
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _footerLink(
+                          "CONTACT SUPPORT",
+                          onPressed: () => _openUrl(_supportUrl),
+                        ),
+                        Container(
+                          width: 1,
+                          height: 12,
+                          color: const Color(0xFFDDDDDD),
+                        ),
+                        _footerLink(
+                          "PRIVACY POLICY",
+                          onPressed: () => _openUrl(_privacyUrl),
+                        ),
+                      ],
                     ),
                   ],
                 ),
