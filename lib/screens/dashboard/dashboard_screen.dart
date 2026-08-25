@@ -597,21 +597,30 @@ class _DashboardPageState extends State<DashboardPage> {
 
                     const SizedBox(height: 16),
 
-                    if (_isLoadingPending)
-                      const SizedBox.shrink()
-                    else if (_pendingApprovals.isEmpty)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 24),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          border: Border.all(color: const Color(0xFFE8E8E8)),
-                        ),
-                        child: const AppEmptyState(
-                          icon: Icons.check_circle_outline,
-                          title: "No pending approvals",
-                        ),
-                      )
+                    // Keep the existing cards on screen while a refresh is in
+                    // flight — the RefreshIndicator already signals loading.
+                    // Blanking the list to SizedBox.shrink() mid-refresh is what
+                    // made the card flash out / appear cut off while the scroll
+                    // view was still offset from the pull. Only fall back to the
+                    // loading/empty placeholder when there is genuinely nothing
+                    // to show yet.
+                    if (_pendingApprovals.isEmpty)
+                      _isLoadingPending
+                          ? const SizedBox.shrink()
+                          : Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 24),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                border: Border.all(
+                                  color: const Color(0xFFE8E8E8),
+                                ),
+                              ),
+                              child: const AppEmptyState(
+                                icon: Icons.check_circle_outline,
+                                title: "No pending approvals",
+                              ),
+                            )
                     else
                       ListView.separated(
                         shrinkWrap: true,
