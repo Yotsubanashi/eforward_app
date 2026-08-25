@@ -42,8 +42,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   // Re-lock on resume: when the app is backgrounded/multitasked while a session
   // is active and the unlock toggle is on, require biometrics/PIN to return.
   bool _appLocked = false; // the cover overlay is currently painted
-  bool _requireAuth = false; // the overlay can only be cleared by authenticating
+  bool _requireAuth =
+      false; // the overlay can only be cleared by authenticating
   bool _unlocking = false;
+  AppLifecycleState? _lifecycleState;
   // Cached answer to "should we cover the screen if the app leaves the
   // foreground right now?" (session active + unlock enabled + device can
   // authenticate). Kept current so the overlay can be raised *synchronously* at
@@ -67,6 +69,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lifecycleState = state;
     switch (state) {
       case AppLifecycleState.inactive:
         // Fires *before* iOS captures the app-switcher snapshot. Cover the
@@ -107,7 +110,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   Future<void> _verifyEligibilityAndRaise() async {
     await _refreshLockEligibility();
-    if (!mounted || _unlocking) return;
+    // The async preference/device checks may finish after the app has resumed.
+    // Do not paint a lock screen over already-visible content in that case.
+    if (!mounted ||
+        _unlocking ||
+        _lifecycleState == AppLifecycleState.resumed) {
+      return;
+    }
     if (_lockEligible && !_appLocked) {
       setState(() => _appLocked = true);
     }
