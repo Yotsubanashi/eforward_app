@@ -120,22 +120,27 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   /// On return to the foreground: keep the cover and prompt for authentication
-  /// if the app was really backgrounded, or just drop it if the cover was only
-  /// for a transient interruption. Also refreshes eligibility for next time.
+  /// if the app was really backgrounded (app switcher, or the device being
+  /// locked and woken), or just drop it if the cover was only for a transient
+  /// interruption. Also refreshes eligibility for next time.
   void _handleResume() {
-    if (_appLocked) {
-      if (_requireAuth) {
-        _promptAppUnlock();
-      } else if (mounted) {
-        setState(() => _appLocked = false);
-      }
-    } else {
-      _requireAuth = false;
-    }
     _refreshLockEligibility();
-    // Hand the native cover off to Flutter only after a frame has painted, so
-    // whatever shows underneath (the lock overlay, or the real content when no
-    // lock is required) is already on screen — never a flash of raw content.
+
+    if (_appLocked && _requireAuth) {
+      // Authentication is required. Leave the native cover UP and let
+      // _promptAppUnlock take it down only once auth resolves — otherwise the
+      // cover would come off while Face ID is still prompting and flash the
+      // content underneath (the device power-off/on case).
+      _promptAppUnlock();
+      return;
+    }
+
+    // No auth required (a transient inactive such as Control Center): reveal the
+    // content, then take the native cover down once that frame has painted.
+    if (_appLocked && mounted) {
+      setState(() => _appLocked = false);
+    }
+    _requireAuth = false;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PrivacyCoverService.hideCover();
     });
@@ -157,6 +162,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           _requireAuth = false;
         });
       }
+      await PrivacyCoverService.hideCover();
       return;
     }
     final ok = await SecureUnlockService.authenticate(
@@ -171,6 +177,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         _requireAuth = false;
       });
     }
+    // Authentication has resolved: on success the real content is coming up; on
+    // failure the Flutter lock overlay (with its retry button) must be reachable.
+    // Either way the native cover has done its job — take it down after the next
+    // frame paints so there's never a bare-content flash in between.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      PrivacyCoverService.hideCover();
+    });
   }
 
   void _scheduleInitialVersionCheck() {
