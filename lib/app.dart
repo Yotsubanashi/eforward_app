@@ -72,16 +72,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _lifecycleState = state;
     switch (state) {
       case AppLifecycleState.inactive:
-        // Fires *before* iOS captures the app-switcher snapshot. Cover the
-        // screen now (synchronously) so the preview and the first frame on
-        // reopen never show session content. A bare `inactive` (Control Center,
-        // notification shade) does not by itself demand re-authentication.
-        _raiseLock(requireAuth: false);
-        break;
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
-        // The app was truly backgrounded — the overlay must now stay up until
-        // the user authenticates.
+        // The moment the app leaves the foreground for ANY reason (app switcher,
+        // device lock/power-off, Control Center), cover the screen and require
+        // authentication to return. When biometrics is enabled the unlock screen
+        // must always come up before content is shown again — no exceptions.
         _raiseLock(requireAuth: true);
         break;
       case AppLifecycleState.resumed:
