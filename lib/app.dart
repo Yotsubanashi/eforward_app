@@ -99,17 +99,41 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // that re-arm the lock we're in the middle of clearing.
     if (_unlocking) return;
     if (requireAuth) _requireAuth = true;
-    if (_lockEligible && !_appLocked && mounted) {
+
+    // When the app was truly backgrounded we must avoid any brief flash of
+    // content while the OS handles the device unlock. Raise the Flutter overlay
+    // synchronously in that case so the first frame shown on resume is the lock
+    // screen. If eligibility later proves false (no enrolled biometrics / no
+    // screen lock) we clear the overlay in [_verifyEligibilityAndRaise].
+    if (requireAuth && !_appLocked && mounted) {
+      setState(() => _appLocked = true);
+    } else if (_lockEligible && !_appLocked && mounted) {
       setState(() => _appLocked = true);
     }
+
     _verifyEligibilityAndRaise();
   }
 
   Future<void> _verifyEligibilityAndRaise() async {
     await _refreshLockEligibility();
     if (!mounted || _unlocking) return;
-    if (_lockEligible && !_appLocked) {
-      setState(() => _appLocked = true);
+
+    if (_lockEligible) {
+      if (!_appLocked) setState(() => _appLocked = true);
+      return;
+    }
+
+    // Not eligible to lock (no session or device can't authenticate): make
+    // sure the overlay isn't left blocking the user and remove the native
+    // cover as well so the real content is reachable.
+    if (_appLocked) {
+      setState(() {
+        _appLocked = false;
+        _requireAuth = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        PrivacyCoverService.hideCover();
+      });
     }
   }
 
