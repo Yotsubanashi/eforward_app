@@ -5,11 +5,17 @@ import UIKit
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   // Native privacy cover. A Flutter-drawn overlay can't win the race against the
-  // app-switcher snapshot: iOS captures that snapshot on the platform thread as
-  // the app resigns active, before Flutter's next frame is rasterized, so the
-  // session content leaks into the preview and into the first frame on reopen.
-  // Covering here — driven by the real UIKit lifecycle — is the only reliable
-  // fix. See `_MyAppState` in lib/app.dart for the Dart side of the handshake.
+  // OS snapshot: iOS captures it on the platform thread as the scene resigns
+  // active (app switcher) or when the device is locked, before Flutter's next
+  // frame is rasterized — so session content leaks into the preview and into the
+  // first frame after unlock. Covering here, on the real UIKit lifecycle, is the
+  // only reliable fix. See `_MyAppState` in lib/app.dart for the Dart handshake.
+  //
+  // IMPORTANT: this app uses the UIScene lifecycle (FlutterSceneDelegate is
+  // declared in Info.plist). With a scene delegate present, UIKit does NOT call
+  // the UIApplicationDelegate active/background callbacks, and AppDelegate.window
+  // is nil. So the cover must be driven by the *scene* notifications and attached
+  // to the window found from the scene — not from the app delegate.
   private static let privacyChannelName = "eforward/privacy"
   private var privacyCover: UIView?
   // Flutter tells us whether covering is warranted (session active + unlock
@@ -21,6 +27,7 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    registerSceneLifecycleObservers()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -41,8 +48,9 @@ import UIKit
         if !self.shouldCover { self.hidePrivacyCover() }
         reply(nil)
       case "hideCover":
-        // Flutter's own lock overlay is on screen now, so the native cover can
-        // come down with no content showing in between.
+        // Flutter's own lock overlay is on screen now (or the user has
+        // authenticated), so the native cover can come down with no content
+        // showing in between.
         self.hidePrivacyCover()
         reply(nil)
       default:
@@ -51,30 +59,53 @@ import UIKit
     }
   }
 
-  override func applicationWillResignActive(_ application: UIApplication) {
-    super.applicationWillResignActive(application)
-    // Fires before the snapshot is taken and before the biometric prompt shows,
-    // so this cover hides content in the app switcher and behind Face ID alike.
-    if shouldCover { showPrivacyCover() }
+  // MARK: - Scene lifecycle
+
+  private func registerSceneLifecycleObservers() {
+    let nc = NotificationCenter.default
+    // willDeactivate fires before the OS snapshots the scene (app switcher and
+    // device lock alike) and before a biometric prompt shows — cover here.
+    nc.addObserver(
+      self, selector: #selector(coverForSceneNotification(_:)),
+      name: UIScene.willDeactivateNotification, object: nil)
+    // Belt-and-suspenders: a power-button lock can reach background without a
+    // clean deactivate first, and the app-switcher snapshot is taken here too.
+    nc.addObserver(
+      self, selector: #selector(coverForSceneNotification(_:)),
+      name: UIScene.didEnterBackgroundNotification, object: nil)
+    // On return to the foreground, only drop the cover when covering isn't
+    // warranted; otherwise Flutter removes it via `hideCover` once its lock
+    // overlay has painted or the user has authenticated.
+    nc.addObserver(
+      self, selector: #selector(sceneDidActivate(_:)),
+      name: UIScene.didActivateNotification, object: nil)
   }
 
-  override func applicationDidEnterBackground(_ application: UIApplication) {
-    super.applicationDidEnterBackground(application)
-    // Belt-and-suspenders: the app-switcher snapshot is taken here, and a
-    // power-button lock can reach this without a clean resign-active first.
-    if shouldCover { showPrivacyCover() }
+  @objc private func coverForSceneNotification(_ note: Notification) {
+    if shouldCover { showPrivacyCover(on: note.object as? UIWindowScene) }
   }
 
-  override func applicationDidBecomeActive(_ application: UIApplication) {
-    super.applicationDidBecomeActive(application)
-    // When covering isn't warranted, take the cover straight down. When it is,
-    // leave it up: Flutter removes it via `hideCover` once its lock overlay has
-    // painted, so there's never a frame of exposed content during the handoff.
+  @objc private func sceneDidActivate(_ note: Notification) {
     if !shouldCover { hidePrivacyCover() }
   }
 
-  private func showPrivacyCover() {
-    guard privacyCover == nil, let window = window else { return }
+  /// Resolve the window to cover: prefer the scene from the notification, then
+  /// fall back to any connected foreground window scene.
+  private func coverWindow(preferring scene: UIWindowScene?) -> UIWindow? {
+    if let window = window(in: scene) { return window }
+    for connected in UIApplication.shared.connectedScenes {
+      if let window = window(in: connected as? UIWindowScene) { return window }
+    }
+    return nil
+  }
+
+  private func window(in scene: UIWindowScene?) -> UIWindow? {
+    guard let scene = scene else { return nil }
+    return scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first
+  }
+
+  private func showPrivacyCover(on scene: UIWindowScene?) {
+    guard privacyCover == nil, let window = coverWindow(preferring: scene) else { return }
 
     let cover = UIView(frame: window.bounds)
     cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -93,12 +124,13 @@ import UIKit
     ])
 
     window.addSubview(cover)
+    window.bringSubviewToFront(cover)
     privacyCover = cover
 
     // Critical for the device power-off/on case. On a power-button lock, iOS
-    // captures the window snapshot right at resign-active — before the render
-    // server would normally composite this freshly-added view — and restores
-    // that snapshot when the app returns after the phone is unlocked. Without a
+    // captures the scene snapshot right at deactivate — before the render server
+    // would normally composite this freshly-added view — and restores that
+    // snapshot when the app returns after the phone is unlocked. Without a
     // forced, synchronous commit the snapshot still holds the old content, which
     // flashes for a frame before the live cover paints. Committing the layer
     // tree now guarantees the cover is what gets snapshotted.

@@ -102,7 +102,8 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         ..clear()
         ..addAll(ids);
       _currentUserName = name;
-      if (mounted) setState(() => _currentUserActed = _computeCurrentUserActed());
+      if (mounted)
+        setState(() => _currentUserActed = _computeCurrentUserActed());
     } catch (e) {
       debugPrint('Load current user identity error: $e');
     }
@@ -431,7 +432,10 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       }
       if (response.statusCode >= 200 && response.statusCode < 300) {
         Navigator.pop(dialogContext);
-        setState(() => _isSubmittingRevision = false);
+        setState(() {
+          _isSubmittingRevision = false;
+          _currentUserActed = true;
+        });
         AppSnackbar.success(
           context,
           'Revision request sent successfully',
@@ -476,7 +480,10 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
 
       if (!mounted) return;
       Navigator.pop(dialogContext);
-      setState(() => _isSubmittingAttachmentRequest = false);
+      setState(() {
+        _isSubmittingAttachmentRequest = false;
+        _currentUserActed = true;
+      });
       AppSnackbar.success(
         context,
         'Attachment request sent successfully',
@@ -1419,8 +1426,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         }
       }
     }
-    final full =
-        entry['approver_name'] ?? entry['name'] ?? entry['full_name'];
+    final full = entry['approver_name'] ?? entry['name'] ?? entry['full_name'];
     if (full != null && full.toString().trim().isNotEmpty) {
       return full.toString().trim();
     }
@@ -1440,7 +1446,8 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
               k.contains('approver') ||
               k.contains('signatory') ||
               k.contains('reviewer')) {
-            final id = value['id'] ??
+            final id =
+                value['id'] ??
                 value['employee_id'] ??
                 value['emp_id'] ??
                 value['user_id'];
@@ -1453,7 +1460,8 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         if (value == null) return;
         final v = value.toString().trim();
         if (v.isEmpty) return;
-        final isPersonId = k.contains('id') &&
+        final isPersonId =
+            k.contains('id') &&
             (k.contains('emp') ||
                 k.contains('user') ||
                 k.contains('approver') ||
@@ -1492,10 +1500,31 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     final entry = _currentUserDetail();
     if (entry == null) return false;
     final status = entry['status']?.toString().toUpperCase().trim() ?? '';
+    final action =
+        (entry['action'] ??
+                entry['action_type'] ??
+                entry['last_action'] ??
+                entry['request_type'])
+            ?.toString()
+            .toUpperCase()
+            .trim();
+    final revisionRequested =
+        entry['revision_requested'] == true ||
+        entry['requested_revision'] == true;
+    final attachmentRequested =
+        entry['attachment_requested'] == true ||
+        entry['requested_attachment'] == true;
     if (status.startsWith('APP') ||
         status == 'APV' ||
         status.startsWith('REJ') ||
-        status == 'REJECTED') {
+        status == 'REJECTED' ||
+        status.startsWith('REV') ||
+        status.contains('REVISION') ||
+        status.contains('ATTACHMENT') ||
+        action?.contains('REVISION') == true ||
+        action?.contains('ATTACHMENT') == true ||
+        revisionRequested ||
+        attachmentRequested) {
       return true;
     }
     final actionDate = entry['action_date']?.toString().trim() ?? '';
