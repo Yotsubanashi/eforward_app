@@ -432,10 +432,11 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       }
       if (response.statusCode >= 200 && response.statusCode < 300) {
         Navigator.pop(dialogContext);
-        setState(() {
-          _isSubmittingRevision = false;
-          _currentUserActed = true;
-        });
+        // Requesting a revision does NOT complete this approver's step: once the
+        // requester resubmits, it returns to this approver and the Approve /
+        // Request Revision / Request Attachment actions must appear again. So
+        // don't mark the user as acted here.
+        setState(() => _isSubmittingRevision = false);
         AppSnackbar.success(
           context,
           'Revision request sent successfully',
@@ -480,10 +481,10 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
 
       if (!mounted) return;
       Navigator.pop(dialogContext);
-      setState(() {
-        _isSubmittingAttachmentRequest = false;
-        _currentUserActed = true;
-      });
+      // Same as a revision request: asking for an attachment doesn't finish this
+      // approver's step. It returns here after resubmission, so the actions must
+      // reappear — don't mark the user as acted here.
+      setState(() => _isSubmittingAttachmentRequest = false);
       AppSnackbar.success(
         context,
         'Attachment request sent successfully',
@@ -1500,31 +1501,13 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     final entry = _currentUserDetail();
     if (entry == null) return false;
     final status = entry['status']?.toString().toUpperCase().trim() ?? '';
-    final action =
-        (entry['action'] ??
-                entry['action_type'] ??
-                entry['last_action'] ??
-                entry['request_type'])
-            ?.toString()
-            .toUpperCase()
-            .trim();
-    final revisionRequested =
-        entry['revision_requested'] == true ||
-        entry['requested_revision'] == true;
-    final attachmentRequested =
-        entry['attachment_requested'] == true ||
-        entry['requested_attachment'] == true;
+    // Only a completed approval or rejection finishes this approver's step.
+    // Revision / attachment requests deliberately do NOT count here: the item
+    // returns to this approver after resubmission and the actions must reappear.
     if (status.startsWith('APP') ||
         status == 'APV' ||
         status.startsWith('REJ') ||
-        status == 'REJECTED' ||
-        status.startsWith('REV') ||
-        status.contains('REVISION') ||
-        status.contains('ATTACHMENT') ||
-        action?.contains('REVISION') == true ||
-        action?.contains('ATTACHMENT') == true ||
-        revisionRequested ||
-        attachmentRequested) {
+        status == 'REJECTED') {
       return true;
     }
     final actionDate = entry['action_date']?.toString().trim() ?? '';
