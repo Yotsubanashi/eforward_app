@@ -1,4 +1,5 @@
 import Flutter
+import QuartzCore
 import UIKit
 
 @main
@@ -57,6 +58,13 @@ import UIKit
     if shouldCover { showPrivacyCover() }
   }
 
+  override func applicationDidEnterBackground(_ application: UIApplication) {
+    super.applicationDidEnterBackground(application)
+    // Belt-and-suspenders: the app-switcher snapshot is taken here, and a
+    // power-button lock can reach this without a clean resign-active first.
+    if shouldCover { showPrivacyCover() }
+  }
+
   override func applicationDidBecomeActive(_ application: UIApplication) {
     super.applicationDidBecomeActive(application)
     // When covering isn't warranted, take the cover straight down. When it is,
@@ -86,6 +94,16 @@ import UIKit
 
     window.addSubview(cover)
     privacyCover = cover
+
+    // Critical for the device power-off/on case. On a power-button lock, iOS
+    // captures the window snapshot right at resign-active — before the render
+    // server would normally composite this freshly-added view — and restores
+    // that snapshot when the app returns after the phone is unlocked. Without a
+    // forced, synchronous commit the snapshot still holds the old content, which
+    // flashes for a frame before the live cover paints. Committing the layer
+    // tree now guarantees the cover is what gets snapshotted.
+    cover.layoutIfNeeded()
+    CATransaction.flush()
   }
 
   private func hidePrivacyCover() {
