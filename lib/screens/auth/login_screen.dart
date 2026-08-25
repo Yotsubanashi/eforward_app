@@ -6,6 +6,7 @@ import '../../config/app_env.dart';
 import '../../services/api/auth_api.dart';
 import '../../services/biometric_credential_store.dart';
 import '../../services/notifications/fcm_token_service.dart';
+import '../../services/privacy_cover_service.dart';
 import '../../services/session_service.dart';
 import '../../services/secure_unlock_service.dart';
 import '../../validators/email_validator.dart';
@@ -205,6 +206,9 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       await FCMTokenService.registerToken(userId);
     }
 
+    // Arm the background/app-switcher cover for the new session before entering,
+    // so it protects the first backgrounding without waiting for a resume.
+    await PrivacyCoverService.sync();
     if (!mounted) return false;
     Navigator.pushReplacement(
       context,
@@ -276,6 +280,9 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       await BiometricCredentialStore.saveRefreshToken(refreshToken.toString());
     }
 
+    // Arm the background/app-switcher cover for the new session before entering,
+    // so it protects the first backgrounding without waiting for a resume.
+    await PrivacyCoverService.sync();
     if (!mounted) return;
     Navigator.pushReplacement(
       context,

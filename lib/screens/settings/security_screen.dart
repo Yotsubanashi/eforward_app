@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/app_env.dart';
 import '../../services/api/auth_api.dart';
 import '../../services/biometric_credential_store.dart';
+import '../../services/privacy_cover_service.dart';
 import '../../services/secure_unlock_service.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/eforward_app_bar.dart';
@@ -79,6 +80,8 @@ class _SecurityScreenState extends State<SecurityScreen>
     if (!enabled) {
       await SecureUnlockService.setEnabled(false);
       await BiometricCredentialStore.clear();
+      // Drop the background/app-switcher cover now that the lock is off.
+      await PrivacyCoverService.sync();
       if (!mounted) return;
       setState(() => _biometricEnabled = false);
       return;
@@ -95,6 +98,9 @@ class _SecurityScreenState extends State<SecurityScreen>
     if (!armed) return;
 
     await SecureUnlockService.setEnabled(true);
+    // Arm the background/app-switcher cover immediately so it protects the very
+    // next backgrounding, without waiting for an app resume to refresh it.
+    await PrivacyCoverService.sync();
     if (!mounted) return;
     setState(() => _biometricEnabled = true);
   }

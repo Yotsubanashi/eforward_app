@@ -13,6 +13,7 @@ import 'package:eforward_app/services/session_service.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
 import 'package:eforward_app/services/notifications/fcm_token_service.dart';
 import 'package:eforward_app/services/notifications/notifications_service.dart';
+import 'package:eforward_app/services/privacy_cover_service.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -398,6 +399,10 @@ class _SettingsPageState extends State<SettingsPage> {
       NotificationsService().reset();
 
       debugPrint('✅ Logout successful - FCM token and local session cleared');
+
+      // Session is gone — drop the background/app-switcher cover so the login
+      // screen isn't hidden behind it on the next backgrounding.
+      await PrivacyCoverService.sync();
 
       if (mounted) {
         Navigator.pushReplacement(

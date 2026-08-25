@@ -12,6 +12,7 @@ import 'services/api/auth_api.dart';
 import 'services/app_version_service.dart';
 import 'services/biometric_credential_store.dart';
 import 'services/notifications/fcm_token_service.dart';
+import 'services/privacy_cover_service.dart';
 import 'services/secure_unlock_service.dart';
 import 'services/session_service.dart';
 import 'routes/route_generator.dart';
@@ -40,14 +41,22 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   // Re-lock on resume: when the app is backgrounded/multitasked while a session
   // is active and the unlock toggle is on, require biometrics/PIN to return.
-  bool _appLocked = false;
+  bool _appLocked = false; // the cover overlay is currently painted
+  bool _requireAuth = false; // the overlay can only be cleared by authenticating
   bool _unlocking = false;
+  // Cached answer to "should we cover the screen if the app leaves the
+  // foreground right now?" (session active + unlock enabled + device can
+  // authenticate). Kept current so the overlay can be raised *synchronously* at
+  // `inactive` — before iOS snapshots the screen for the app switcher — with no
+  // async gap for content to leak through.
+  bool _lockEligible = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initDeepLinks();
+    _refreshLockEligibility();
   }
 
   @override
@@ -58,30 +67,78 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _recheckVersionAfterResume();
-      if (_appLocked) _promptAppUnlock();
-    } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden) {
-      _lockIfAuthenticated();
+    switch (state) {
+      case AppLifecycleState.inactive:
+        // Fires *before* iOS captures the app-switcher snapshot. Cover the
+        // screen now (synchronously) so the preview and the first frame on
+        // reopen never show session content. A bare `inactive` (Control Center,
+        // notification shade) does not by itself demand re-authentication.
+        _raiseLock(requireAuth: false);
+        break;
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        // The app was truly backgrounded — the overlay must now stay up until
+        // the user authenticates.
+        _raiseLock(requireAuth: true);
+        break;
+      case AppLifecycleState.resumed:
+        _recheckVersionAfterResume();
+        _handleResume();
+        break;
+      case AppLifecycleState.detached:
+        break;
     }
   }
 
-  /// On leaving the foreground, raise the lock if the user is logged in and has
-  /// the unlock toggle on. The overlay shows immediately so app-switcher
-  /// previews don't leak the session content.
-  Future<void> _lockIfAuthenticated() async {
-    if (_appLocked || _unlocking) return;
-    if (!await SecureUnlockService.isEnabled()) return;
-    // Never raise a lock the device can't clear. Without a screen lock there is
-    // nothing to authenticate against, so the overlay would trap the user in
-    // the app with no way back to their session.
-    if (!await SecureUnlockService.isAvailable()) return;
-    final prefs = await SharedPreferences.getInstance();
-    final hasSession =
-        (prefs.getString(SharedPrefsKeys.accessToken)?.trim() ?? '').isNotEmpty;
-    if (!hasSession || !mounted) return;
-    setState(() => _appLocked = true);
+  /// Cover the screen when leaving the foreground. The cache-based path runs
+  /// synchronously so the overlay is painted before the OS snapshot; an async
+  /// safety net re-checks in case a session was created since the cache was last
+  /// refreshed (e.g. the user just logged in and backgrounded immediately).
+  void _raiseLock({required bool requireAuth}) {
+    // The device auth prompt itself briefly drives the app `inactive`; don't let
+    // that re-arm the lock we're in the middle of clearing.
+    if (_unlocking) return;
+    if (requireAuth) _requireAuth = true;
+    if (_lockEligible && !_appLocked && mounted) {
+      setState(() => _appLocked = true);
+    }
+    _verifyEligibilityAndRaise();
+  }
+
+  Future<void> _verifyEligibilityAndRaise() async {
+    await _refreshLockEligibility();
+    if (!mounted || _unlocking) return;
+    if (_lockEligible && !_appLocked) {
+      setState(() => _appLocked = true);
+    }
+  }
+
+  /// Recompute [_lockEligible] and push the same answer to the native privacy
+  /// cover, keeping the Dart overlay and the native cover on one gate.
+  Future<void> _refreshLockEligibility() async {
+    _lockEligible = await PrivacyCoverService.sync();
+  }
+
+  /// On return to the foreground: keep the cover and prompt for authentication
+  /// if the app was really backgrounded, or just drop it if the cover was only
+  /// for a transient interruption. Also refreshes eligibility for next time.
+  void _handleResume() {
+    if (_appLocked) {
+      if (_requireAuth) {
+        _promptAppUnlock();
+      } else if (mounted) {
+        setState(() => _appLocked = false);
+      }
+    } else {
+      _requireAuth = false;
+    }
+    _refreshLockEligibility();
+    // Hand the native cover off to Flutter only after a frame has painted, so
+    // whatever shows underneath (the lock overlay, or the real content when no
+    // lock is required) is already on screen — never a flash of raw content.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      PrivacyCoverService.hideCover();
+    });
   }
 
   /// Prompt for biometrics/PIN to clear the lock. Stays locked (with a retry
@@ -94,7 +151,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // stranding the user behind a prompt that can never succeed.
     if (!await SecureUnlockService.isAvailable()) {
       _unlocking = false;
-      if (mounted) setState(() => _appLocked = false);
+      if (mounted) {
+        setState(() {
+          _appLocked = false;
+          _requireAuth = false;
+        });
+      }
       return;
     }
     final ok = await SecureUnlockService.authenticate(
@@ -103,7 +165,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     );
     _unlocking = false;
     if (!mounted) return;
-    if (ok.success) setState(() => _appLocked = false);
+    if (ok.success) {
+      setState(() {
+        _appLocked = false;
+        _requireAuth = false;
+      });
+    }
   }
 
   void _scheduleInitialVersionCheck() {
