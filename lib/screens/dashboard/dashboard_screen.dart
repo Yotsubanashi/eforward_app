@@ -415,25 +415,31 @@ class _DashboardPageState extends State<DashboardPage> {
                 await _loadUserData();
                 await _fetchPendingApprovals();
               },
-              child: SingleChildScrollView(
-                // Clamping (not bouncing) physics: on a pull-to-refresh the
-                // RefreshIndicator spinner appears and spins at the top while
-                // the page content stays put — it does NOT slide down with the
-                // finger. That finger-follow translation is what pushed the
-                // Recent Activity card past the bottom edge and let the gray
-                // background show through behind it (napuputol). With clamping,
-                // every card stays fully visible throughout the refresh.
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: ClampingScrollPhysics(),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 20,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Brand Header
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 20,
+                    ),
+                    // Make the scrollable content at least as tall as the
+                    // viewport so the page slides down as one full-height unit
+                    // on a pull-to-refresh. Without this the scroll view only
+                    // wraps the short content, so the Recent Activity card ends
+                    // up flush against the scroll edge and its footer gets cut
+                    // off / covered (napuputol) the moment the page slides —
+                    // even though there is plenty of empty space below it.
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight - 40,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Brand Header
                     Row(
                       children: const [
                         Icon(
@@ -659,9 +665,12 @@ class _DashboardPageState extends State<DashboardPage> {
                         },
                       ),
 
-                    const SizedBox(height: 24),
-                  ],
-                ),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           ),
