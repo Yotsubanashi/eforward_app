@@ -20,4 +20,5 @@ class AppRoutes {
   static const String forgotPassword = '/forgot-password';
   static const String changePassword = '/change-password';
   static const String privacyPolicy = '/privacy-policy';
+  static const String editProfile = '/edit-profile';
 }

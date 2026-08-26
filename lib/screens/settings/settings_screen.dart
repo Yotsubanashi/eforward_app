@@ -5,16 +5,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/screens/auth/change_password_screen.dart';
 import 'package:eforward_app/screens/auth/login_screen.dart';
 import 'package:eforward_app/screens/legal/privacy_policy_screen.dart';
+import 'package:eforward_app/screens/settings/edit_profile_screen.dart';
 import 'package:eforward_app/screens/settings/security_screen.dart';
 import 'package:eforward_app/widgets/bottom_navigator.dart';
-import 'package:eforward_app/screens/notifications/notification_settings_screen.dart';
 import 'package:eforward_app/services/api/auth_api.dart';
 import 'package:eforward_app/services/session_service.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
 import 'package:eforward_app/services/notifications/fcm_token_service.dart';
 import 'package:eforward_app/services/notifications/notifications_service.dart';
 import 'package:eforward_app/services/privacy_cover_service.dart';
-import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -32,7 +31,6 @@ class _SettingsPageState extends State<SettingsPage> {
   String _lastName = '';
   String _email = '';
   String _employeeId = '';
-  String _role = '';
   bool _isLoading = true;
   bool _isLoggingOut = false;
 
@@ -86,7 +84,6 @@ class _SettingsPageState extends State<SettingsPage> {
               userData['employeeId'] ??
               userData['emp_id'] ??
               '';
-          _role = userData['role'] ?? userData['position'] ?? '';
           _isLoading = false;
         });
       } catch (e) {
@@ -96,283 +93,6 @@ class _SettingsPageState extends State<SettingsPage> {
     } else {
       setState(() => _isLoading = false);
     }
-  }
-
-  void _showEditProfileSheet() {
-    final firstNameController = TextEditingController(text: _firstName);
-    final middleNameController = TextEditingController(text: _middleName);
-    final lastNameController = TextEditingController(text: _lastName);
-    bool isSaving = false;
-    bool isSuccess = false;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
-      ),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => Stack(
-          children: [
-            Padding(
-              padding: EdgeInsets.only(
-                left: 24,
-                right: 24,
-                top: 24,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "EDIT PROFILE",
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.5,
-                          color: Color(0xFF1A1A1A),
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: const Icon(
-                          Icons.close,
-                          size: 18,
-                          color: Colors.black45,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Initials Avatar
-                  Center(
-                    child: CircleAvatar(
-                      radius: 45,
-                      backgroundColor: Colors.black,
-                      child: Text(
-                        _initials.isNotEmpty ? _initials : '?',
-                        style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Editable name fields
-                  _buildSheetField("FIRST NAME", firstNameController),
-                  const SizedBox(height: 16),
-                  _buildSheetField("MIDDLE NAME", middleNameController),
-                  const SizedBox(height: 16),
-                  _buildSheetField("LAST NAME", lastNameController),
-                  const SizedBox(height: 16),
-
-                  // Read-only fields
-                  _buildReadOnlyField("EMAIL ADDRESS", _email),
-                  const SizedBox(height: 16),
-                  _buildReadOnlyField("EMPLOYEE ID", _employeeId),
-                  const SizedBox(height: 16),
-                  _buildReadOnlyField("ROLE", _role),
-                  const SizedBox(height: 28),
-
-                  // Save button
-                  Center(
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: isSaving
-                            ? null
-                            : () async {
-                                final newFirst = firstNameController.text
-                                    .trim();
-                                final newMiddle = middleNameController.text
-                                    .trim();
-                                final newLast = lastNameController.text.trim();
-
-                                setSheetState(() => isSaving = true);
-
-                                final prefs =
-                                    await SharedPreferences.getInstance();
-                                final token =
-                                    prefs.getString('access_token') ?? '';
-
-                                final api = AuthApi();
-                                final result = await api.updateProfile(
-                                  token: token,
-                                  employeeId: _employeeId,
-                                  fname: newFirst.isNotEmpty
-                                      ? newFirst
-                                      : _firstName,
-                                  mname: newMiddle.isNotEmpty
-                                      ? newMiddle
-                                      : _middleName,
-                                  lname: newLast.isNotEmpty
-                                      ? newLast
-                                      : _lastName,
-                                );
-
-                                setSheetState(() => isSaving = false);
-
-                                if (result.isSuccess) {
-                                  if (newFirst.isNotEmpty)
-                                    _firstName = newFirst;
-                                  if (newMiddle.isNotEmpty)
-                                    _middleName = newMiddle;
-                                  if (newLast.isNotEmpty) _lastName = newLast;
-
-                                  final userDataStr = prefs.getString(
-                                    'user_data',
-                                  );
-                                  if (userDataStr != null) {
-                                    try {
-                                      final Map<String, dynamic> full =
-                                          jsonDecode(userDataStr);
-                                      // Mutates the nested object in place
-                                      // (data/user/flat) so the write lands at
-                                      // the same level the UI reads from.
-                                      final userData =
-                                          SessionService.normalizeUser(full);
-                                      userData['fname'] = _firstName;
-                                      userData['mname'] = _middleName;
-                                      userData['lname'] = _lastName;
-                                      await prefs.setString(
-                                        'user_data',
-                                        jsonEncode(full),
-                                      );
-                                    } catch (e) {
-                                      debugPrint(
-                                        'Error saving profile cache: $e',
-                                      );
-                                    }
-                                  }
-
-                                  if (mounted) {
-                                    setState(() {});
-                                    Navigator.pop(context);
-                                    AppSnackbar.success(
-                                      context,
-                                      "Your profile has been updated successfully.",
-                                    );
-                                  }
-                                } else {
-                                  if (mounted) {
-                                    AppSnackbar.error(context, result.message);
-                                  }
-                                }
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFCC0000),
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                        child: const Text(
-                          "SAVE CHANGES",
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (isSaving) const LoadingOverlay(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSheetField(String label, TextEditingController controller) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.5,
-            color: Colors.black45,
-          ),
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: controller,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF1A1A1A),
-          ),
-          decoration: const InputDecoration(
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Colors.black26),
-            ),
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Color(0xFFCC0000)),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildReadOnlyField(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.5,
-            color: Colors.black45,
-          ),
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          enabled: false,
-          controller: TextEditingController(
-            text: value.isNotEmpty ? value : '—',
-          ),
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Colors.black38,
-          ),
-          decoration: const InputDecoration(
-            disabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Colors.black12),
-            ),
-            suffixIcon: Icon(
-              Icons.lock_outline,
-              size: 14,
-              color: Colors.black26,
-            ),
-          ),
-        ),
-      ],
-    );
   }
 
   Future<void> _logout() async {
@@ -568,7 +288,17 @@ class _SettingsPageState extends State<SettingsPage> {
                       color: Color(0xFFAAAAAA),
                       size: 20,
                     ),
-                    onTap: _showEditProfileSheet,
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const EditProfileScreen(),
+                        ),
+                      );
+                      if (mounted) {
+                        _loadUserData();
+                      }
+                    },
                   ),
 
                   const Divider(height: 1, color: Color(0xFFEEEEEE)),
