@@ -416,7 +416,16 @@ class _DashboardPageState extends State<DashboardPage> {
                 await _fetchPendingApprovals();
               },
               child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
+                // Clamping (not bouncing) physics: on a pull-to-refresh the
+                // RefreshIndicator spinner appears and spins at the top while
+                // the page content stays put — it does NOT slide down with the
+                // finger. That finger-follow translation is what pushed the
+                // Recent Activity card past the bottom edge and let the gray
+                // background show through behind it (napuputol). With clamping,
+                // every card stays fully visible throughout the refresh.
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: ClampingScrollPhysics(),
+                ),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 20,
                   vertical: 20,
