@@ -823,19 +823,33 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
           behavior: HitTestBehavior.opaque,
           child: Column(
             children: [
-              Container(
-                width: 84,
-                height: 84,
-                decoration: BoxDecoration(
-                  border: Border.all(color: const Color(0xFFCC0000), width: 1.5),
-                  borderRadius: BorderRadius.circular(16),
+              // Face ID uses the iOS-style glyph (corner-bracket frame + face),
+              // shown on its own with no surrounding box — matching the clean
+              // biometric prompt used by banking apps. Fingerprint / PIN keep the
+              // bordered tile since they have proper Material glyphs.
+              if (_unlockMethod == UnlockMethod.face)
+                const SizedBox(
+                  width: 84,
+                  height: 84,
+                  child: CustomPaint(
+                    painter: _FaceIdPainter(color: Color(0xFFCC0000)),
+                  ),
+                )
+              else
+                Container(
+                  width: 84,
+                  height: 84,
+                  decoration: BoxDecoration(
+                    border:
+                        Border.all(color: const Color(0xFFCC0000), width: 1.5),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(
+                    _unlockMethodIcon,
+                    size: 44,
+                    color: const Color(0xFFCC0000),
+                  ),
                 ),
-                child: Icon(
-                  _unlockMethodIcon,
-                  size: 44,
-                  color: const Color(0xFFCC0000),
-                ),
-              ),
               const SizedBox(height: 10),
               Text(
                 "Tap to sign in with $_unlockMethodShortLabel",
@@ -1005,4 +1019,77 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       ],
     );
   }
+}
+
+/// Draws the iOS-style Face ID glyph: a rounded-square frame rendered as four
+/// corner brackets, with two eyes, a nose, and a smile inside — the same mark
+/// banking apps use for their Face ID prompt. Stroked in [color]; sizes itself
+/// to the paint box so it scales with whatever SizedBox wraps it.
+class _FaceIdPainter extends CustomPainter {
+  const _FaceIdPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.shortestSide;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = s * 0.055
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final m = s * 0.06; // outer margin
+    final left = m, top = m, right = s - m, bottom = s - m;
+    final r = s * 0.22; // corner radius
+    final a = s * 0.14; // straight arm beyond each rounded corner
+
+    // Four corner brackets.
+    final corners = Path()
+      // top-left
+      ..moveTo(left, top + r + a)
+      ..lineTo(left, top + r)
+      ..arcToPoint(Offset(left + r, top), radius: Radius.circular(r))
+      ..lineTo(left + r + a, top)
+      // top-right
+      ..moveTo(right - r - a, top)
+      ..lineTo(right - r, top)
+      ..arcToPoint(Offset(right, top + r), radius: Radius.circular(r))
+      ..lineTo(right, top + r + a)
+      // bottom-right
+      ..moveTo(right, bottom - r - a)
+      ..lineTo(right, bottom - r)
+      ..arcToPoint(Offset(right - r, bottom), radius: Radius.circular(r))
+      ..lineTo(right - r - a, bottom)
+      // bottom-left
+      ..moveTo(left + r + a, bottom)
+      ..lineTo(left + r, bottom)
+      ..arcToPoint(Offset(left, bottom - r), radius: Radius.circular(r))
+      ..lineTo(left, bottom - r - a);
+    canvas.drawPath(corners, paint);
+
+    // Eyes — two short vertical strokes.
+    final eyeTop = s * 0.36, eyeBottom = s * 0.47;
+    canvas.drawLine(
+        Offset(s * 0.37, eyeTop), Offset(s * 0.37, eyeBottom), paint);
+    canvas.drawLine(
+        Offset(s * 0.63, eyeTop), Offset(s * 0.63, eyeBottom), paint);
+
+    // Nose — a vertical stroke with a small tail to the right.
+    final nose = Path()
+      ..moveTo(s * 0.5, s * 0.40)
+      ..lineTo(s * 0.5, s * 0.56)
+      ..lineTo(s * 0.57, s * 0.56);
+    canvas.drawPath(nose, paint);
+
+    // Smile — a shallow downward curve.
+    final smile = Path()
+      ..moveTo(s * 0.37, s * 0.64)
+      ..quadraticBezierTo(s * 0.5, s * 0.73, s * 0.63, s * 0.64);
+    canvas.drawPath(smile, paint);
+  }
+
+  @override
+  bool shouldRepaint(_FaceIdPainter oldDelegate) => oldDelegate.color != color;
 }

@@ -79,9 +79,10 @@ const double _kCaptureHeight = 66.0;
 // True aspect ratio of the signature composite widget (image + metadata Row)
 const double _kSigAspectRatio = _kCaptureWidth / _kCaptureHeight; // ≈ 4.52
 
+// The comment capture width is fixed; its height is measured from the actual
+// content at render time (see _cmtCaptureHeight) so the box hugs the text
+// instead of using a fixed aspect ratio that leaves gaps for short remarks.
 const double _kCmtCaptureWidth = 400.0;
-const double _kCmtCaptureHeight = 160.0;
-const double _kCmtAspectRatio = _kCmtCaptureWidth / _kCmtCaptureHeight; // 2.5
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Minimum overlay width as a fraction of the PDF page width.
@@ -222,7 +223,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   double get _sigPixelH => _sigPixelW / _kSigAspectRatio;
 
   double get _cmtPixelW => (_cmtFracW * _pdfRectW).clamp(1, double.infinity);
-  double get _cmtPixelH => _cmtPixelW / _kCmtAspectRatio;
+  double get _cmtPixelH => _cmtPixelW / _cmtAspectRatio;
 
   // Height fraction (of the PDF page) derived directly from the width fraction
   // and the fixed aspect ratio. Because _pdfRect is a uniform scale of the real
@@ -231,7 +232,59 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   double get _sigFracHComputed =>
       (_sigFracW * _pdfRectW) / (_kSigAspectRatio * _pdfRectH);
   double get _cmtFracHComputed =>
-      (_cmtFracW * _pdfRectW) / (_kCmtAspectRatio * _pdfRectH);
+      (_cmtFracW * _pdfRectW) / (_cmtAspectRatio * _pdfRectH);
+
+  // Display name shown in the comment header ("Remarks by : <Name>"), title-cased
+  // from the signer's name. Kept as one source of truth so the measured capture
+  // height and the rendered widget always agree.
+  String get _commentDisplayName => _signerName.isNotEmpty
+      ? _signerName
+          .split(' ')
+          .map((w) => w.isEmpty
+              ? ''
+              : '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}')
+          .join(' ')
+      : 'User';
+
+  // The comment box hugs its content instead of using a fixed aspect ratio, so a
+  // short remark no longer leaves a large empty gap inside the frame. We measure
+  // the header + wrapped remarks at the capture width and derive the height (and
+  // therefore the aspect ratio) from that. Kept in sync with _buildCommentWidget:
+  // same font sizes, padding (12), header/remarks gap (6), and 5-line cap.
+  static const double _kCmtPadding = 12.0;
+  static const double _kCmtHeaderGap = 6.0;
+  static const int _kCmtMaxLines = 5;
+
+  double get _cmtCaptureHeight {
+    final textWidth = _kCmtCaptureWidth - _kCmtPadding * 2;
+    final header = TextPainter(
+      text: TextSpan(
+        text: 'Remarks by : $_commentDisplayName',
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+      ),
+      maxLines: 1,
+      textDirection: TextDirection.ltr,
+      textScaler: TextScaler.noScaling,
+      ellipsis: '…',
+    )..layout(maxWidth: textWidth);
+    final remarks = TextPainter(
+      text: TextSpan(
+        text: _remarks,
+        style: const TextStyle(
+          fontSize: 12.0,
+          fontWeight: FontWeight.w500,
+          height: 1.3,
+        ),
+      ),
+      maxLines: _kCmtMaxLines,
+      textDirection: TextDirection.ltr,
+      textScaler: TextScaler.noScaling,
+      ellipsis: '…',
+    )..layout(maxWidth: textWidth);
+    return _kCmtPadding * 2 + header.height + _kCmtHeaderGap + remarks.height;
+  }
+
+  double get _cmtAspectRatio => _kCmtCaptureWidth / _cmtCaptureHeight;
 
   // ── Remarks ───────────────────────────────────────────────────────────────
   String _remarks = '';
@@ -1233,63 +1286,71 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
   Widget _buildCommentWidget({double? width, double? height}) {
     final w = width ?? _cmtPixelW;
     final h = height ?? _cmtPixelH;
-    final displayName = _signerName.isNotEmpty
-        ? _signerName
-              .split(' ')
-              .map(
-                (w) => w.isEmpty
-                    ? ''
-                    : '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}',
-              )
-              .join(' ')
-        : 'User';
+    // Author the content at the capture width and the CONTENT-DERIVED height
+    // (_cmtCaptureHeight) so the frame hugs the text — a short remark no longer
+    // leaves a large empty gap. The display box shares that same aspect ratio
+    // (_cmtAspectRatio), so BoxFit.fill maps it uniformly with no distortion and
+    // no empty letterbox space, and it scales 1:1 with the drag-to-resize handle.
     return SizedBox(
       width: w,
       height: h,
       child: FittedBox(
-        fit: BoxFit.contain,
-        alignment: Alignment.topLeft,
-        child: Container(
+        fit: BoxFit.fill,
+        child: SizedBox(
           width: _kCmtCaptureWidth,
-          padding: const EdgeInsets.all(10.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              RichText(
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                text: TextSpan(
-                  children: [
-                    const TextSpan(
-                      text: 'Remarks by : ',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF1A1A1A),
+          height: _cmtCaptureHeight,
+          child: Padding(
+            padding: const EdgeInsets.all(_kCmtPadding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.max,
+              children: [
+                RichText(
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  text: TextSpan(
+                    children: [
+                      const TextSpan(
+                        text: 'Remarks by : ',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF1A1A1A),
+                        ),
                       ),
-                    ),
-                    TextSpan(
-                      text: displayName,
+                      TextSpan(
+                        text: _commentDisplayName,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: _kCmtHeaderGap),
+                // The remarks fill the rest of the frame (which is sized to fit
+                // them), wrapping up to _kCmtMaxLines and trailing off with an
+                // ellipsis if longer — so it never overflows past the border.
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: Text(
+                      _remarks,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: _kCmtMaxLines,
                       style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
+                        fontSize: 12.0,
+                        fontWeight: FontWeight.w500,
                         color: Color(0xFF1A1A1A),
+                        height: 1.3,
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                _remarks,
-                style: const TextStyle(
-                  fontSize: 12.0,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF1A1A1A),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1930,10 +1991,10 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
                     key: _commentKey,
                     child: SizedBox(
                       width: _kCmtCaptureWidth,
-                      height: _kCmtCaptureHeight,
+                      height: _cmtCaptureHeight,
                       child: _buildCommentWidget(
                         width: _kCmtCaptureWidth,
-                        height: _kCmtCaptureHeight,
+                        height: _cmtCaptureHeight,
                       ),
                     ),
                   ),
