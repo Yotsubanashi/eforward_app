@@ -416,7 +416,15 @@ class _DashboardPageState extends State<DashboardPage> {
                 await _fetchPendingApprovals();
               },
               child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
+                // Clamping (not bouncing) physics so a pull-to-refresh does not
+                // drag the whole page down with the finger — that translation is
+                // what pushed the Recent Activity card off the bottom edge and
+                // made it look cut off (napuputol) mid-pull. With clamping, the
+                // RefreshIndicator spinner overlays while the content stays put,
+                // so every card remains fully visible during refresh.
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: ClampingScrollPhysics(),
+                ),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 20,
                   vertical: 20,
