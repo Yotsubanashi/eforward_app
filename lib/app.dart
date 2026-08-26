@@ -95,8 +95,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   /// refreshed (e.g. the user just logged in and backgrounded immediately).
   void _raiseLock({required bool requireAuth}) {
     // The device auth prompt itself briefly drives the app `inactive`; don't let
-    // that re-arm the lock we're in the middle of clearing.
-    if (_unlocking) return;
+    // that re-arm the lock we're in the middle of clearing. This covers both our
+    // own unlock (`_unlocking`) and any in-app prompt from the login/settings
+    // screens (2FA verify, the biometric login button, arming the toggle) — all
+    // of which flip the app `inactive` while their OS dialog is up and must not
+    // be mistaken for a real backgrounding.
+    if (_unlocking || SecureUnlockService.isAuthenticating) return;
     if (requireAuth) _requireAuth = true;
     if (_lockEligible && !_appLocked && mounted) {
       setState(() => _appLocked = true);
@@ -107,9 +111,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _verifyEligibilityAndRaise() async {
     await _refreshLockEligibility();
     // The async preference/device checks may finish after the app has resumed.
-    // Do not paint a lock screen over already-visible content in that case.
+    // Do not paint a lock screen over already-visible content in that case, nor
+    // while one of our own device-auth prompts is up (see [_raiseLock]).
     if (!mounted ||
         _unlocking ||
+        SecureUnlockService.isAuthenticating ||
         _lifecycleState == AppLifecycleState.resumed) {
       return;
     }

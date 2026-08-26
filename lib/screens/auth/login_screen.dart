@@ -34,6 +34,51 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   bool _biometricLoginAvailable = false;
   UnlockMethod _unlockMethod = UnlockMethod.pin;
 
+  // The email stored for biometric login, used to drive the UnionBank-style
+  // collapsed view (masked email + a single biometric prompt, no password
+  // field). Null when nothing is enrolled, which falls back to the full form.
+  String? _biometricEmail;
+  // Set when the user taps "Use password instead" from the collapsed view:
+  // force the full email+password form for this session WITHOUT clearing the
+  // enrollment, so a failed Face ID scan still has a way in. Reset on resume.
+  bool _forcePasswordForm = false;
+
+  /// True when the screen should show the collapsed biometric view (masked
+  /// email + biometric prompt) instead of the full login form.
+  bool get _biometricMode =>
+      _biometricLoginAvailable && _biometricEmail != null && !_forcePasswordForm;
+
+  /// Masks the stored email for display, UnionBank-style: keeps the first few
+  /// characters of BOTH the name and the domain and a fixed run of asterisks (so
+  /// the real length isn't leaked), enough for the user to recognise their own
+  /// account without exposing it.
+  /// `ramon.napa@ardentnetworks.com.ph` -> `ramon****@ardent*******`.
+  String _maskEmail(String email) {
+    final at = email.indexOf('@');
+    if (at <= 0) return email;
+    final local = email.substring(0, at);
+    final domain = email.substring(at + 1); // without the '@'
+    final localVisible =
+        local.length <= 5 ? local.substring(0, 1) : local.substring(0, 5);
+    final domainVisible =
+        domain.length <= 6 ? domain.substring(0, 1) : domain.substring(0, 6);
+    return '$localVisible****@$domainVisible*******';
+  }
+
+  /// Initials for the enrolled account, derived from the email's name part.
+  /// `ramon.napa@...` -> `RN`; a single-token name uses its first two letters.
+  String _initialsFor(String email) {
+    final at = email.indexOf('@');
+    final local = (at > 0 ? email.substring(0, at) : email).trim();
+    if (local.isEmpty) return '?';
+    final parts =
+        local.split(RegExp(r'[._\-]+')).where((p) => p.isNotEmpty).toList();
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return (local.length >= 2 ? local.substring(0, 2) : local).toUpperCase();
+  }
+
   final AuthApi _authApi = AuthApi();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -76,10 +121,46 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     final enabled = await SecureUnlockService.isEnabled();
     final available = await SecureUnlockService.isAvailable();
     final method = await SecureUnlockService.resolveMethod();
+    // The email the collapsed view masks. Only read it while unlock is enabled
+    // and the device can still authenticate — otherwise there's no biometric
+    // path to gate it and we fall back to the full form.
+    final email =
+        (enabled && available) ? await BiometricCredentialStore.readEmail() : null;
     if (!mounted) return;
     setState(() {
       _biometricLoginAvailable = enabled && available;
       _unlockMethod = method;
+      _biometricEmail = email;
+    });
+  }
+
+  /// "Use password instead": reveal the full email+password form for this
+  /// session without clearing the enrollment, so a user whose Face ID keeps
+  /// failing can still sign in. The email is prefilled for convenience. Stays on
+  /// the form until the screen is rebuilt fresh (e.g. after a successful login
+  /// and logout), so a brief backgrounding won't discard a half-typed password.
+  void _usePasswordInstead() {
+    if (_biometricEmail != null) _emailController.text = _biometricEmail!;
+    setState(() => _forcePasswordForm = true);
+  }
+
+  /// "Not you? Switch account": clear the biometric enrollment (stored
+  /// credentials, refresh token, and the unlock toggle) so a DIFFERENT user
+  /// logs in fresh without inheriting the previous user's biometric login, then
+  /// show a blank form.
+  Future<void> _switchAccount() async {
+    await BiometricCredentialStore.clear();
+    await SecureUnlockService.setEnabled(false);
+    // The app-switcher cover is tied to an armed unlock; drop it now that the
+    // enrollment is gone so the blank login form isn't covered on background.
+    await PrivacyCoverService.sync();
+    if (!mounted) return;
+    _emailController.clear();
+    _passwordController.clear();
+    setState(() {
+      _biometricLoginAvailable = false;
+      _biometricEmail = null;
+      _forcePasswordForm = false;
     });
   }
 
@@ -485,6 +566,310 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// Shared "FORGOT PASSWORD" link used by both sign-in layouts.
+  Widget _forgotPasswordLink() {
+    return Center(
+      child: TextButton(
+        onPressed: _isLoading
+            ? null
+            : () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ForgotPasswordScreen(),
+                ),
+              ),
+        child: const Text(
+          "FORGOT PASSWORD",
+          style: TextStyle(
+            color: Colors.black54,
+            fontSize: 12,
+            letterSpacing: 1.5,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The full email + password form (default when no biometric enrollment
+  /// exists, or after the user chose "Use password instead" / "Switch account").
+  List<Widget> _buildPasswordSignIn() {
+    return [
+      // Email Field
+      const Text(
+        "EMAIL",
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.5,
+        ),
+      ),
+      const SizedBox(height: 6),
+      TextField(
+        controller: _emailController,
+        keyboardType: TextInputType.emailAddress,
+        decoration: const InputDecoration(
+          hintText: "ENTER EMAIL ADDRESS",
+          hintStyle: TextStyle(color: Colors.black26, fontSize: 12),
+          enabledBorder: UnderlineInputBorder(
+            borderSide: BorderSide(color: Colors.black26),
+          ),
+          focusedBorder: UnderlineInputBorder(
+            borderSide: BorderSide(color: Color(0xFFCC0000)),
+          ),
+        ),
+      ),
+      const SizedBox(height: 24),
+
+      // Password Field
+      const Text(
+        "PASSWORD",
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.5,
+        ),
+      ),
+      const SizedBox(height: 6),
+      TextField(
+        controller: _passwordController,
+        obscureText: _obscurePassword,
+        // Prevent the keyboard's suggestion strip / autocorrect from echoing
+        // the typed characters. Combined with obscureText this keeps the
+        // password fully hidden unless the user taps the eye icon.
+        enableSuggestions: false,
+        autocorrect: false,
+        // Use plain text input. TextInputType.visiblePassword asks the OS
+        // keyboard to render characters unmasked on Android, which defeated
+        // obscureText and briefly showed each typed letter. With plain text,
+        // obscureText fully masks the field to dots.
+        keyboardType: TextInputType.text,
+        decoration: InputDecoration(
+          hintText: "ENTER PASSWORD",
+          hintStyle: const TextStyle(color: Colors.black26, fontSize: 12),
+          suffixIcon: IconButton(
+            icon: Icon(
+              _obscurePassword
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+              color: Colors.black38,
+              size: 20,
+            ),
+            onPressed: () =>
+                setState(() => _obscurePassword = !_obscurePassword),
+          ),
+          enabledBorder: const UnderlineInputBorder(
+            borderSide: BorderSide(color: Colors.black26),
+          ),
+          focusedBorder: const UnderlineInputBorder(
+            borderSide: BorderSide(color: Color(0xFFCC0000)),
+          ),
+        ),
+      ),
+      const SizedBox(height: 20),
+
+      // Remember Me Checkbox — whole row is tappable so the label toggles the
+      // checkbox too (larger, more reliable target).
+      InkWell(
+        onTap: _isLoading
+            ? null
+            : () => setState(() => _rememberMe = !_rememberMe),
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: Checkbox(
+                  value: _rememberMe,
+                  onChanged: _isLoading
+                      ? null
+                      : (val) => setState(() => _rememberMe = val ?? false),
+                  activeColor: const Color(0xFFCC0000),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  side: const BorderSide(color: Colors.black38, width: 1.5),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                "Remember Me",
+                style: TextStyle(color: Colors.black54, fontSize: 15),
+              ),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 20),
+
+      // Login Button
+      SizedBox(
+        width: double.infinity,
+        height: 48,
+        child: ElevatedButton.icon(
+          onPressed: (_isLoading || !_canLogin) ? null : _handleLogin,
+          icon: const Icon(Icons.arrow_forward, color: Colors.white),
+          label: const Text(
+            "LOGIN",
+            style: TextStyle(
+              color: Colors.white,
+              letterSpacing: 2,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFCC0000),
+            disabledBackgroundColor: const Color(0xFFCC0000).withOpacity(0.4),
+            disabledForegroundColor: Colors.white70,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      _forgotPasswordLink(),
+    ];
+  }
+
+  /// The collapsed UnionBank-style view shown when this device has a biometric
+  /// enrollment: the masked account email, a single large biometric prompt, and
+  /// escape hatches to fall back to the password or switch to another account.
+  List<Widget> _buildBiometricSignIn() {
+    return [
+      // Initials avatar, matching the profile screen's style (black circle,
+      // white bold letters).
+      Center(
+        child: CircleAvatar(
+          radius: 44,
+          backgroundColor: Colors.black,
+          child: Text(
+            _initialsFor(_biometricEmail!),
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              letterSpacing: 3,
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(height: 20),
+
+      // The account this device is enrolled to, masked.
+      const Center(
+        child: Text(
+          "SIGN IN AS",
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.5,
+            color: Colors.black45,
+          ),
+        ),
+      ),
+      const SizedBox(height: 8),
+      // Shrink-to-fit so a long email never overflows on a narrow screen.
+      Center(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            _maskEmail(_biometricEmail!),
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Colors.black87,
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(height: 36),
+
+      // Fall back to the password for the SAME account (keeps the enrollment).
+      // A compact outlined button sitting above the biometric prompt.
+      Center(
+        child: SizedBox(
+          width: 280,
+          height: 48,
+          child: OutlinedButton(
+            onPressed: _isLoading ? null : _usePasswordInstead,
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Color(0xFFCC0000), width: 1.5),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            child: const Text(
+              "USE PASSWORD",
+              style: TextStyle(
+                color: Color(0xFFCC0000),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(height: 44),
+
+      // Large biometric prompt — the primary action in this view.
+      Center(
+        child: GestureDetector(
+          onTap: _isLoading ? null : _handleBiometricLogin,
+          behavior: HitTestBehavior.opaque,
+          child: Column(
+            children: [
+              Container(
+                width: 84,
+                height: 84,
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFFCC0000), width: 1.5),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  _unlockMethodIcon,
+                  size: 44,
+                  color: const Color(0xFFCC0000),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                "Tap to sign in with $_unlockMethodShortLabel",
+                style: const TextStyle(
+                  color: Colors.black54,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 40),
+
+      // Hand the device to a DIFFERENT user: clears this enrollment first.
+      Center(
+        child: TextButton(
+          onPressed: _isLoading ? null : _switchAccount,
+          child: const Text(
+            "NOT YOU? SWITCH ACCOUNT",
+            style: TextStyle(
+              color: Color(0xFFCC0000),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -538,293 +923,78 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
                     ),
                     const SizedBox(height: 40),
 
-                    // Email Field
-                    const Text(
-                      "EMAIL",
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        hintText: "ENTER EMAIL ADDRESS",
-                        hintStyle: TextStyle(
-                          color: Colors.black26,
-                          fontSize: 12,
-                        ),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: Colors.black26),
-                        ),
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: Color(0xFFCC0000)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
+                    // The sign-in area swaps between the full email+password
+                    // form and the collapsed UnionBank-style biometric view
+                    // (masked email + a single biometric prompt), depending on
+                    // whether a biometric enrollment exists for this device.
+                    ...(_biometricMode
+                        ? _buildBiometricSignIn()
+                        : _buildPasswordSignIn()),
 
-                    // Password Field
-                    const Text(
-                      "PASSWORD",
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _passwordController,
-                      obscureText: _obscurePassword,
-                      // Prevent the keyboard's suggestion strip / autocorrect
-                      // from echoing the typed characters. Combined with
-                      // obscureText this keeps the password fully hidden unless
-                      // the user taps the eye icon.
-                      enableSuggestions: false,
-                      autocorrect: false,
-                      // Use plain text input. TextInputType.visiblePassword
-                      // asks the OS keyboard to render characters unmasked on
-                      // Android, which defeated obscureText and briefly showed
-                      // each typed letter. With plain text, obscureText fully
-                      // masks the field to dots.
-                      keyboardType: TextInputType.text,
-                      decoration: InputDecoration(
-                        hintText: "ENTER PASSWORD",
-                        hintStyle: const TextStyle(
-                          color: Colors.black26,
-                          fontSize: 12,
-                        ),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_off_outlined
-                                : Icons.visibility_outlined,
-                            color: Colors.black38,
-                            size: 20,
-                          ),
-                          onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword,
-                          ),
-                        ),
-                        enabledBorder: const UnderlineInputBorder(
-                          borderSide: BorderSide(color: Colors.black26),
-                        ),
-                        focusedBorder: const UnderlineInputBorder(
-                          borderSide: BorderSide(color: Color(0xFFCC0000)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Remember Me Checkbox — whole row is tappable so the label
-                    // toggles the checkbox too (larger, more reliable target).
-                    InkWell(
-                      onTap: _isLoading
-                          ? null
-                          : () => setState(() => _rememberMe = !_rememberMe),
-                      borderRadius: BorderRadius.circular(4),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: Checkbox(
-                                value: _rememberMe,
-                                onChanged: _isLoading
-                                    ? null
-                                    : (val) => setState(
-                                        () => _rememberMe = val ?? false,
-                                      ),
-                                activeColor: const Color(0xFFCC0000),
-                                materialTapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                                side: const BorderSide(
-                                  color: Colors.black38,
-                                  width: 1.5,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(3),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            const Text(
-                              "Remember Me",
-                              style: TextStyle(
-                                color: Colors.black54,
-                                fontSize: 15,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Login Button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton.icon(
-                        onPressed: (_isLoading || !_canLogin)
-                            ? null
-                            : _handleLogin,
-                        icon: const Icon(
-                          Icons.arrow_forward,
-                          color: Colors.white,
-                        ),
-                        label: const Text(
-                          "LOGIN",
-                          style: TextStyle(
-                            color: Colors.white,
-                            letterSpacing: 2,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFCC0000),
-                          disabledBackgroundColor: const Color(
-                            0xFFCC0000,
-                          ).withOpacity(0.4),
-                          disabledForegroundColor: Colors.white70,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Biometric login — a tappable Face ID / Fingerprint / PIN
-                    // icon shown whenever the unlock toggle is on (UnionBank
-                    // style). The icon follows the device's enrolled method.
-                    if (_biometricLoginAvailable) ...[
+                    // Support/legal footer — shown only on the full login form.
+                    // The collapsed biometric view stays minimal (UnionBank
+                    // style): the enrolled user doesn't need "need an account".
+                    if (!_biometricMode) ...[
                       const SizedBox(height: 24),
-                      Center(
-                        child: GestureDetector(
-                          onTap: _isLoading ? null : _handleBiometricLogin,
-                          behavior: HitTestBehavior.opaque,
-                          child: Column(
-                            children: [
-                              Container(
-                                width: 60,
-                                height: 60,
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: const Color(0xFFCC0000),
-                                    width: 1.5,
-                                  ),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Icon(
-                                  _unlockMethodIcon,
-                                  size: 30,
-                                  color: const Color(0xFFCC0000),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _unlockMethodShortLabel,
-                                style: const TextStyle(
-                                  color: Colors.black54,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.3,
-                                ),
-                              ),
-                            ],
+
+                      // "NEED AN ACCOUNT?" section label with divider rules —
+                      // sets off the support/legal footer from the sign-in
+                      // actions.
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Divider(
+                              color: Color(0xFFEEEEEE),
+                              thickness: 1,
+                            ),
                           ),
-                        ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: const Text(
+                              "NEED AN ACCOUNT?",
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                          ),
+                          const Expanded(
+                            child: Divider(
+                              color: Color(0xFFEEEEEE),
+                              thickness: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Contact Support and Privacy Policy side by side, centered
+                      // with a divider between them. Contact Support tells users
+                      // (and App Store reviewers) how to obtain an account, since
+                      // there is no self-signup; Privacy Policy must be reachable
+                      // before login for store review. Both open hosted pages.
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _footerLink(
+                            "CONTACT SUPPORT",
+                            onPressed: () => _openUrl(_supportUrl),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 12,
+                            color: const Color(0xFFDDDDDD),
+                          ),
+                          _footerLink(
+                            "PRIVACY POLICY",
+                            onPressed: () => _openUrl(_privacyUrl),
+                          ),
+                        ],
                       ),
                     ],
-
-                    const SizedBox(height: 16),
-
-                    // Forgot Password — kept directly under the login button,
-                    // its natural place.
-                    Center(
-                      child: TextButton(
-                        onPressed: _isLoading
-                            ? null
-                            : () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const ForgotPasswordScreen(),
-                                ),
-                              ),
-                        child: const Text(
-                          "FORGOT PASSWORD",
-                          style: TextStyle(
-                            color: Colors.black54,
-                            fontSize: 12,
-                            letterSpacing: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // "NEED AN ACCOUNT?" section label with divider rules — sets
-                    // off the support/legal footer from the sign-in actions.
-                    Row(
-                      children: [
-                        const Expanded(
-                          child: Divider(
-                            color: Color(0xFFEEEEEE),
-                            thickness: 1,
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: const Text(
-                            "NEED AN ACCOUNT?",
-                            style: TextStyle(
-                              color: Colors.black,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                        ),
-                        const Expanded(
-                          child: Divider(
-                            color: Color(0xFFEEEEEE),
-                            thickness: 1,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // Contact Support and Privacy Policy side by side, centered
-                    // with a divider between them. Contact Support tells users
-                    // (and App Store reviewers) how to obtain an account, since
-                    // there is no self-signup; Privacy Policy must be reachable
-                    // before login for store review. Both open hosted pages.
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _footerLink(
-                          "CONTACT SUPPORT",
-                          onPressed: () => _openUrl(_supportUrl),
-                        ),
-                        Container(
-                          width: 1,
-                          height: 12,
-                          color: const Color(0xFFDDDDDD),
-                        ),
-                        _footerLink(
-                          "PRIVACY POLICY",
-                          onPressed: () => _openUrl(_privacyUrl),
-                        ),
-                      ],
-                    ),
                   ],
                 ),
               ),

@@ -43,6 +43,19 @@ class SecureUnlockService {
   static const String twoFactorEnabledKey = 'two_factor_enabled';
   static final LocalAuthentication _localAuth = LocalAuthentication();
 
+  // How many device-auth prompts we currently have open. Any in-app call to
+  // [authenticate] (biometric login, 2FA verify, arming the toggle) makes the OS
+  // briefly drive the app `inactive` while its dialog is up — which the app-lock
+  // in app.dart would otherwise misread as a real backgrounding and fire a
+  // SECOND prompt on resume. app.dart checks [isAuthenticating] to suppress the
+  // re-lock for exactly that window. A counter (not a bool) so the nested retry
+  // in [authenticate] doesn't clear the flag while an outer prompt is still up.
+  static int _authInFlight = 0;
+
+  /// True while at least one in-app device-auth prompt is on screen. Used by the
+  /// app-lock to tell its own prompts apart from a genuine backgrounding.
+  static bool get isAuthenticating => _authInFlight > 0;
+
   static Future<bool> isEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(biometricEnabledKey) ?? false;
@@ -146,6 +159,10 @@ class SecureUnlockService {
     required bool biometricOnly,
     String reason = 'Authenticate to continue to your account',
   }) async {
+    // Mark an in-app prompt as open for its whole lifetime so the app-lock
+    // doesn't treat the OS dialog's `inactive` blip as a backgrounding. Cleared
+    // in the matching finally, including on the retry path below.
+    _authInFlight++;
     try {
       final ok = await _localAuth.authenticate(
         localizedReason: reason,
@@ -176,6 +193,14 @@ class SecureUnlockService {
       }
 
       return UnlockResult.failure(_messageForCode(e.code));
+    } finally {
+      // Keep the guard up briefly after the dialog closes: the `resumed`
+      // lifecycle event can arrive a beat AFTER the authenticate() future
+      // completes, and clearing the flag synchronously would let that late
+      // resume trip the re-lock. The short delay covers that hand-off.
+      Future<void>.delayed(const Duration(milliseconds: 600), () {
+        if (_authInFlight > 0) _authInFlight--;
+      });
     }
   }
 
