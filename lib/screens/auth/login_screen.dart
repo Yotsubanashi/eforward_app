@@ -739,144 +739,169 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   /// enrollment: the masked account email, a single large biometric prompt, and
   /// escape hatches to fall back to the password or switch to another account.
   List<Widget> _buildBiometricSignIn() {
+    const brand = Color(0xFFCC0000);
+
     return [
-      // Initials avatar, matching the profile screen's style (black circle,
-      // white bold letters).
-      Center(
-        child: CircleAvatar(
-          radius: 44,
-          backgroundColor: Colors.black,
-          child: Text(
-            _initialsFor(_biometricEmail!),
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-              letterSpacing: 3,
-            ),
-          ),
+      // Identity card — avatar, "SIGNED IN AS" label, and the masked email
+      // grouped in a soft grey panel so they read as one unit rather than
+      // three loose centered rows.
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 18),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7F7F8),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFECECEC)),
         ),
-      ),
-      const SizedBox(height: 20),
-
-      // The account this device is enrolled to, masked.
-      const Center(
-        child: Text(
-          "SIGN IN AS",
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1.5,
-            color: Colors.black45,
-          ),
-        ),
-      ),
-      const SizedBox(height: 8),
-      // Shrink-to-fit so a long email never overflows on a narrow screen.
-      Center(
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            _maskEmail(_biometricEmail!),
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Colors.black87,
-            ),
-          ),
-        ),
-      ),
-      const SizedBox(height: 36),
-
-      // Fall back to the password for the SAME account (keeps the enrollment).
-      // A compact outlined button sitting above the biometric prompt.
-      Center(
-        child: SizedBox(
-          width: 280,
-          height: 48,
-          child: OutlinedButton(
-            onPressed: _isLoading ? null : _usePasswordInstead,
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Color(0xFFCC0000), width: 1.5),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(4),
+        child: Column(
+          children: [
+            // Initials avatar, matching the profile screen's style (black
+            // circle, white bold letters).
+            CircleAvatar(
+              radius: 34,
+              backgroundColor: Colors.black,
+              child: Text(
+                _initialsFor(_biometricEmail!),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: 2,
+                ),
               ),
             ),
-            child: const Text(
-              "USE PASSWORD",
+            const SizedBox(height: 12),
+            const Text(
+              "SIGNED IN AS",
               style: TextStyle(
-                color: Color(0xFFCC0000),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
                 letterSpacing: 1.5,
+                color: Colors.black38,
               ),
             ),
-          ),
+            const SizedBox(height: 4),
+            // Shrink-to-fit so a long email never overflows on a narrow screen.
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                _maskEmail(_biometricEmail!),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
-      const SizedBox(height: 44),
+      const SizedBox(height: 32),
 
-      // Large biometric prompt — the primary action in this view.
+      // Large biometric prompt — the hero action in this view. The glyph sits
+      // inside two concentric tinted circles (a soft red halo) so it reads as
+      // the primary, tappable target.
       Center(
         child: GestureDetector(
           onTap: _isLoading ? null : _handleBiometricLogin,
           behavior: HitTestBehavior.opaque,
           child: Column(
             children: [
-              // Face ID uses the iOS-style glyph (corner-bracket frame + face),
-              // shown on its own with no surrounding box — matching the clean
-              // biometric prompt used by banking apps. Fingerprint / PIN keep the
-              // bordered tile since they have proper Material glyphs.
-              if (_unlockMethod == UnlockMethod.face)
-                const SizedBox(
-                  width: 84,
-                  height: 84,
-                  child: CustomPaint(
-                    painter: _FaceIdPainter(color: Color(0xFFCC0000)),
-                  ),
-                )
-              else
-                Container(
-                  width: 84,
-                  height: 84,
-                  decoration: BoxDecoration(
-                    border:
-                        Border.all(color: const Color(0xFFCC0000), width: 1.5),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Icon(
-                    _unlockMethodIcon,
-                    size: 44,
-                    color: const Color(0xFFCC0000),
+              Container(
+                width: 104,
+                height: 104,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0x0FCC0000), // ~6% brand
+                ),
+                child: Center(
+                  child: Container(
+                    width: 78,
+                    height: 78,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Color(0x1ACC0000), // ~10% brand
+                    ),
+                    child: Center(
+                      // Face ID uses the iOS-style glyph (corner-bracket frame
+                      // + face); fingerprint / PIN use their Material glyph.
+                      child: _unlockMethod == UnlockMethod.face
+                          ? const SizedBox(
+                              width: 46,
+                              height: 46,
+                              child: CustomPaint(
+                                painter: _FaceIdPainter(color: brand),
+                              ),
+                            )
+                          : Icon(
+                              _unlockMethodIcon,
+                              size: 44,
+                              color: brand,
+                            ),
+                    ),
                   ),
                 ),
-              const SizedBox(height: 10),
+              ),
+              const SizedBox(height: 14),
               Text(
-                "Tap to sign in with $_unlockMethodShortLabel",
+                "Sign in with $_unlockMethodShortLabel",
                 style: const TextStyle(
-                  color: Colors.black54,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.3,
+                  color: Colors.black87,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              const SizedBox(height: 3),
+              const Text(
+                "Tap the icon to continue",
+                style: TextStyle(
+                  color: Colors.black45,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
           ),
         ),
       ),
-      const SizedBox(height: 40),
+      const SizedBox(height: 28),
 
-      // Hand the device to a DIFFERENT user: clears this enrollment first.
+      // Secondary action: fall back to the password for the SAME account
+      // (keeps the enrollment). Demoted to a quiet text link below the hero,
+      // set off by a hairline rule.
+      const Divider(color: Color(0xFFF0F0F0), thickness: 1),
+      Center(
+        child: TextButton(
+          onPressed: _isLoading ? null : _usePasswordInstead,
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+          ),
+          child: const Text(
+            "USE PASSWORD INSTEAD",
+            style: TextStyle(
+              color: brand,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1,
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(height: 8),
+
+      // Rarest, most destructive action — hand the device to a DIFFERENT user
+      // (clears this enrollment first). Kept the quietest.
       Center(
         child: TextButton(
           onPressed: _isLoading ? null : _switchAccount,
           child: const Text(
             "NOT YOU? SWITCH ACCOUNT",
             style: TextStyle(
-              color: Color(0xFFCC0000),
-              fontSize: 12,
+              color: Colors.black38,
+              fontSize: 11,
               fontWeight: FontWeight.w600,
-              letterSpacing: 1.2,
+              letterSpacing: 0.8,
             ),
           ),
         ),
