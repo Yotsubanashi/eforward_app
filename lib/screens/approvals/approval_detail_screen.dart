@@ -1510,6 +1510,18 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         status == 'REJECTED') {
       return true;
     }
+    // The step is (again) awaiting THIS approver — e.g. the requester resubmitted
+    // after a revision request, so the row is back to pending/open. That row can
+    // still carry an action_date from the earlier revision request, so we must
+    // NOT treat a populated action_date as "acted" here, otherwise the Approve /
+    // Request Revision / Request Attachment buttons stay hidden and the approver
+    // can never sign off on the resubmitted item.
+    if (status.startsWith('PEND') ||
+        status == 'PND' ||
+        status.startsWith('OPEN') ||
+        status == 'OPN') {
+      return false;
+    }
     final actionDate = entry['action_date']?.toString().trim() ?? '';
     if (actionDate.isNotEmpty && actionDate != 'null') return true;
     return false;
