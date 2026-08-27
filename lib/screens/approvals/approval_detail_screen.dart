@@ -798,27 +798,57 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     return url.isNotEmpty && !hasFile;
   }
 
-  /// Resolves the external URL from a link attachment across the field names
-  /// the backend may use.
+  /// Resolves the external URL from a link attachment. Tries the known field
+  /// names first, then falls back to scanning every value in the entry for
+  /// something that looks like a URL — so the destination opens regardless of
+  /// exactly which key the backend uses.
   String _getAttachmentLinkUrl(Map<String, dynamic> attachment) {
     for (final key in const [
       'url',
       'link',
       'link_url',
+      'linkUrl',
       'file_url',
+      'fileUrl',
       'href',
       'document_url',
+      'documentUrl',
+      'external_link',
+      'externalLink',
+      'reference_link',
+      'value',
       'path',
     ]) {
       final value = attachment[key]?.toString().trim() ?? '';
-      if (value.isNotEmpty && value != 'null') return value;
+      if (_looksLikeUrl(value)) return value;
+    }
+    // Fallback: scan all string-ish values for a URL-looking one.
+    for (final entry in attachment.entries) {
+      final value = entry.value?.toString().trim() ?? '';
+      if (_looksLikeUrl(value)) return value;
     }
     return '';
+  }
+
+  bool _looksLikeUrl(String value) {
+    if (value.isEmpty || value == 'null') return false;
+    final lower = value.toLowerCase();
+    if (lower.startsWith('http://') || lower.startsWith('https://')) {
+      return true;
+    }
+    if (lower.startsWith('www.')) return true;
+    // Bare domain like "system.netsuite.com/..." — has a dot, no spaces, and a
+    // recognisable TLD-ish segment.
+    if (!value.contains(' ') && RegExp(r'^[\w-]+\.[\w.-]+').hasMatch(value)) {
+      return true;
+    }
+    return false;
   }
 
   Future<void> _openLinkAttachment(Map<String, dynamic> attachment) async {
     final rawUrl = _getAttachmentLinkUrl(attachment);
     if (rawUrl.isEmpty) {
+      debugPrint('LINK ATTACHMENT HAS NO URL. Raw entry: $attachment');
       if (mounted) {
         AppSnackbar.error(context, 'This link has no destination URL.');
       }
