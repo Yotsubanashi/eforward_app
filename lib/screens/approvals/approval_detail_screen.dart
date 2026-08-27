@@ -9,6 +9,7 @@ import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:eforward_app/config/app_env.dart';
 import 'package:eforward_app/utils/manila_time.dart';
@@ -766,11 +767,73 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       if (files is List) {
         return files
             .whereType<Map<String, dynamic>>()
-            .where((f) => f['file_type']?.toString() == 'DOC')
+            // Supporting documents = everything the requester attached. This
+            // includes uploaded files (file_type == 'DOC') AND external URL
+            // links added via "Add Link" on the web (e.g. NetSuite), which
+            // carry a link/url field or a link-style file_type. The system
+            // files used for signing (HEAD = document to sign, SIGNED = the
+            // signed output) are excluded — they render in their own section.
+            .where((f) {
+              final type = (f['file_type']?.toString() ?? '').toUpperCase();
+              if (type == 'HEAD' || type == 'SIGNED') return false;
+              return type == 'DOC' || _isLinkAttachment(f);
+            })
             .toList();
       }
     }
     return [];
+  }
+
+  /// An external link attachment (as opposed to an uploaded file). Detected by
+  /// a link-style file_type or the presence of a URL field with no downloadable
+  /// file backing it.
+  bool _isLinkAttachment(Map<String, dynamic> attachment) {
+    final type = (attachment['file_type']?.toString() ?? '').toUpperCase();
+    if (type == 'LINK' || type == 'URL' || type == 'DOCUMENT_LINK') {
+      return true;
+    }
+    final url = _getAttachmentLinkUrl(attachment);
+    final hasFile =
+        (attachment['file_id']?.toString().trim().isNotEmpty ?? false);
+    return url.isNotEmpty && !hasFile;
+  }
+
+  /// Resolves the external URL from a link attachment across the field names
+  /// the backend may use.
+  String _getAttachmentLinkUrl(Map<String, dynamic> attachment) {
+    for (final key in const [
+      'url',
+      'link',
+      'link_url',
+      'file_url',
+      'href',
+      'document_url',
+      'path',
+    ]) {
+      final value = attachment[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty && value != 'null') return value;
+    }
+    return '';
+  }
+
+  Future<void> _openLinkAttachment(Map<String, dynamic> attachment) async {
+    final rawUrl = _getAttachmentLinkUrl(attachment);
+    if (rawUrl.isEmpty) {
+      if (mounted) {
+        AppSnackbar.error(context, 'This link has no destination URL.');
+      }
+      return;
+    }
+    final normalized = rawUrl.startsWith('http') ? rawUrl : 'https://$rawUrl';
+    final uri = Uri.tryParse(normalized);
+    if (uri == null) {
+      if (mounted) AppSnackbar.error(context, 'Invalid link URL.');
+      return;
+    }
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      AppSnackbar.error(context, 'Could not open the link.');
+    }
   }
 
   List<Map<String, dynamic>> _getDocumentLinkFiles(Map<String, dynamic> link) {
@@ -1912,10 +1975,18 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                           )
                         else
                           ..._getAttachmentFiles().map((attachment) {
+                            final isLink = _isLinkAttachment(attachment);
+                            final linkUrl = isLink
+                                ? _getAttachmentLinkUrl(attachment)
+                                : '';
                             final name =
                                 attachment['original_name'] ??
                                 attachment['file_name'] ??
-                                'Document';
+                                attachment['name'] ??
+                                (isLink ? 'Link' : 'Document');
+                            final subtitle = isLink
+                                ? (linkUrl.isNotEmpty ? linkUrl : 'External link')
+                                : _getFileTypeDisplayName(name.toString());
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 12),
                               child: Row(
@@ -1929,9 +2000,11 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                       ).withOpacity(0.08),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
-                                    child: const Icon(
-                                      Icons.picture_as_pdf_outlined,
-                                      color: Color(0xFFCC0000),
+                                    child: Icon(
+                                      isLink
+                                          ? Icons.link_rounded
+                                          : Icons.picture_as_pdf_outlined,
+                                      color: const Color(0xFFCC0000),
                                       size: 20,
                                     ),
                                   ),
@@ -1942,7 +2015,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          name,
+                                          name.toString(),
                                           style: const TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w700,
@@ -1952,28 +2025,31 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          _getFileTypeDisplayName(
-                                            name.toString(),
-                                          ),
+                                          subtitle,
                                           style: const TextStyle(
                                             fontSize: 10,
                                             color: Colors.black38,
                                           ),
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ],
                                     ),
                                   ),
                                   const SizedBox(width: 8),
                                   GestureDetector(
-                                    onTap: () => _viewAttachment(attachment),
+                                    onTap: () => isLink
+                                        ? _openLinkAttachment(attachment)
+                                        : _viewAttachment(attachment),
                                     child: Container(
                                       padding: const EdgeInsets.all(8),
                                       decoration: BoxDecoration(
                                         color: const Color(0xFFCC0000),
                                         borderRadius: BorderRadius.circular(4),
                                       ),
-                                      child: const Icon(
-                                        Icons.visibility_outlined,
+                                      child: Icon(
+                                        isLink
+                                            ? Icons.open_in_new_rounded
+                                            : Icons.visibility_outlined,
                                         color: Colors.white,
                                         size: 16,
                                       ),
