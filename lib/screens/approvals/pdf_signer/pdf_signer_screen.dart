@@ -710,9 +710,14 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
       return;
     }
     final preset = _resolvePlacementPreset();
-    // A configured sign_page pins signing to that page; otherwise signing locks
-    // onto the page the reviewer is currently viewing.
-    final targetPage = (preset?.page ?? _currentPage).clamp(0, _totalPages - 1);
+    // Sign on the page the reviewer is actually viewing. They scroll to the
+    // page they want and tap SIGN, so their navigation is the source of truth
+    // for WHICH page gets signed. A backend/template-configured placement only
+    // seeds the signature's position/size (x/y/width/height) below — it must
+    // NOT override the chosen page. (Previously a configured sign_page would
+    // snap signing back to e.g. page 1 even after the reviewer scrolled to
+    // page 3.)
+    final targetPage = _currentPage.clamp(0, _totalPages - 1);
     setState(() {
       _isSigningMode = true;
       _signedAt = DateTime.now();
