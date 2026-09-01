@@ -239,7 +239,7 @@ Future<bool> showForceUpdateDialog({
         child: _ForceUpdateCard(
           remote: remote,
           current: current,
-          onUpdate: (setProgress) async {
+          onUpdate: () async {
             final svc = AppVersionService();
             try {
               // On Android, download the APK and hand it to the system
@@ -248,7 +248,6 @@ Future<bool> showForceUpdateDialog({
               if (Platform.isAndroid) {
                 final result = await svc.downloadAndInstallApk(
                   remote.downloadUrl,
-                  onProgress: setProgress,
                 );
 
                 if (result == AppInstallResult.installLaunched) {
@@ -311,8 +310,7 @@ class _ForceUpdateCard extends StatefulWidget {
 
   final AppVersionInfo remote;
   final AppComparableVersion current;
-  final Future<void> Function(void Function(double progress) setProgress)
-      onUpdate;
+  final Future<void> Function() onUpdate;
 
   @override
   State<_ForceUpdateCard> createState() => _ForceUpdateCardState();
@@ -320,25 +318,14 @@ class _ForceUpdateCard extends StatefulWidget {
 
 class _ForceUpdateCardState extends State<_ForceUpdateCard> {
   bool _busy = false;
-  double? _progress;
 
   Future<void> _handleUpdate() async {
     if (_busy) return;
-    setState(() {
-      _busy = true;
-      _progress = null;
-    });
+    setState(() => _busy = true);
     try {
-      await widget.onUpdate((p) {
-        if (mounted) setState(() => _progress = p.clamp(0.0, 1.0));
-      });
+      await widget.onUpdate();
     } finally {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _progress = null;
-        });
-      }
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -449,28 +436,14 @@ class _ForceUpdateCardState extends State<_ForceUpdateCard> {
                         ),
                       ),
                       child: _busy
-                          ? Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                SizedBox(
-                                  height: 22,
-                                  width: 22,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.4,
-                                    value: _progress,
-                                    valueColor:
-                                        const AlwaysStoppedAnimation<Color>(
-                                      Colors.white,
-                                    ),
-                                  ),
-                                ),
-                                if (_progress != null) ...[
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    'Downloading ${(_progress! * 100).round()}%',
-                                  ),
-                                ],
-                              ],
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.4,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
                             )
                           : const Text('Update Now'),
                     ),

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
@@ -226,6 +227,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   Future<void> _enforceLatestVersionIfNeeded({bool fromResume = false}) async {
+    // The force-update flow ships the update as a direct APK, so it applies to
+    // Android only. iOS must never see this dialog.
+    if (!Platform.isAndroid) return;
     if (_versionUpToDate || _versionDialogVisible || _versionCheckInProgress) {
       return;
     }
