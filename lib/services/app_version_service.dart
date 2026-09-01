@@ -5,7 +5,10 @@ import 'dart:io';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:open_file/open_file.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:eforward_app/config/app_env.dart';
@@ -112,9 +115,104 @@ class AppVersionService {
     return launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
+  /// Downloads the APK at [url] and hands it to the Android package installer.
+  ///
+  /// This is what actually replaces the app on Android. The previous behaviour
+  /// only opened the URL in a browser, which downloaded the file but never
+  /// installed it — so the update never happened and the force-update gate kept
+  /// re-appearing in an endless loop.
+  ///
+  /// Returns [AppInstallResult.installLaunched] when the system installer was
+  /// opened. Callers should fall back to [launchDownload] on any other result.
+  Future<AppInstallResult> downloadAndInstallApk(
+    Uri url, {
+    void Function(double progress)? onProgress,
+  }) async {
+    if (!Platform.isAndroid) return AppInstallResult.unsupported;
+
+    // Android 8+ requires the user to allow "install unknown apps" for this app
+    // before the installer can run. Ask for it up front; without it the install
+    // intent silently fails and the loop would continue.
+    try {
+      final status = await Permission.requestInstallPackages.request();
+      if (!status.isGranted) return AppInstallResult.permissionDenied;
+    } catch (e) {
+      debugPrint('requestInstallPackages failed: $e');
+      // Older devices may not gate this permission — continue and let the
+      // installer surface any problem.
+    }
+
+    File? apkFile;
+    try {
+      final dir =
+          await getExternalStorageDirectory() ?? await getTemporaryDirectory();
+      apkFile = File('${dir.path}/eforward-update.apk');
+
+      final request = http.Request('GET', url);
+      final response = await _client.send(request);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return AppInstallResult.downloadFailed;
+      }
+
+      final total = response.contentLength ?? 0;
+      var received = 0;
+      final sink = apkFile.openWrite();
+      try {
+        await for (final chunk in response.stream) {
+          sink.add(chunk);
+          received += chunk.length;
+          if (total > 0 && onProgress != null) {
+            onProgress(received / total);
+          }
+        }
+      } finally {
+        await sink.flush();
+        await sink.close();
+      }
+
+      if (!await apkFile.exists() || await apkFile.length() == 0) {
+        return AppInstallResult.downloadFailed;
+      }
+
+      // open_file bundles a FileProvider and launches the system package
+      // installer for APK files.
+      final result = await OpenFile.open(
+        apkFile.path,
+        type: 'application/vnd.android.package-archive',
+      );
+
+      if (result.type == ResultType.done) {
+        return AppInstallResult.installLaunched;
+      }
+      debugPrint('OpenFile install result: ${result.type} ${result.message}');
+      return AppInstallResult.installFailed;
+    } catch (e) {
+      debugPrint('downloadAndInstallApk failed: $e');
+      return AppInstallResult.downloadFailed;
+    }
+  }
+
   void dispose() {
     _client.close();
   }
+}
+
+/// Outcome of [AppVersionService.downloadAndInstallApk].
+enum AppInstallResult {
+  /// The system package installer was launched with the downloaded APK.
+  installLaunched,
+
+  /// Not Android — caller should open the download URL instead.
+  unsupported,
+
+  /// The user did not grant "install unknown apps".
+  permissionDenied,
+
+  /// The APK could not be downloaded.
+  downloadFailed,
+
+  /// The installer could not be opened for the downloaded file.
+  installFailed,
 }
 
 /// Brand accent used across the update dialog.
@@ -141,18 +239,48 @@ Future<bool> showForceUpdateDialog({
         child: _ForceUpdateCard(
           remote: remote,
           current: current,
-          onUpdate: () async {
+          onUpdate: (setProgress) async {
+            final svc = AppVersionService();
             try {
-              final svc = AppVersionService();
+              // On Android, download the APK and hand it to the system
+              // installer so the app is actually replaced. Fall back to opening
+              // the URL in a browser only if that path is unavailable.
+              if (Platform.isAndroid) {
+                final result = await svc.downloadAndInstallApk(
+                  remote.downloadUrl,
+                  onProgress: setProgress,
+                );
+
+                if (result == AppInstallResult.installLaunched) {
+                  updateInitiated = true;
+                  if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+                  return;
+                }
+
+                if (result == AppInstallResult.permissionDenied) {
+                  if (dialogContext.mounted) {
+                    ScaffoldMessenger.maybeOf(dialogContext)?.showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Please allow installing apps from this source, '
+                          'then tap Update again.',
+                        ),
+                      ),
+                    );
+                  }
+                  return;
+                }
+                // Download/install failed → fall through to the browser link.
+              }
+
               final ok = await svc.launchDownload(remote.downloadUrl);
-              svc.dispose();
               if (!dialogContext.mounted) return;
 
               if (!ok) {
-                final messenger = ScaffoldMessenger.maybeOf(dialogContext);
-                messenger?.showSnackBar(
+                ScaffoldMessenger.maybeOf(dialogContext)?.showSnackBar(
                   const SnackBar(
-                    content: Text('Unable to open update link. Please try again.'),
+                    content:
+                        Text('Unable to open update link. Please try again.'),
                   ),
                 );
                 return;
@@ -162,6 +290,8 @@ Future<bool> showForceUpdateDialog({
               Navigator.of(dialogContext).pop();
             } catch (e) {
               debugPrint('Update launch failed: $e');
+            } finally {
+              svc.dispose();
             }
           },
         ),
@@ -181,7 +311,8 @@ class _ForceUpdateCard extends StatefulWidget {
 
   final AppVersionInfo remote;
   final AppComparableVersion current;
-  final Future<void> Function() onUpdate;
+  final Future<void> Function(void Function(double progress) setProgress)
+      onUpdate;
 
   @override
   State<_ForceUpdateCard> createState() => _ForceUpdateCardState();
@@ -189,14 +320,25 @@ class _ForceUpdateCard extends StatefulWidget {
 
 class _ForceUpdateCardState extends State<_ForceUpdateCard> {
   bool _busy = false;
+  double? _progress;
 
   Future<void> _handleUpdate() async {
     if (_busy) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _progress = null;
+    });
     try {
-      await widget.onUpdate();
+      await widget.onUpdate((p) {
+        if (mounted) setState(() => _progress = p.clamp(0.0, 1.0));
+      });
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _progress = null;
+        });
+      }
     }
   }
 
@@ -307,14 +449,28 @@ class _ForceUpdateCardState extends State<_ForceUpdateCard> {
                         ),
                       ),
                       child: _busy
-                          ? const SizedBox(
-                              height: 22,
-                              width: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.4,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
+                          ? Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.4,
+                                    value: _progress,
+                                    valueColor:
+                                        const AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                ),
+                                if (_progress != null) ...[
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    'Downloading ${(_progress! * 100).round()}%',
+                                  ),
+                                ],
+                              ],
                             )
                           : const Text('Update Now'),
                     ),
