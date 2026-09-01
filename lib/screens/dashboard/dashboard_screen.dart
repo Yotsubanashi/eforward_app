@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:eforward_app/screens/approvals/approval_detail_screen.dart';
 import 'package:eforward_app/utils/manila_time.dart';
+import 'package:eforward_app/utils/pending_count.dart';
 import 'package:eforward_app/services/notifications/fcm_token_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:eforward_app/screens/approvals/approvals_screen.dart';
@@ -38,13 +39,12 @@ class _DashboardPageState extends State<DashboardPage> {
   List<Map<String, dynamic>> _pendingApprovals = [];
   bool _isLoadingPending = false;
 
-  // Limit used for the pending fetch. Kept in sync with the approvals screen so
-  // the "PENDING APPROVALS" count here matches the approvals PENDING badge.
+  // Page size for the previewed pending list (only the first few are shown).
   static const int _pendingLimit = 50;
 
-  // Authoritative pending count shown in the card. Prefers a server-provided
-  // total; otherwise the number of rows returned, marked capped ("+") when the
-  // true total may exceed [_pendingLimit].
+  // Authoritative pending count shown in the card, computed by [countAllPending]
+  // so it always matches the approvals screen's PENDING badge. `capped` marks
+  // that the safety page limit was hit and the number may be an undercount.
   int _pendingCount = 0;
   bool _pendingCountCapped = false;
 
@@ -345,20 +345,14 @@ class _DashboardPageState extends State<DashboardPage> {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(response.body);
         final rawList = _extractList(decoded);
-        final serverTotal = _extractTotal(decoded);
         setState(() {
           _pendingApprovals = rawList
               .map((e) => _normalizeItem(e as Map<String, dynamic>))
               .toList();
-          if (serverTotal != null) {
-            _pendingCount = serverTotal;
-            _pendingCountCapped = false;
-          } else {
-            _pendingCount = rawList.length;
-            _pendingCountCapped = rawList.length >= _pendingLimit;
-          }
           _isLoadingPending = false;
         });
+        // Update the authoritative count (may exceed the previewed list).
+        _fetchPendingCount();
       } else {
         setState(() => _isLoadingPending = false);
       }
@@ -378,43 +372,16 @@ class _DashboardPageState extends State<DashboardPage> {
     return [];
   }
 
-  // Authoritative total from the response envelope (top-level or nested under a
-  // meta/pagination object). Returns null when the server exposes no total, so
-  // the caller can fall back to the returned row count. Mirrors the approvals
-  // screen so both derive the pending count identically.
-  int? _extractTotal(dynamic decoded) {
-    const keys = [
-      'total',
-      'total_count',
-      'totalCount',
-      'total_records',
-      'totalItems',
-      'count',
-    ];
-    int? readFrom(Map map) {
-      for (final key in keys) {
-        final value = map[key];
-        if (value is int) return value;
-        if (value is num) return value.toInt();
-        if (value is String) {
-          final parsed = int.tryParse(value);
-          if (parsed != null) return parsed;
-        }
-      }
-      return null;
-    }
-
-    if (decoded is Map) {
-      final top = readFrom(decoded);
-      if (top != null) return top;
-      for (final key in ['meta', 'pagination', 'paging']) {
-        if (decoded[key] is Map) {
-          final nested = readFrom(decoded[key] as Map);
-          if (nested != null) return nested;
-        }
-      }
-    }
-    return null;
+  // ─── Authoritative pending count for the "PENDING APPROVALS" card ─────────
+  // Uses the shared counter so this number always equals the approvals screen's
+  // PENDING badge. Prefers a server total; otherwise counts every pending row.
+  Future<void> _fetchPendingCount() async {
+    final result = await countAllPending(_baseUrl);
+    if (result == null || !mounted) return;
+    setState(() {
+      _pendingCount = result.count;
+      _pendingCountCapped = result.capped;
+    });
   }
 
   String _normalizeStatus(String? raw) {

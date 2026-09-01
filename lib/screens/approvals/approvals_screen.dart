@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:eforward_app/config/app_env.dart';
 import 'package:eforward_app/utils/manila_time.dart';
+import 'package:eforward_app/utils/pending_count.dart';
 import 'package:eforward_app/constants/api_endpoints.dart';
 import 'package:eforward_app/screens/dashboard/dashboard_screen.dart';
 import 'package:flutter/material.dart';
@@ -35,10 +36,6 @@ class _ApprovalsPageState extends State<ApprovalsPage>
 
   String get _baseUrl => AppEnv.apiBaseUrl;
   static const int _pageLimit = 10;
-
-  // Limit used purely to derive the authoritative pending count for the badge.
-  // Kept in sync with the dashboard's pending fetch so both screens agree.
-  static const int _countLimit = 50;
 
   // ── Pending pagination ──────────────────────────────────────────────────
   List<Map<String, dynamic>> _pendingApprovals = [];
@@ -216,47 +213,16 @@ class _ApprovalsPageState extends State<ApprovalsPage>
 
   // ─── GET /approvals/pending — authoritative count for the badge ───────────
   // Mirrors the dashboard's "PENDING APPROVALS" count so the two never diverge.
-  // Prefers a server-provided total from the response envelope; otherwise falls
-  // back to the number of rows returned by a single [_countLimit]-sized request
-  // (marking the count as capped with "+" when the total may exceed it).
+  // Prefers a server-provided total; otherwise pages through EVERY pending
+  // record and counts them, so the badge reflects the real total regardless of
+  // how many there are (no 10/50 cap).
   Future<void> _fetchPendingCount() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString(SharedPrefsKeys.accessToken) ?? '';
-      if (token.isEmpty) return;
-
-      final uri = Uri.parse(
-        '$_baseUrl${ApiEndpoints.approvalsPending}',
-      ).replace(queryParameters: {'page': '1', 'limit': '$_countLimit'});
-
-      final response = await http.get(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
-        },
-      );
-
-      if (!mounted) return;
-      if (SessionExpiryService().isUnauthorized(response.statusCode)) return;
-      if (response.statusCode < 200 || response.statusCode >= 300) return;
-
-      final decoded = jsonDecode(response.body);
-      final serverTotal = _extractTotal(decoded);
-      final rawList = _extractList(decoded);
-
-      setState(() {
-        if (serverTotal != null) {
-          _pendingCount = serverTotal;
-          _pendingCountCapped = false;
-        } else {
-          _pendingCount = rawList.length;
-          _pendingCountCapped = rawList.length >= _countLimit;
-        }
-      });
-    } catch (e) {
-      debugPrint('Fetch pending count error: $e');
-    }
+    final result = await countAllPending(_baseUrl);
+    if (result == null || !mounted) return;
+    setState(() {
+      _pendingCount = result.count;
+      _pendingCountCapped = result.capped;
+    });
   }
 
   // ─── GET /approvals/pending (load more) ───────────────────────────────────
@@ -461,45 +427,6 @@ class _ApprovalsPageState extends State<ApprovalsPage>
       }
     }
     return [];
-  }
-
-  // ─── Extract an authoritative total count from the response envelope ──────
-  // Returns null when the server exposes no total (caller then falls back to
-  // the returned row count). Handles both top-level totals and totals nested
-  // under a `meta`/`pagination` object.
-  int? _extractTotal(dynamic decoded) {
-    const keys = [
-      'total',
-      'total_count',
-      'totalCount',
-      'total_records',
-      'totalItems',
-      'count',
-    ];
-    int? readFrom(Map map) {
-      for (final key in keys) {
-        final value = map[key];
-        if (value is int) return value;
-        if (value is num) return value.toInt();
-        if (value is String) {
-          final parsed = int.tryParse(value);
-          if (parsed != null) return parsed;
-        }
-      }
-      return null;
-    }
-
-    if (decoded is Map) {
-      final top = readFrom(decoded);
-      if (top != null) return top;
-      for (final key in ['meta', 'pagination', 'paging']) {
-        if (decoded[key] is Map) {
-          final nested = readFrom(decoded[key] as Map);
-          if (nested != null) return nested;
-        }
-      }
-    }
-    return null;
   }
 
   // ─── Normalize any status string to a consistent abbreviation ─────────────
