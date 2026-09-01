@@ -1,5 +1,6 @@
 package com.ardentnetworks.eforward
 
+import android.content.pm.PackageManager
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -14,8 +15,31 @@ class MainActivity : FlutterFragmentActivity() {
     // through the shared "eforward/privacy" channel.
     private val privacyChannelName = "eforward/privacy"
 
+    // Lets Dart detect a leftover install under the app's previous
+    // applicationId (com.example.eforward_app, renamed to
+    // com.ardentnetworks.eforward). A package rename can never upgrade in place,
+    // so the old app lingers as a second icon until the user removes it.
+    private val legacyChannelName = "eforward/legacy"
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            legacyChannelName,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isPackageInstalled" -> {
+                    val pkg = call.argument<String>("package")
+                    if (pkg.isNullOrEmpty()) {
+                        result.success(false)
+                    } else {
+                        result.success(isPackageInstalled(pkg))
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -40,6 +64,15 @@ class MainActivity : FlutterFragmentActivity() {
                 "hideCover" -> result.success(null)
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    private fun isPackageInstalled(pkg: String): Boolean {
+        return try {
+            packageManager.getPackageInfo(pkg, 0)
+            true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
         }
     }
 }

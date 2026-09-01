@@ -99,6 +99,10 @@
         <intent>
             <action android:name="android.intent.action.DELETE" />
         </intent>
+        <!-- Visibility of the app's previous applicationId so the updater can
+             detect and offer to remove the orphaned old install (see
+             LegacyAppService). -->
+        <package android:name="com.example.eforward_app" />
     </queries>
 
 </manifest>

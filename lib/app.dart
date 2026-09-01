@@ -11,6 +11,7 @@ import 'screens/dashboard/dashboard_screen.dart';
 import 'services/api/auth_api.dart';
 import 'services/app_version_service.dart';
 import 'services/biometric_credential_store.dart';
+import 'services/legacy_app_service.dart';
 import 'services/notifications/fcm_token_service.dart';
 import 'services/privacy_cover_service.dart';
 import 'services/secure_unlock_service.dart';
@@ -36,6 +37,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool _versionDialogVisible = false;
   bool _versionCheckInProgress = false;
   bool _initialVersionCheckScheduled = false;
+  bool _legacyCheckScheduled = false;
   DateTime? _lastVersionPromptAt;
   DateTime? _suppressVersionPromptUntil;
 
@@ -203,6 +205,23 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _enforceLatestVersionIfNeeded();
+    });
+  }
+
+  /// One-time check for the orphaned old app left behind by the applicationId
+  /// rename (see [LegacyAppService]). Prompts the user to remove it so they are
+  /// not left with two E-Forward icons.
+  void _scheduleLegacyAppCheck() {
+    if (_legacyCheckScheduled) return;
+    _legacyCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Give the force-update gate priority; don't stack dialogs.
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!mounted || _versionDialogVisible) return;
+      if (!await LegacyAppService.isLegacyInstalled()) return;
+      final ctx = navigatorKey.currentState?.overlay?.context;
+      if (ctx == null || !mounted || _versionDialogVisible) return;
+      await showRemoveLegacyAppDialog(ctx);
     });
   }
 
@@ -488,10 +507,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
           if (snapshot.data == true) {
             _scheduleInitialVersionCheck();
+            _scheduleLegacyAppCheck();
             return const DashboardPage();
           }
 
           _scheduleInitialVersionCheck();
+          _scheduleLegacyAppCheck();
           return const LoginScreen();
         },
       ),
