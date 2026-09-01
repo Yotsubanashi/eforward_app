@@ -38,6 +38,16 @@ class _DashboardPageState extends State<DashboardPage> {
   List<Map<String, dynamic>> _pendingApprovals = [];
   bool _isLoadingPending = false;
 
+  // Limit used for the pending fetch. Kept in sync with the approvals screen so
+  // the "PENDING APPROVALS" count here matches the approvals PENDING badge.
+  static const int _pendingLimit = 50;
+
+  // Authoritative pending count shown in the card. Prefers a server-provided
+  // total; otherwise the number of rows returned, marked capped ("+") when the
+  // true total may exceed [_pendingLimit].
+  int _pendingCount = 0;
+  bool _pendingCountCapped = false;
+
   @override
   void initState() {
     super.initState();
@@ -317,7 +327,7 @@ class _DashboardPageState extends State<DashboardPage> {
       }
 
       final response = await http.get(
-        Uri.parse('$_baseUrl/approvals/pending?page=1&limit=50'),
+        Uri.parse('$_baseUrl/approvals/pending?page=1&limit=$_pendingLimit'),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
@@ -335,10 +345,18 @@ class _DashboardPageState extends State<DashboardPage> {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(response.body);
         final rawList = _extractList(decoded);
+        final serverTotal = _extractTotal(decoded);
         setState(() {
           _pendingApprovals = rawList
               .map((e) => _normalizeItem(e as Map<String, dynamic>))
               .toList();
+          if (serverTotal != null) {
+            _pendingCount = serverTotal;
+            _pendingCountCapped = false;
+          } else {
+            _pendingCount = rawList.length;
+            _pendingCountCapped = rawList.length >= _pendingLimit;
+          }
           _isLoadingPending = false;
         });
       } else {
@@ -358,6 +376,45 @@ class _DashboardPageState extends State<DashboardPage> {
       }
     }
     return [];
+  }
+
+  // Authoritative total from the response envelope (top-level or nested under a
+  // meta/pagination object). Returns null when the server exposes no total, so
+  // the caller can fall back to the returned row count. Mirrors the approvals
+  // screen so both derive the pending count identically.
+  int? _extractTotal(dynamic decoded) {
+    const keys = [
+      'total',
+      'total_count',
+      'totalCount',
+      'total_records',
+      'totalItems',
+      'count',
+    ];
+    int? readFrom(Map map) {
+      for (final key in keys) {
+        final value = map[key];
+        if (value is int) return value;
+        if (value is num) return value.toInt();
+        if (value is String) {
+          final parsed = int.tryParse(value);
+          if (parsed != null) return parsed;
+        }
+      }
+      return null;
+    }
+
+    if (decoded is Map) {
+      final top = readFrom(decoded);
+      if (top != null) return top;
+      for (final key in ['meta', 'pagination', 'paging']) {
+        if (decoded[key] is Map) {
+          final nested = readFrom(decoded[key] as Map);
+          if (nested != null) return nested;
+        }
+      }
+    }
+    return null;
   }
 
   String _normalizeStatus(String? raw) {
@@ -509,7 +566,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    '${_pendingApprovals.length}',
+                                    '$_pendingCount${_pendingCountCapped ? '+' : ''}',
                                     style: const TextStyle(
                                       fontSize: 38,
                                       fontWeight: FontWeight.w900,

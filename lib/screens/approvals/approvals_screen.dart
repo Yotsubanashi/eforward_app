@@ -36,6 +36,10 @@ class _ApprovalsPageState extends State<ApprovalsPage>
   String get _baseUrl => AppEnv.apiBaseUrl;
   static const int _pageLimit = 10;
 
+  // Limit used purely to derive the authoritative pending count for the badge.
+  // Kept in sync with the dashboard's pending fetch so both screens agree.
+  static const int _countLimit = 50;
+
   // ── Pending pagination ──────────────────────────────────────────────────
   List<Map<String, dynamic>> _pendingApprovals = [];
   bool _isLoadingPending = false;
@@ -44,6 +48,12 @@ class _ApprovalsPageState extends State<ApprovalsPage>
   bool _pendingHasMore = true;
   String? _pendingError;
   final ScrollController _pendingScrollController = ScrollController();
+
+  // Authoritative count of pending approvals shown in the badges. Matches the
+  // dashboard's "PENDING APPROVALS" count. `_pendingCountCapped` marks that the
+  // real total exceeds what a single count request returned (append a "+").
+  int _pendingCount = 0;
+  bool _pendingCountCapped = false;
 
   // ── History pagination ──────────────────────────────────────────────────
   List<Map<String, dynamic>> _historyApprovals = [];
@@ -126,6 +136,13 @@ class _ApprovalsPageState extends State<ApprovalsPage>
 
   // ─── GET /approvals/pending (initial / refresh) ───────────────────────────
   Future<void> _fetchPending({String? search}) async {
+    // Refresh the authoritative badge count on every non-search load so it
+    // stays in sync with the dashboard. Skipped while searching (the badge
+    // reflects total pending, not the filtered subset).
+    if (search == null || search.isEmpty) {
+      _fetchPendingCount();
+    }
+
     setState(() {
       _isLoadingPending = true;
       _pendingError = null;
@@ -194,6 +211,51 @@ class _ApprovalsPageState extends State<ApprovalsPage>
           _pendingError = 'Network error. Please try again.';
         });
       }
+    }
+  }
+
+  // ─── GET /approvals/pending — authoritative count for the badge ───────────
+  // Mirrors the dashboard's "PENDING APPROVALS" count so the two never diverge.
+  // Prefers a server-provided total from the response envelope; otherwise falls
+  // back to the number of rows returned by a single [_countLimit]-sized request
+  // (marking the count as capped with "+" when the total may exceed it).
+  Future<void> _fetchPendingCount() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(SharedPrefsKeys.accessToken) ?? '';
+      if (token.isEmpty) return;
+
+      final uri = Uri.parse(
+        '$_baseUrl${ApiEndpoints.approvalsPending}',
+      ).replace(queryParameters: {'page': '1', 'limit': '$_countLimit'});
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (!mounted) return;
+      if (SessionExpiryService().isUnauthorized(response.statusCode)) return;
+      if (response.statusCode < 200 || response.statusCode >= 300) return;
+
+      final decoded = jsonDecode(response.body);
+      final serverTotal = _extractTotal(decoded);
+      final rawList = _extractList(decoded);
+
+      setState(() {
+        if (serverTotal != null) {
+          _pendingCount = serverTotal;
+          _pendingCountCapped = false;
+        } else {
+          _pendingCount = rawList.length;
+          _pendingCountCapped = rawList.length >= _countLimit;
+        }
+      });
+    } catch (e) {
+      debugPrint('Fetch pending count error: $e');
     }
   }
 
@@ -401,6 +463,45 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     return [];
   }
 
+  // ─── Extract an authoritative total count from the response envelope ──────
+  // Returns null when the server exposes no total (caller then falls back to
+  // the returned row count). Handles both top-level totals and totals nested
+  // under a `meta`/`pagination` object.
+  int? _extractTotal(dynamic decoded) {
+    const keys = [
+      'total',
+      'total_count',
+      'totalCount',
+      'total_records',
+      'totalItems',
+      'count',
+    ];
+    int? readFrom(Map map) {
+      for (final key in keys) {
+        final value = map[key];
+        if (value is int) return value;
+        if (value is num) return value.toInt();
+        if (value is String) {
+          final parsed = int.tryParse(value);
+          if (parsed != null) return parsed;
+        }
+      }
+      return null;
+    }
+
+    if (decoded is Map) {
+      final top = readFrom(decoded);
+      if (top != null) return top;
+      for (final key in ['meta', 'pagination', 'paging']) {
+        if (decoded[key] is Map) {
+          final nested = readFrom(decoded[key] as Map);
+          if (nested != null) return nested;
+        }
+      }
+    }
+    return null;
+  }
+
   // ─── Normalize any status string to a consistent abbreviation ─────────────
   // Returns: 'PND' | 'APV' | 'REJ' | 'OPN' — mirrors _getStatus() in approval_details.dart
   String _normalizeStatus(String? raw) {
@@ -571,7 +672,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                           color: Color(0xFF1A1A1A),
                         ),
                       ),
-                      if (_pendingApprovals.isNotEmpty)
+                      if (_pendingCount > 0)
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
@@ -593,7 +694,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                '${_pendingApprovals.length}${_pendingHasMore ? '+' : ''} PENDING',
+                                '$_pendingCount${_pendingCountCapped ? '+' : ''} PENDING',
                                 style: const TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w800,
@@ -636,7 +737,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             const Text("PENDING"),
-                            if (_pendingApprovals.isNotEmpty) ...[
+                            if (_pendingCount > 0) ...[
                               const SizedBox(width: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(
@@ -648,7 +749,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Text(
-                                  '${_pendingApprovals.length}${_pendingHasMore ? '+' : ''}',
+                                  '$_pendingCount${_pendingCountCapped ? '+' : ''}',
                                   style: const TextStyle(
                                     fontSize: 9,
                                     color: Colors.white,
