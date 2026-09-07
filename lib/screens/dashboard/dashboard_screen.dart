@@ -3,6 +3,7 @@ import 'package:eforward_app/screens/approvals/approval_detail_screen.dart';
 import 'package:eforward_app/utils/manila_time.dart';
 import 'package:eforward_app/utils/pending_count.dart';
 import 'package:eforward_app/services/notifications/fcm_token_service.dart';
+import 'package:eforward_app/services/notifications/notifications_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:eforward_app/screens/approvals/approvals_screen.dart';
 import 'package:flutter/material.dart';
@@ -438,6 +439,7 @@ class _DashboardPageState extends State<DashboardPage> {
               onRefresh: () async {
                 await _loadUserData();
                 await _fetchPendingApprovals();
+                await NotificationsService().fetchUnreadCount();
               },
               child: LayoutBuilder(
                 builder: (context, constraints) {

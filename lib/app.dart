@@ -13,7 +13,9 @@ import 'services/api/auth_api.dart';
 import 'services/app_version_service.dart';
 import 'services/biometric_credential_store.dart';
 import 'services/legacy_app_service.dart';
+import 'services/notifications/app_badge_service.dart';
 import 'services/notifications/fcm_token_service.dart';
+import 'services/notifications/notifications_service.dart';
 import 'services/privacy_cover_service.dart';
 import 'services/secure_unlock_service.dart';
 import 'services/session_service.dart';
@@ -86,6 +88,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       case AppLifecycleState.resumed:
         _recheckVersionAfterResume();
         _handleResume();
+        NotificationsService().fetchUnreadCount();
         break;
       case AppLifecycleState.detached:
         break;
@@ -428,6 +431,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         prefs.getString(SharedPrefsKeys.accessToken)?.trim() ?? '';
     if (accessToken.isEmpty) {
       authApi.dispose();
+      AppBadgeService.clearBadge();
       return false;
     }
 
@@ -445,6 +449,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // with no password prompt — even if the user never did a password login
       // on this build (e.g. app was updated while already signed in).
       await _captureRefreshTokenForBiometric(prefs);
+
+      // Refresh notifications & sync badge on session restore
+      NotificationsService().fetchUnreadCount();
 
       // Biometrics are an alternate login method (see LoginScreen), not an
       // app-open gate: a valid saved session enters directly.
@@ -474,12 +481,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         jsonEncode(meAfterRefresh.data),
       );
       await _captureRefreshTokenForBiometric(prefs);
+      NotificationsService().fetchUnreadCount();
       return true;
     }
 
     await prefs.remove(SharedPrefsKeys.accessToken);
     await prefs.remove(SharedPrefsKeys.refreshToken);
     await prefs.remove(SharedPrefsKeys.userData);
+    AppBadgeService.clearBadge();
     return false;
   }
 

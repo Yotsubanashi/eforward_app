@@ -1,6 +1,7 @@
 import Flutter
 import QuartzCore
 import UIKit
+import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -17,6 +18,7 @@ import UIKit
   // is nil. So the cover must be driven by the *scene* notifications and attached
   // to the window found from the scene — not from the app delegate.
   private static let privacyChannelName = "eforward/privacy"
+  private static let badgeChannelName = "eforward/badge"
   private var privacyCover: UIView?
   // Flutter tells us whether covering is warranted (session active + unlock
   // enabled + device can authenticate). Off by default so we never trap a
@@ -34,9 +36,11 @@ import UIKit
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
 
+    let messenger = engineBridge.applicationRegistrar.messenger()
+
     let channel = FlutterMethodChannel(
       name: AppDelegate.privacyChannelName,
-      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+      binaryMessenger: messenger
     )
     channel.setMethodCallHandler { [weak self] call, reply in
       guard let self = self else { reply(nil); return }
@@ -53,6 +57,52 @@ import UIKit
         // showing in between.
         self.hidePrivacyCover()
         reply(nil)
+      default:
+        reply(FlutterMethodNotImplemented)
+      }
+    }
+
+    let badgeChannel = FlutterMethodChannel(
+      name: AppDelegate.badgeChannelName,
+      binaryMessenger: messenger
+    )
+    badgeChannel.setMethodCallHandler { call, reply in
+      switch call.method {
+      case "setBadgeCount":
+        let count = (call.arguments as? Int) ?? 0
+        DispatchQueue.main.async {
+          if #available(iOS 16.0, *) {
+            UNUserNotificationCenter.current().setBadgeCount(count) { error in
+              if let error = error {
+                print("Error setting badge count: \(error)")
+              }
+            }
+          } else {
+            UIApplication.shared.applicationIconBadgeNumber = count
+          }
+          if count <= 0 {
+            UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+          }
+          reply(nil)
+        }
+      case "clearBadge":
+        DispatchQueue.main.async {
+          if #available(iOS 16.0, *) {
+            UNUserNotificationCenter.current().setBadgeCount(0) { error in
+              if let error = error {
+                print("Error clearing badge count: \(error)")
+              }
+            }
+          } else {
+            UIApplication.shared.applicationIconBadgeNumber = 0
+          }
+          UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+          reply(nil)
+        }
+      case "getBadgeCount":
+        DispatchQueue.main.async {
+          reply(UIApplication.shared.applicationIconBadgeNumber)
+        }
       default:
         reply(FlutterMethodNotImplemented)
       }

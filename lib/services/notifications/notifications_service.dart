@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:eforward_app/config/app_env.dart';
 import 'package:eforward_app/constants/api_endpoints.dart';
 import 'package:eforward_app/constants/shared_prefs_keys.dart';
+import 'package:eforward_app/services/notifications/app_badge_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,7 +15,16 @@ class NotificationsService {
   // ValueNotifier to notify listeners when unread count changes
   final ValueNotifier<int> unreadCountNotifier = ValueNotifier<int>(0);
 
-  NotificationsService._internal();
+  NotificationsService._internal() {
+    unreadCountNotifier.addListener(() {
+      final count = unreadCountNotifier.value;
+      if (count <= 0) {
+        AppBadgeService.clearBadge();
+      } else {
+        AppBadgeService.updateBadgeCount(count);
+      }
+    });
+  }
 
   factory NotificationsService() {
     return _instance;
@@ -25,7 +35,11 @@ class NotificationsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString(SharedPrefsKeys.accessToken) ?? '';
-      if (token.isEmpty) return;
+      if (token.isEmpty) {
+        unreadCountNotifier.value = 0;
+        await AppBadgeService.clearBadge();
+        return;
+      }
 
       final response = await http.get(
         Uri.parse('$_baseUrl${ApiEndpoints.unreadCount}'),
@@ -37,6 +51,11 @@ class NotificationsService {
         final count =
             decoded['unread_count'] as int? ?? decoded['count'] as int? ?? 0;
         unreadCountNotifier.value = count;
+        if (count <= 0) {
+          await AppBadgeService.clearBadge();
+        } else {
+          await AppBadgeService.updateBadgeCount(count);
+        }
       }
     } catch (e) {
       debugPrint('Unread count fetch error: $e');
@@ -46,6 +65,7 @@ class NotificationsService {
   /// Increment unread count (called when new notification arrives)
   void incrementUnreadCount() {
     unreadCountNotifier.value++;
+    AppBadgeService.updateBadgeCount(unreadCountNotifier.value);
     debugPrint('📬 Unread count incremented to: ${unreadCountNotifier.value}');
   }
 
@@ -68,6 +88,11 @@ class NotificationsService {
         // Immediately decrease the count without waiting for API call
         if (unreadCountNotifier.value > 0) {
           unreadCountNotifier.value--;
+        }
+        if (unreadCountNotifier.value <= 0) {
+          await AppBadgeService.clearBadge();
+        } else {
+          await AppBadgeService.updateBadgeCount(unreadCountNotifier.value);
         }
         // Also fetch the actual count to ensure sync
         await Future.delayed(const Duration(milliseconds: 500));
@@ -99,6 +124,7 @@ class NotificationsService {
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         unreadCountNotifier.value = 0;
+        await AppBadgeService.clearBadge();
         return true;
       }
       return false;
@@ -111,5 +137,6 @@ class NotificationsService {
   /// Reset the notifier (for testing or logout)
   void reset() {
     unreadCountNotifier.value = 0;
+    AppBadgeService.clearBadge();
   }
 }

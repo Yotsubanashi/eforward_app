@@ -222,13 +222,27 @@ class FirebaseNotificationService {
   // ── Navigation ────────────────────────────────────────────────────────────
   static Future<void> _onNotificationTap(RemoteMessage message) async {
     debugPrint('👆 Notification tapped. data=${message.data}');
+    final notificationId =
+        message.data['notification_id'] ?? message.data['id'];
+    if (notificationId != null && notificationId.toString().isNotEmpty) {
+      NotificationsService().markAsRead(notificationId.toString());
+    } else {
+      NotificationsService().fetchUnreadCount();
+    }
     _navigate(message.data);
   }
 
   static void _handlePayloadTap(String? payload) {
     if (payload == null || payload.isEmpty) return;
     try {
-      _navigate(jsonDecode(payload) as Map<String, dynamic>);
+      final data = jsonDecode(payload) as Map<String, dynamic>;
+      final notificationId = data['notification_id'] ?? data['id'];
+      if (notificationId != null && notificationId.toString().isNotEmpty) {
+        NotificationsService().markAsRead(notificationId.toString());
+      } else {
+        NotificationsService().fetchUnreadCount();
+      }
+      _navigate(data);
     } catch (_) {}
   }
 

@@ -345,7 +345,7 @@ class _NotificationsPageState extends State<NotificationsPage>
     final link = notification['link']?.toString() ?? '';
 
     return InkWell(
-      onTap: () {
+      onTap: () async {
         if (!isRead) {
           _markAsRead(notificationId);
         }
@@ -358,13 +358,17 @@ class _NotificationsPageState extends State<NotificationsPage>
             'header': header,
             'detail': detail,
           };
-          Navigator.push(
+          await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) =>
                   ApprovalDetailPage(item: tempItem, isFromHistory: false),
             ),
           );
+          if (mounted) {
+            _fetchNotifications();
+            _notificationsService.fetchUnreadCount();
+          }
         }
       },
       child: Container(

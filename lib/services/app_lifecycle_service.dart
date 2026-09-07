@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:eforward_app/services/notifications/notifications_service.dart';
 
 /// Handles app lifecycle events to monitor when the app goes to background/foreground
 /// Session remains active during multitasking - user stays logged in
@@ -40,8 +41,9 @@ class AppLifecycleService with WidgetsBindingObserver {
         break;
 
       case AppLifecycleState.resumed:
-        // App comes to foreground
-        debugPrint('▶️ App resumed');
+        // App comes to foreground - sync notifications and badge count
+        debugPrint('▶️ App resumed - syncing unread notifications');
+        NotificationsService().fetchUnreadCount();
         break;
 
       case AppLifecycleState.inactive:
