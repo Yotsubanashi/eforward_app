@@ -9,6 +9,7 @@ import 'constants/shared_prefs_keys.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/reset_password_screen.dart';
 import 'screens/dashboard/dashboard_screen.dart';
+import 'screens/splash_screen.dart';
 import 'services/api/auth_api.dart';
 import 'services/app_version_service.dart';
 import 'services/biometric_credential_store.dart';
@@ -525,9 +526,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         future: _hasSessionFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
+            return const SplashScreen();
           }
 
           if (snapshot.data == true) {
