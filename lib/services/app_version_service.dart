@@ -33,6 +33,20 @@ class AppVersionService {
     return installed < latest;
   }
 
+  /// Classifies the installed version against the backend's min + latest.
+  /// Below [AppVersionInfo.minSupportedVersion] → forced (blocking wall).
+  /// Below [AppVersionInfo.latestVersion] (but at/above min) → soft (prompt).
+  /// Otherwise → none.
+  static AppUpdateAction decideUpdate(
+    AppComparableVersion installed,
+    AppVersionInfo remote,
+  ) {
+    final min = remote.minSupportedVersion;
+    if (min != null && installed < min) return AppUpdateAction.forced;
+    if (installed < remote.latestVersion) return AppUpdateAction.soft;
+    return AppUpdateAction.none;
+  }
+
   Future<AppVersionInfo?> fetchLatestVersion({
     Uri? endpoint,
     Duration timeout = const Duration(seconds: 10),
@@ -61,6 +75,14 @@ class AppVersionService {
                   payload['mobileUrl'])
               ?.toString()
               .trim();
+      // Optional floor — null means "no forced update, soft prompt only".
+      final minStr =
+          (payload['min_supported_version'] ??
+                  payload['minSupportedVersion'] ??
+                  payload['min_version'] ??
+                  payload['minVersion'])
+              ?.toString()
+              .trim();
 
       if (latestStr == null || latestStr.isEmpty) return null;
       if (urlStr == null || urlStr.isEmpty) return null;
@@ -71,7 +93,13 @@ class AppVersionService {
       final url = Uri.tryParse(urlStr);
       if (url == null) return null;
 
-      return AppVersionInfo(latestVersion: latest, downloadUrl: url);
+      return AppVersionInfo(
+        latestVersion: latest,
+        downloadUrl: url,
+        minSupportedVersion: (minStr == null || minStr.isEmpty)
+            ? null
+            : AppComparableVersion.tryParse(minStr),
+      );
     } catch (e) {
       debugPrint('fetchLatestVersion failed: $e');
       return null;
@@ -219,6 +247,66 @@ enum AppInstallResult {
 const Color _kBrandRed = Color(0xFFCC0000);
 const Color _kInk = Color(0xFF1A1A1A);
 const Color _kMuted = Color(0xFF6B7280);
+
+/// Dismissible "a newer version is available" prompt. Returns `true` if the
+/// user tapped "Update Now" (download/install launched); `false` if they tapped
+/// "Later" or dismissed it.
+Future<bool> showSoftUpdateDialog({
+  required BuildContext context,
+  required AppVersionInfo remote,
+  required AppComparableVersion current,
+}) async {
+  var updateInitiated = false;
+
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierColor: Colors.black.withOpacity(0.45),
+    builder: (dialogContext) => _SoftUpdateCard(
+      remote: remote,
+      current: current,
+      onUpdate: () async {
+        final svc = AppVersionService();
+        try {
+          if (Platform.isAndroid) {
+            final result = await svc.downloadAndInstallApk(remote.downloadUrl);
+            if (result == AppInstallResult.installLaunched) {
+              updateInitiated = true;
+              if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+              return;
+            }
+            if (result == AppInstallResult.permissionDenied) {
+              if (dialogContext.mounted) {
+                ScaffoldMessenger.maybeOf(dialogContext)?.showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Please allow installing apps from this source, '
+                      'then tap Update again.',
+                    ),
+                  ),
+                );
+              }
+              return;
+            }
+          }
+          final ok = await svc.launchDownload(remote.downloadUrl);
+          if (!dialogContext.mounted) return;
+          if (ok) {
+            updateInitiated = true;
+            Navigator.of(dialogContext).pop();
+          }
+        } catch (e) {
+          debugPrint('Soft update launch failed: $e');
+        } finally {
+          svc.dispose();
+        }
+      },
+      onLater: () => Navigator.of(dialogContext).pop(),
+    ),
+  );
+
+  return updateInitiated;
+}
 
 /// Shows the force-update dialog. Returns `true` if the user tapped "Update Now".
 Future<bool> showForceUpdateDialog({
@@ -447,6 +535,194 @@ class _ForceUpdateCardState extends State<_ForceUpdateCard> {
                             )
                           : const Text('Update Now'),
                     ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SoftUpdateCard extends StatefulWidget {
+  const _SoftUpdateCard({
+    required this.remote,
+    required this.current,
+    required this.onUpdate,
+    required this.onLater,
+  });
+
+  final AppVersionInfo remote;
+  final AppComparableVersion current;
+  final Future<void> Function() onUpdate;
+  final VoidCallback onLater;
+
+  @override
+  State<_SoftUpdateCard> createState() => _SoftUpdateCardState();
+}
+
+class _SoftUpdateCardState extends State<_SoftUpdateCard> {
+  bool _busy = false;
+
+  Future<void> _handleUpdate() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await widget.onUpdate();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 380),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 40,
+              offset: const Offset(0, 18),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Softer header (same brand tone, lighter copy than the force wall).
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFE11414), _kBrandRed],
+                ),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    height: 72,
+                    width: 72,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.16),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.28),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.cloud_download_rounded,
+                      color: Colors.white,
+                      size: 36,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Update Available',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+              child: Column(
+                children: [
+                  const Text(
+                    'A newer version of the app is available with '
+                    'improvements and fixes. Update now for the best '
+                    'experience.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: _kMuted,
+                      fontSize: 14.5,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  _VersionRow(
+                    current: widget.current.toString(),
+                    latest: widget.remote.latestVersion.toString(),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 50,
+                          child: TextButton(
+                            onPressed: _busy ? null : widget.onLater,
+                            style: TextButton.styleFrom(
+                              foregroundColor: _kMuted,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                side: const BorderSide(
+                                    color: Color(0xFFE5E7EB), width: 1.2),
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            child: const Text('Later'),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: SizedBox(
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: _busy ? null : _handleUpdate,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _kBrandRed,
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor:
+                                  _kBrandRed.withOpacity(0.6),
+                              disabledForegroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            child: _busy
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.2,
+                                      valueColor:
+                                          AlwaysStoppedAnimation<Color>(
+                                              Colors.white),
+                                    ),
+                                  )
+                                : const Text('Update'),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

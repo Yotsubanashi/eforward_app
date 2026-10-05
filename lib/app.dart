@@ -259,7 +259,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
       if (!mounted || current == null || remote == null) return;
 
-      if (!AppVersionService.isUpdateRequired(current, remote.latestVersion)) {
+      // Two-tier gate (matches HRIS):
+      //   below min_supported_version → forced wall (no "Later")
+      //   below latest_version       → dismissible "update available" prompt
+      //   otherwise                  → nothing
+      final action = AppVersionService.decideUpdate(current, remote);
+      if (action == AppUpdateAction.none) {
         debugPrint('[VersionCheck] App is up to date');
         _versionUpToDate = true;
         _suppressVersionPromptUntil = null;
@@ -272,7 +277,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       }
 
       debugPrint(
-        '[VersionCheck] Update required: $current < ${remote.latestVersion}',
+        '[VersionCheck] $action: $current < latest=${remote.latestVersion}'
+        ' (min=${remote.minSupportedVersion})',
       );
 
       final pkg = await svc.getPackageName();
@@ -294,12 +300,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       _versionDialogVisible = true;
       _lastVersionPromptAt = DateTime.now();
 
-      final updateInitiated = await showForceUpdateDialog(
-        context: dialogContext,
-        remote: remote,
-        current: current,
-        packageName: pkg,
-      );
+      final updateInitiated = action == AppUpdateAction.forced
+          ? await showForceUpdateDialog(
+              context: dialogContext,
+              remote: remote,
+              current: current,
+              packageName: pkg,
+            )
+          : await showSoftUpdateDialog(
+              context: dialogContext,
+              remote: remote,
+              current: current,
+            );
 
       if (!mounted) return;
 
@@ -310,8 +322,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       final latest = remoteAfter?.latestVersion ?? remote.latestVersion;
       final currentAfter = await svc.getInstalledVersion();
 
-      if (currentAfter != null &&
-          !AppVersionService.isUpdateRequired(currentAfter, latest)) {
+      // Up to date iff the installed version is no longer below `latest`.
+      if (currentAfter != null && !(currentAfter < latest)) {
         debugPrint('[VersionCheck] Update completed, app is now up to date');
         _versionUpToDate = true;
         _suppressVersionPromptUntil = null;

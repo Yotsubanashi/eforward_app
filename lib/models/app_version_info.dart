@@ -2,10 +2,33 @@ class AppVersionInfo {
   const AppVersionInfo({
     required this.latestVersion,
     required this.downloadUrl,
+    this.minSupportedVersion,
   });
 
+  /// The newest version in the stores. Clients below this get a dismissible
+  /// "update available" prompt.
   final AppComparableVersion latestVersion;
+
+  /// The oldest version the backend still supports. Clients below this get a
+  /// blocking "update required" wall. Null means no mandatory floor —
+  /// only the soft prompt applies.
+  final AppComparableVersion? minSupportedVersion;
+
   final Uri downloadUrl;
+}
+
+/// Launch-time decision for the version gate.
+enum AppUpdateAction {
+  /// Running version is current enough — do nothing.
+  none,
+
+  /// A newer version exists but the current one still works — show a
+  /// dismissible prompt once per launch/resume.
+  soft,
+
+  /// Current version is below the minimum the backend supports — block the
+  /// app behind a mandatory update dialog with no "Later" button.
+  forced,
 }
 
 /// Compares semver only (e.g. `3.1.2`). Build numbers are ignored.
