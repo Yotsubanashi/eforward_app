@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
@@ -231,9 +230,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   Future<void> _enforceLatestVersionIfNeeded({bool fromResume = false}) async {
-    // The force-update flow ships the update as a direct APK, so it applies to
-    // Android only. iOS must never see this dialog.
-    if (!Platform.isAndroid) return;
+    // Runs on both platforms now that the backend hands back a proper iOS
+    // App Store deep link (itms-apps://.../id<APP_ID>) in addition to the
+    // Android APK URL. The soft prompt and force wall apply to both; the
+    // Update button opens the right store for whichever platform is running.
     if (_versionUpToDate || _versionDialogVisible || _versionCheckInProgress) {
       return;
     }
