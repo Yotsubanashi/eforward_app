@@ -17,6 +17,11 @@ class ApiEndpoints {
   static const String refresh = '/auth/refresh';
   static const String me = '/auth/me';
 
+  // ─── MFA / Authenticator app (TOTP) ───────────────────────────────────────
+  static const String mfaSetup = '/auth/mfa/setup';
+  static const String mfaVerifySetup = '/auth/mfa/verify-setup';
+  static const String mfaDisable = '/auth/mfa/disable';
+
   // ─── Users ──────────────────────────────────────────────────────────────
   static String user(String employeeId) => '/users/$employeeId';
   static const String fcmToken = '/users/fcm-token';

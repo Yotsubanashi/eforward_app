@@ -325,6 +325,90 @@ class AuthApi {
     }
   }
 
+  // ─── MFA / Authenticator app (TOTP) ───────────────────────────────────────
+
+  /// Reads the stored access token for authenticated MFA calls.
+  Future<String> _accessToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(SharedPrefsKeys.accessToken) ??
+        prefs.getString('access_token') ??
+        '';
+  }
+
+  /// Begins authenticator enrollment. On success `data` contains `qrCode`
+  /// (a data: image URL), `otpauthUrl`, and `secret` to show the user.
+  Future<AuthLoginResult> mfaSetup() async {
+    return _postAuthed(
+      endpoint: ApiEndpoints.mfaSetup,
+      body: const {},
+      successMessage: 'Scan the QR code with your authenticator app.',
+      failureMessage: 'Could not start authenticator setup.',
+    );
+  }
+
+  /// Confirms enrollment with a code from the authenticator app. On success the
+  /// backend persists the secret and 2FA becomes required at next login.
+  Future<AuthLoginResult> mfaVerifySetup({required String code}) async {
+    return _postAuthed(
+      endpoint: ApiEndpoints.mfaVerifySetup,
+      body: {'code': code},
+      successMessage: 'Authenticator enabled.',
+      failureMessage: 'Invalid code. Please try again.',
+    );
+  }
+
+  /// Disables authenticator 2FA. Requires the account password.
+  Future<AuthLoginResult> mfaDisable({required String password}) async {
+    return _postAuthed(
+      endpoint: ApiEndpoints.mfaDisable,
+      body: {'password': password},
+      successMessage: 'Authenticator disabled.',
+      failureMessage: 'Could not disable authenticator.',
+    );
+  }
+
+  /// POST helper that attaches the Bearer token for protected endpoints.
+  Future<AuthLoginResult> _postAuthed({
+    required String endpoint,
+    required Map<String, dynamic> body,
+    required String successMessage,
+    required String failureMessage,
+  }) async {
+    final token = await _accessToken();
+    final uri = Uri.parse('$baseUrl$endpoint');
+    try {
+      final response = await _client.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          if (token.trim().isNotEmpty) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+      final dynamic decodedBody =
+          response.body.isNotEmpty ? jsonDecode(response.body) : null;
+      final Map<String, dynamic>? bodyMap =
+          decodedBody is Map<String, dynamic> ? decodedBody : null;
+      final ok = response.statusCode >= 200 && response.statusCode < 300;
+      return AuthLoginResult(
+        isSuccess: ok,
+        statusCode: response.statusCode,
+        message: _extractMessage(decodedBody) ??
+            (ok ? successMessage : failureMessage),
+        data: bodyMap,
+        requiredOTP: false,
+      );
+    } catch (error) {
+      return AuthLoginResult(
+        isSuccess: false,
+        statusCode: 0,
+        message: 'Network error: $error',
+        requiredOTP: false,
+      );
+    }
+  }
+
   // ─── Update Profile ───────────────────────────────────────────────────────
   // PUT /api/users/{employee_id}
   Future<AuthLoginResult> updateProfile({

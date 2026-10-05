@@ -14,6 +14,7 @@ import '../../validators/required_field_validator.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/loading_overlay.dart';
 import '../dashboard/dashboard_screen.dart';
+import 'otp_screen.dart';
 import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -307,6 +308,28 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     required String email,
     required String password,
   }) async {
+    // Mobile 2FA (authenticator app / TOTP): the backend did not issue tokens
+    // and instead asked for the authenticator code. Route to the OTP screen,
+    // which collects the 6-digit code and verifies it via /auth/verify-otp
+    // before entering the dashboard. Only enrolled users hit this path.
+    if (result.requiredOTP) {
+      // Keep the credential so the biometric button works after enrollment.
+      await BiometricCredentialStore.save(email: email, password: password);
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      final isAuthenticator = result.data?['mfaMethod'] == 'totp';
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OtpScreen(
+            email: email,
+            isAuthenticator: isAuthenticator,
+          ),
+        ),
+      );
+      return;
+    }
+
     // Block inactive accounts regardless of how they authenticated (password
     // or biometric).
     final status = _extractAccountStatus(result.data);
@@ -479,38 +502,9 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     _saveRememberMe(email);
     debugPrint('Login success: ${result.data}');
 
-    // Two-factor: when enabled, require a device biometric/PIN check as a second
-    // factor after the password before entering. (Skipped for the biometric
-    // login button, which is already a biometric factor.)
-    //
-    // Only enforce it while the device can still satisfy it. A user who enabled
-    // two-factor and later removed their screen lock has no way to pass this
-    // check and no way to reach Settings to turn it off — the correct password
-    // would lock them out of their own account permanently. Their screen lock
-    // is gone, so the second factor no longer exists: drop the stale flag and
-    // let the password stand on its own.
-    if (await SecureUnlockService.isTwoFactorEnabled() &&
-        !await SecureUnlockService.isAvailable()) {
-      await SecureUnlockService.setTwoFactorEnabled(false);
-      debugPrint('Two-factor cleared: device no longer has a screen lock.');
-    }
-
-    if (await SecureUnlockService.isTwoFactorEnabled()) {
-      final verified = await SecureUnlockService.authenticate(
-        biometricOnly: false,
-        reason: "Verify it's you to finish signing in",
-      );
-      if (!mounted) return;
-      if (!verified.success) {
-        setState(() => _isLoading = false);
-        AppSnackbar.error(
-          context,
-          verified.message ??
-              'Two-factor verification was cancelled. Please try again.',
-        );
-        return;
-      }
-    }
+    // Two-factor is now the authenticator app (TOTP): when the account has it
+    // enrolled, the backend returns requiredOTP and _enterWithSession routes to
+    // the OTP screen. No device biometric/PIN second factor here.
 
     await _enterWithSession(result: result, email: email, password: password);
   }

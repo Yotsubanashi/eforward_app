@@ -14,7 +14,15 @@ import '../../widgets/loading_overlay.dart';
 class OtpScreen extends StatefulWidget {
   final String email;
 
-  const OtpScreen({super.key, required this.email});
+  /// True when the second factor is an authenticator app (TOTP) rather than an
+  /// emailed code. Changes the copy and hides the email resend/expiry timer.
+  final bool isAuthenticator;
+
+  const OtpScreen({
+    super.key,
+    required this.email,
+    this.isAuthenticator = false,
+  });
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
@@ -35,7 +43,9 @@ class _OtpScreenState extends State<OtpScreen> {
   @override
   void initState() {
     super.initState();
-    _startTimer();
+    // Authenticator (TOTP) codes rotate in the user's app every 30s — there is
+    // no server-sent code to expire or resend, so skip the countdown.
+    if (!widget.isAuthenticator) _startTimer();
   }
 
   @override
@@ -320,10 +330,12 @@ class _OtpScreenState extends State<OtpScreen> {
 
                 const SizedBox(height: 12),
 
-                const Text(
-                  "Enter the 6-digit code sent to your registered\ninstitutional email address.",
+                Text(
+                  widget.isAuthenticator
+                      ? "Enter the 6-digit code from your Google or\nMicrosoft Authenticator app."
+                      : "Enter the 6-digit code sent to your registered\ninstitutional email address.",
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 13,
                     color: Colors.black45,
                     height: 1.6,
@@ -381,8 +393,9 @@ class _OtpScreenState extends State<OtpScreen> {
 
                 const SizedBox(height: 20),
 
-                // Resend Code
-                TextButton(
+                // Resend Code (email OTP only — TOTP codes rotate in the app)
+                if (!widget.isAuthenticator)
+                  TextButton(
                   onPressed: _secondsRemaining == 0 ? _resendOtp : null,
                   child: const Text(
                     "RESEND CODE",
@@ -395,8 +408,9 @@ class _OtpScreenState extends State<OtpScreen> {
                   ),
                 ),
 
-                // Timer
-                RichText(
+                // Timer (email OTP only)
+                if (!widget.isAuthenticator)
+                  RichText(
                   text: TextSpan(
                     text: "CODE EXPIRES IN  ",
                     style: const TextStyle(
