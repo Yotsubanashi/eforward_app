@@ -32,7 +32,7 @@ class ApiEndpoints {
   static String uploadDocument(String fileId) => '/upload/document/$fileId';
 
   // ─── App version ────────────────────────────────────────────────────────
-  static const String appVersion = '/app/version';
+  static const String appVersion = '/app/version2';
 
   // ─── Notifications ──────────────────────────────────────────────────────
   static const String unreadCount = '/notifications/unread-count';
