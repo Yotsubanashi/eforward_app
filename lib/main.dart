@@ -5,6 +5,7 @@ import 'app.dart';
 import 'config/app_env.dart';
 import 'services/notifications/firebase_notification_service.dart';
 import 'services/app_lifecycle_service.dart';
+import 'services/post_update_reset.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -22,6 +23,11 @@ void main() async {
   // Restore the backend selected in a previous session (Ardent vs Versatech)
   // BEFORE any API call, so the startup session check hits the right backend.
   await AppEnv.restoreActiveBackend();
+
+  // Post-update sign-out: if the installed app version changed since the last
+  // launch, wipe the stored session so the user must sign in again. Runs
+  // before anything auth-related, so the first API call uses fresh state.
+  await PostUpdateReset.runIfVersionChanged();
 
   // 1. Init Firebase first
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
