@@ -46,6 +46,19 @@
 	<true/>
 	<key>FlutterDeepLinkingEnabled</key>
 	<false/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<!-- url_launcher calls canLaunchUrl internally; iOS requires these
+		     schemes to be whitelisted here or canLaunchUrl returns false and
+		     the launch silently no-ops. Without this, tapping Update on the
+		     force/soft update dialog closes the dialog but never opens the
+		     App Store. -->
+		<string>itms-apps</string>
+		<string>itms-appss</string>
+		<string>itms</string>
+		<string>https</string>
+		<string>http</string>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

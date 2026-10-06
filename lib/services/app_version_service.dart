@@ -371,14 +371,13 @@ class _ForceUpdateScreenState extends State<_ForceUpdateScreen> {
     setState(() => _busy = true);
     final svc = AppVersionService();
     try {
-      // Android → try the in-app installer first; iOS and failures → open the
-      // store deep link in the browser/App Store.
+      // Android → try the in-app installer first. Whether the installer
+      // actually completes is decided by the user outside our app, so we
+      // never dismiss the wall from here either (cancel-install must land
+      // back on the wall, not on the obsolete content).
       if (Platform.isAndroid) {
         final result = await svc.downloadAndInstallApk(widget.remote.downloadUrl);
-        if (result == AppInstallResult.installLaunched) {
-          if (mounted) Navigator.of(context).pop(true);
-          return;
-        }
+        if (result == AppInstallResult.installLaunched) return;
         if (result == AppInstallResult.permissionDenied) {
           if (mounted) {
             ScaffoldMessenger.maybeOf(context)?.showSnackBar(
@@ -389,28 +388,23 @@ class _ForceUpdateScreenState extends State<_ForceUpdateScreen> {
                 ),
               ),
             );
-            setState(() => _busy = false);
           }
           return;
         }
       }
-      final ok = await svc.launchDownload(widget.remote.downloadUrl);
-      if (!mounted) return;
-      if (!ok) {
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          const SnackBar(
-            content: Text('Unable to open update link. Please try again.'),
-          ),
-        );
-        setState(() => _busy = false);
-        return;
-      }
-      if (mounted) Navigator.of(context).pop(true);
+      // Fire the store launch. DO NOT dismiss the force wall — this is a
+      // mandatory update: the user must leave the app, install the new
+      // version, and relaunch. Keeping the wall ensures they can't get back
+      // to the app's content while still on the obsolete build.
+      await svc.launchDownload(widget.remote.downloadUrl);
     } catch (e) {
       debugPrint('Update launch failed: $e');
-      if (mounted) setState(() => _busy = false);
     } finally {
       svc.dispose();
+      // Always re-enable the button so the user can tap again if the App
+      // Store didn't open (e.g. offline). The wall itself remains until the
+      // app is replaced by a store install.
+      if (mounted) setState(() => _busy = false);
     }
   }
 
