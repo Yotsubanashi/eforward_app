@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:eforward_app/config/app_env.dart';
 import 'package:eforward_app/constants/api_endpoints.dart';
 import 'package:eforward_app/models/app_version_info.dart';
+import 'package:eforward_app/services/privacy_cover_service.dart';
 
 export 'package:eforward_app/models/app_version_info.dart';
 
@@ -140,47 +141,62 @@ class AppVersionService {
     await intent.launch();
   }
 
-  /// Opens the store/download URL. On iOS this calls through a native
-  /// MethodChannel to `UIApplication.open(_:options:completionHandler:)`,
-  /// which bypasses any Flutter/scene-lifecycle interference and reliably
-  /// routes App Store links to the App Store app.
-  ///
-  /// Tries each URL variant in order so iOS always has a working form:
-  ///   1. The backend's raw URL (itms-apps:// — matches the working HRIS flow).
-  ///   2. The https://apps.apple.com equivalent (user-verified in Safari).
-  /// First one that iOS accepts wins.
+  /// Opens the store/download URL. Matches HRIS's working pattern:
+  /// `url_launcher` with the raw backend URL as the primary path, fire-and-
+  /// forget (no bool trust — iOS reports false unreliably). Falls back to
+  /// the https form, then a native `UIApplication.open` MethodChannel as a
+  /// last resort.
   Future<bool> launchDownload(Uri url) async {
     debugPrint('[launchDownload] input=$url');
 
-    // Build the ordered list of candidates to try.
+    // CRITICAL: suppress the native privacy cover BEFORE launching. The
+    // cover observer in AppDelegate fires on UIScene.willDeactivateNotification
+    // — which is exactly when iOS begins the transition to App Store. If it
+    // adds the cover UIView to the window during that transition, iOS cancels
+    // the transition and the App Store never opens. Awaiting both calls
+    // guarantees the native flag is cleared BEFORE the launch request fires.
+    try {
+      debugPrint('[launchDownload] disabling privacy cover …');
+      await PrivacyCoverService.setSecure(false);
+      await PrivacyCoverService.hideCover();
+      debugPrint('[launchDownload] privacy cover disabled');
+    } catch (e) {
+      debugPrint('[launchDownload] cover-disable failed (continuing): $e');
+    }
+
     final candidates = <Uri>[url];
     final https = _httpsForm(url);
     if (https != null) candidates.add(https);
 
+    // Primary path on all platforms — matches HRIS exactly.
+    for (final candidate in candidates) {
+      try {
+        debugPrint('[launchDownload] url_launcher → $candidate');
+        // Fire-and-forget — don't await the Future's bool; iOS lies about it.
+        // ignore: unawaited_futures
+        launchUrl(candidate, mode: LaunchMode.externalApplication);
+        return true;
+      } catch (e) {
+        debugPrint('[launchDownload] url_launcher threw for $candidate: $e');
+      }
+    }
+
+    // Last-resort iOS fallback — native UIApplication.open via MethodChannel.
     if (Platform.isIOS) {
       const channel = MethodChannel('eforward/launcher');
       for (final candidate in candidates) {
-        debugPrint('[launchDownload] native openUrl → $candidate');
         try {
-          final ok =
-              await channel.invokeMethod<bool>('openUrl', candidate.toString());
+          debugPrint('[launchDownload] native openUrl → $candidate');
+          final ok = await channel.invokeMethod<bool>(
+              'openUrl', candidate.toString());
           if (ok == true) return true;
-          debugPrint('[launchDownload] native returned false for $candidate');
         } catch (e) {
           debugPrint('[launchDownload] native threw for $candidate: $e');
         }
       }
     }
 
-    // Android / final fallback — url_launcher with the first candidate.
-    try {
-      // ignore: unawaited_futures
-      launchUrl(candidates.first, mode: LaunchMode.externalApplication);
-      return true;
-    } catch (e) {
-      debugPrint('[launchDownload] url_launcher threw: $e');
-      return false;
-    }
+    return false;
   }
 
   /// Converts `itms-apps://apps.apple.com/...` or `itms-appss://.../` to the

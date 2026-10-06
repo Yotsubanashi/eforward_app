@@ -2,13 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
-	<!-- Privacy usage descriptions (required by App Store review). -->
-	<key>NSFaceIDUsageDescription</key>
-	<string>E-Forward uses Face ID to securely unlock the app and protect your documents.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>E-Forward needs access to your photos so you can add a signature or image to your documents.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
@@ -46,13 +39,10 @@
 	<true/>
 	<key>FlutterDeepLinkingEnabled</key>
 	<false/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
-		<!-- url_launcher calls canLaunchUrl internally; iOS requires these
-		     schemes to be whitelisted here or canLaunchUrl returns false and
-		     the launch silently no-ops. Without this, tapping Update on the
-		     force/soft update dialog closes the dialog but never opens the
-		     App Store. -->
 		<string>itms-apps</string>
 		<string>itms-appss</string>
 		<string>itms</string>
@@ -61,6 +51,10 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>E-Forward uses Face ID to securely unlock the app and protect your documents.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>E-Forward needs access to your photos so you can add a signature or image to your documents.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

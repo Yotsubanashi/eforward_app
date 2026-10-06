@@ -24,6 +24,17 @@ import UserNotifications
   // enabled + device can authenticate). Off by default so we never trap a
   // logged-out user or one who opted out of the lock behind a cover.
   private var shouldCover = false
+  // Hard override: when true the privacy cover is NEVER drawn, regardless of
+  // `shouldCover`. Set from Dart right before an external URL launch
+  // (`UIApplication.open` → App Store) because the cover observer fires on
+  // `UIScene.willDeactivateNotification` — the exact moment of the launch
+  // transition — and modifying the window hierarchy at that instant causes
+  // iOS to cancel the transition. The flag auto-expires after a few seconds.
+  private var suppressCoverUntil: Date?
+  private var isCoverSuppressed: Bool {
+    guard let until = suppressCoverUntil else { return false }
+    return Date() < until
+  }
 
   override func application(
     _ application: UIApplication,
@@ -117,7 +128,7 @@ import UserNotifications
       name: "eforward/launcher",
       binaryMessenger: messenger
     )
-    launcherChannel.setMethodCallHandler { call, reply in
+    launcherChannel.setMethodCallHandler { [weak self] call, reply in
       switch call.method {
       case "openUrl":
         guard let urlString = call.arguments as? String,
@@ -125,6 +136,10 @@ import UserNotifications
           reply(false)
           return
         }
+        // Hard-suppress the cover for 5 s around the transition so the scene
+        // observer can't drop a UIView mid-transition and cancel the open.
+        self?.suppressCoverUntil = Date().addingTimeInterval(5)
+        self?.hidePrivacyCover()
         DispatchQueue.main.async {
           UIApplication.shared.open(url, options: [:]) { ok in
             reply(ok)
@@ -159,6 +174,9 @@ import UserNotifications
   }
 
   @objc private func coverForSceneNotification(_ note: Notification) {
+    // Don't cover during an in-flight external URL launch — adding a view to
+    // the window while iOS is transitioning to App Store cancels the transition.
+    if isCoverSuppressed { return }
     if shouldCover { showPrivacyCover(on: note.object as? UIWindowScene) }
   }
 
