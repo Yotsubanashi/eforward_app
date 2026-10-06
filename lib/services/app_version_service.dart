@@ -245,7 +245,6 @@ enum AppInstallResult {
 
 /// Brand accent used across the update dialog.
 const Color _kBrandRed = Color(0xFFCC0000);
-const Color _kInk = Color(0xFF1A1A1A);
 const Color _kMuted = Color(0xFF6B7280);
 
 /// Dismissible "a newer version is available" prompt. Returns `true` if the
@@ -309,155 +308,127 @@ Future<bool> showSoftUpdateDialog({
 }
 
 /// Shows the force-update dialog. Returns `true` if the user tapped "Update Now".
+/// Full-screen, non-dismissible mandatory-update wall. Pushed as a route (not
+/// a dialog) so it occupies the entire display — no back button, no barrier
+/// tap-through, no way past it except updating. Returns `true` once the user
+/// taps "Update Now" and the install/App Store link was launched.
 Future<bool> showForceUpdateDialog({
   required BuildContext context,
   required AppVersionInfo remote,
   required AppComparableVersion current,
   required String? packageName,
 }) async {
-  var updateInitiated = false;
-
-  await showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    barrierColor: Colors.black.withOpacity(0.55),
-    builder: (dialogContext) {
-      return PopScope(
-        canPop: false,
-        child: _ForceUpdateCard(
-          remote: remote,
-          current: current,
-          onUpdate: () async {
-            final svc = AppVersionService();
-            try {
-              // On Android, download the APK and hand it to the system
-              // installer so the app is actually replaced. Fall back to opening
-              // the URL in a browser only if that path is unavailable.
-              if (Platform.isAndroid) {
-                final result = await svc.downloadAndInstallApk(
-                  remote.downloadUrl,
-                );
-
-                if (result == AppInstallResult.installLaunched) {
-                  updateInitiated = true;
-                  if (dialogContext.mounted) Navigator.of(dialogContext).pop();
-                  return;
-                }
-
-                if (result == AppInstallResult.permissionDenied) {
-                  if (dialogContext.mounted) {
-                    ScaffoldMessenger.maybeOf(dialogContext)?.showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Please allow installing apps from this source, '
-                          'then tap Update again.',
-                        ),
-                      ),
-                    );
-                  }
-                  return;
-                }
-                // Download/install failed → fall through to the browser link.
-              }
-
-              final ok = await svc.launchDownload(remote.downloadUrl);
-              if (!dialogContext.mounted) return;
-
-              if (!ok) {
-                ScaffoldMessenger.maybeOf(dialogContext)?.showSnackBar(
-                  const SnackBar(
-                    content:
-                        Text('Unable to open update link. Please try again.'),
-                  ),
-                );
-                return;
-              }
-
-              updateInitiated = true;
-              Navigator.of(dialogContext).pop();
-            } catch (e) {
-              debugPrint('Update launch failed: $e');
-            } finally {
-              svc.dispose();
-            }
-          },
-        ),
-      );
-    },
+  final result = await Navigator.of(context, rootNavigator: true).push<bool>(
+    PageRouteBuilder<bool>(
+      opaque: true,
+      fullscreenDialog: true,
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (_, _, _) => _ForceUpdateScreen(
+        remote: remote,
+        current: current,
+      ),
+      transitionsBuilder: (_, anim, _, child) =>
+          FadeTransition(opacity: anim, child: child),
+    ),
   );
-
-  return updateInitiated;
+  return result ?? false;
 }
 
-class _ForceUpdateCard extends StatefulWidget {
-  const _ForceUpdateCard({
+/// Full-screen force-update wall. Blocking (PopScope canPop:false),
+/// brand-gradient background, large icon + title + version chips, bottom
+/// primary action. Pops with `true` once the install/App Store link is
+/// successfully launched.
+class _ForceUpdateScreen extends StatefulWidget {
+  const _ForceUpdateScreen({
     required this.remote,
     required this.current,
-    required this.onUpdate,
   });
 
   final AppVersionInfo remote;
   final AppComparableVersion current;
-  final Future<void> Function() onUpdate;
 
   @override
-  State<_ForceUpdateCard> createState() => _ForceUpdateCardState();
+  State<_ForceUpdateScreen> createState() => _ForceUpdateScreenState();
 }
 
-class _ForceUpdateCardState extends State<_ForceUpdateCard> {
+class _ForceUpdateScreenState extends State<_ForceUpdateScreen> {
   bool _busy = false;
 
   Future<void> _handleUpdate() async {
     if (_busy) return;
     setState(() => _busy = true);
+    final svc = AppVersionService();
     try {
-      await widget.onUpdate();
-    } finally {
+      // Android → try the in-app installer first; iOS and failures → open the
+      // store deep link in the browser/App Store.
+      if (Platform.isAndroid) {
+        final result = await svc.downloadAndInstallApk(widget.remote.downloadUrl);
+        if (result == AppInstallResult.installLaunched) {
+          if (mounted) Navigator.of(context).pop(true);
+          return;
+        }
+        if (result == AppInstallResult.permissionDenied) {
+          if (mounted) {
+            ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Please allow installing apps from this source, '
+                  'then tap Update again.',
+                ),
+              ),
+            );
+            setState(() => _busy = false);
+          }
+          return;
+        }
+      }
+      final ok = await svc.launchDownload(widget.remote.downloadUrl);
+      if (!mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(
+            content: Text('Unable to open update link. Please try again.'),
+          ),
+        );
+        setState(() => _busy = false);
+        return;
+      }
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      debugPrint('Update launch failed: $e');
       if (mounted) setState(() => _busy = false);
+    } finally {
+      svc.dispose();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 380),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.18),
-              blurRadius: 40,
-              offset: const Offset(0, 18),
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        body: Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFE11414), _kBrandRed],
             ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header with brand gradient + icon badge.
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFFE11414), _kBrandRed],
-                ),
-              ),
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
               child: Column(
                 children: [
+                  const Spacer(),
+                  // Icon badge
                   Container(
-                    height: 72,
-                    width: 72,
+                    height: 112,
+                    width: 112,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.16),
+                      color: Colors.white.withOpacity(0.14),
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: Colors.white.withOpacity(0.28),
@@ -467,79 +438,69 @@ class _ForceUpdateCardState extends State<_ForceUpdateCard> {
                     child: const Icon(
                       Icons.system_update_rounded,
                       color: Colors.white,
-                      size: 36,
+                      size: 56,
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 28),
                   const Text(
-                    'Update Required',
+                    'Time to update',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 21,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.2,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
                     ),
                   ),
-                ],
-              ),
-            ),
-            // Body.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-              child: Column(
-                children: [
+                  const SizedBox(height: 14),
                   const Text(
-                    'A newer version of the app is available. '
-                    'Please update to continue.',
+                    'We’ve made important improvements to keep '
+                    'E-Forward running smoothly. Install the latest version '
+                    'to continue.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: _kMuted,
-                      fontSize: 14.5,
-                      height: 1.45,
+                      color: Colors.white,
+                      fontSize: 15.5,
+                      height: 1.5,
                     ),
                   ),
-                  const SizedBox(height: 22),
-                  _VersionRow(
-                    current: widget.current.toString(),
-                    latest: widget.remote.latestVersion.toString(),
-                  ),
-                  const SizedBox(height: 24),
+                  const Spacer(),
                   SizedBox(
                     width: double.infinity,
-                    height: 54,
+                    height: 56,
                     child: ElevatedButton(
                       onPressed: _busy ? null : _handleUpdate,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: _kBrandRed,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: _kBrandRed.withOpacity(0.6),
-                        disabledForegroundColor: Colors.white,
+                        backgroundColor: Colors.white,
+                        foregroundColor: _kBrandRed,
+                        disabledBackgroundColor: Colors.white.withOpacity(0.7),
+                        disabledForegroundColor: _kBrandRed,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
                         textStyle: const TextStyle(
                           fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                       child: _busy
                           ? const SizedBox(
-                              height: 22,
-                              width: 22,
+                              height: 24,
+                              width: 24,
                               child: CircularProgressIndicator(
-                                strokeWidth: 2.4,
+                                strokeWidth: 2.6,
                                 valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                                    AlwaysStoppedAnimation<Color>(_kBrandRed),
                               ),
                             )
                           : const Text('Update Now'),
                     ),
                   ),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -631,7 +592,7 @@ class _SoftUpdateCardState extends State<_SoftUpdateCard> {
                   ),
                   const SizedBox(height: 18),
                   const Text(
-                    'Update Available',
+                    'A fresh update is here',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 21,
@@ -647,9 +608,8 @@ class _SoftUpdateCardState extends State<_SoftUpdateCard> {
               child: Column(
                 children: [
                   const Text(
-                    'A newer version of the app is available with '
-                    'improvements and fixes. Update now for the best '
-                    'experience.',
+                    'Enjoy a smoother experience with the latest '
+                    'improvements and fixes. Update when you’re ready.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: _kMuted,
@@ -658,11 +618,6 @@ class _SoftUpdateCardState extends State<_SoftUpdateCard> {
                     ),
                   ),
                   const SizedBox(height: 22),
-                  _VersionRow(
-                    current: widget.current.toString(),
-                    latest: widget.remote.latestVersion.toString(),
-                  ),
-                  const SizedBox(height: 20),
                   Row(
                     children: [
                       Expanded(
@@ -734,77 +689,3 @@ class _SoftUpdateCardState extends State<_SoftUpdateCard> {
   }
 }
 
-class _VersionRow extends StatelessWidget {
-  const _VersionRow({required this.current, required this.latest});
-
-  final String current;
-  final String latest;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF6F7F9),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFEDEEF1)),
-      ),
-      child: Row(
-        children: [
-          Expanded(child: _VersionChip(label: 'Current', value: current)),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8),
-            child: Icon(Icons.arrow_forward_rounded, size: 18, color: _kMuted),
-          ),
-          Expanded(
-            child: _VersionChip(
-              label: 'Latest',
-              value: latest,
-              highlight: true,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _VersionChip extends StatelessWidget {
-  const _VersionChip({
-    required this.label,
-    required this.value,
-    this.highlight = false,
-  });
-
-  final String label;
-  final String value;
-  final bool highlight;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          label.toUpperCase(),
-          style: const TextStyle(
-            color: _kMuted,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.6,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: highlight ? _kBrandRed : _kInk,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ],
-    );
-  }
-}
