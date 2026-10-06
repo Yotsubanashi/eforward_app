@@ -140,39 +140,42 @@ class AppVersionService {
     await intent.launch();
   }
 
-  /// Opens the store/download URL. On iOS, always launch the `https://`
-  /// App Store page form — the user verified that
-  /// `https://apps.apple.com/app/id6790258984` reliably opens the App Store
-  /// app from Safari, and iOS auto-handles apps.apple.com from inside apps
-  /// too (Universal Links). On Android, launches the raw APK/market URL.
+  /// Opens the store/download URL. On iOS this calls through a native
+  /// MethodChannel to `UIApplication.open(_:options:completionHandler:)`,
+  /// which bypasses any Flutter/scene-lifecycle interference and reliably
+  /// routes App Store links to the App Store app.
   ///
-  /// On iOS this calls through a native MethodChannel to
-  /// `UIApplication.open(_:options:completionHandler:)` directly. Going
-  /// through `url_launcher` was returning silently without opening the
-  /// App Store — likely due to this app's scene-based lifecycle and native
-  /// privacy cover intercepting the resign-active notification. The native
-  /// call runs on the main queue with no cover coordination required and
-  /// has been proven to open apps.apple.com reliably.
+  /// Tries each URL variant in order so iOS always has a working form:
+  ///   1. The backend's raw URL (itms-apps:// — matches the working HRIS flow).
+  ///   2. The https://apps.apple.com equivalent (user-verified in Safari).
+  /// First one that iOS accepts wins.
   Future<bool> launchDownload(Uri url) async {
-    final target =
-        Platform.isIOS ? (_httpsForm(url) ?? url) : url;
-    debugPrint('[launchDownload] original=$url  target=$target');
+    debugPrint('[launchDownload] input=$url');
+
+    // Build the ordered list of candidates to try.
+    final candidates = <Uri>[url];
+    final https = _httpsForm(url);
+    if (https != null) candidates.add(https);
 
     if (Platform.isIOS) {
-      try {
-        final ok = await const MethodChannel('eforward/launcher')
-            .invokeMethod<bool>('openUrl', target.toString());
-        if (ok == true) return true;
-        debugPrint('[launchDownload] native openUrl returned false');
-      } catch (e) {
-        debugPrint('[launchDownload] native openUrl threw: $e');
+      const channel = MethodChannel('eforward/launcher');
+      for (final candidate in candidates) {
+        debugPrint('[launchDownload] native openUrl → $candidate');
+        try {
+          final ok =
+              await channel.invokeMethod<bool>('openUrl', candidate.toString());
+          if (ok == true) return true;
+          debugPrint('[launchDownload] native returned false for $candidate');
+        } catch (e) {
+          debugPrint('[launchDownload] native threw for $candidate: $e');
+        }
       }
     }
 
-    // Fallback / Android path — url_launcher.
+    // Android / final fallback — url_launcher with the first candidate.
     try {
       // ignore: unawaited_futures
-      launchUrl(target, mode: LaunchMode.externalApplication);
+      launchUrl(candidates.first, mode: LaunchMode.externalApplication);
       return true;
     } catch (e) {
       debugPrint('[launchDownload] url_launcher threw: $e');
@@ -317,35 +320,22 @@ Future<bool> showSoftUpdateDialog({
       remote: remote,
       current: current,
       onUpdate: () async {
+        // Match HRIS: pop the dialog FIRST, then launch. iOS can refuse to
+        // transition out of the app while a modal is dismissing, which is
+        // what was causing the Update tap to silently no-op in e-forward.
+        if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+        updateInitiated = true;
         final svc = AppVersionService();
         try {
           if (Platform.isAndroid) {
             final result = await svc.downloadAndInstallApk(remote.downloadUrl);
-            if (result == AppInstallResult.installLaunched) {
-              updateInitiated = true;
-              if (dialogContext.mounted) Navigator.of(dialogContext).pop();
-              return;
+            if (result != AppInstallResult.installLaunched) {
+              // Fall back to the store link if the APK install path failed.
+              await svc.launchDownload(remote.downloadUrl);
             }
-            if (result == AppInstallResult.permissionDenied) {
-              if (dialogContext.mounted) {
-                ScaffoldMessenger.maybeOf(dialogContext)?.showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Please allow installing apps from this source, '
-                      'then tap Update again.',
-                    ),
-                  ),
-                );
-              }
-              return;
-            }
+            return;
           }
-          final ok = await svc.launchDownload(remote.downloadUrl);
-          if (!dialogContext.mounted) return;
-          if (ok) {
-            updateInitiated = true;
-            Navigator.of(dialogContext).pop();
-          }
+          await svc.launchDownload(remote.downloadUrl);
         } catch (e) {
           debugPrint('Soft update launch failed: $e');
         } finally {
