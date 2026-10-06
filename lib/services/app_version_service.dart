@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:eforward_app/config/app_env.dart';
 import 'package:eforward_app/constants/api_endpoints.dart';
 import 'package:eforward_app/models/app_version_info.dart';
+import 'package:eforward_app/services/privacy_cover_service.dart';
 
 export 'package:eforward_app/models/app_version_info.dart';
 
@@ -139,20 +140,53 @@ class AppVersionService {
     await intent.launch();
   }
 
-  /// Opens the store/download URL as-is. Matches the HRIS pattern exactly:
-  /// `launchUrl` with `LaunchMode.externalApplication`, no URL rewriting, no
-  /// success check — iOS can return `false` from `launchUrl` even when the
-  /// App Store actually opened, so trusting that bool led to spurious
-  /// "Unable to open" errors. We only treat a thrown exception as failure.
+  /// Opens the store/download URL. On iOS, always prefer the `https://`
+  /// App Store page form — the user has confirmed that
+  /// `https://apps.apple.com/app/id6790258984` reliably opens the App Store
+  /// app from inside Safari, and iOS auto-handles that domain via
+  /// Universal Links from within apps too. On Android, launches the APK URL.
+  ///
+  /// Side-steps the native privacy-cover race by disabling the cover first:
+  /// the cover hooks into scene resign-active notifications, which fire
+  /// exactly when launchUrl tries to hand off to the App Store.
   Future<bool> launchDownload(Uri url) async {
-    debugPrint('[launchDownload] opening $url');
+    // iOS: always launch the https form. Android: launch the raw APK URL.
+    final target =
+        Platform.isIOS ? (_httpsForm(url) ?? url) : url;
+    debugPrint('[launchDownload] original=$url  target=$target');
+
+    // Drop the native privacy cover so it doesn't block the scene transition.
+    // The cover re-syncs on next app resume via existing lifecycle hooks.
     try {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
+      await PrivacyCoverService.setSecure(false);
+      await PrivacyCoverService.hideCover();
+    } catch (_) {/* best-effort */}
+
+    try {
+      // Fire-and-forget — don't trust `launchUrl`'s return value on iOS
+      // (it reports false unreliably during scene transitions).
+      // ignore: unawaited_futures
+      launchUrl(target, mode: LaunchMode.externalApplication);
       return true;
     } catch (e) {
-      debugPrint('[launchDownload] throw: $e');
+      debugPrint('[launchDownload] launchUrl threw: $e');
       return false;
     }
+  }
+
+  /// Converts `itms-apps://apps.apple.com/...` or `itms-appss://.../` to the
+  /// `https://apps.apple.com/...` equivalent. Returns null for unrelated URLs.
+  static Uri? _httpsForm(Uri url) {
+    final s = url.toString();
+    for (final prefix in const ['itms-apps://', 'itms-appss://', 'itms://']) {
+      if (s.startsWith(prefix)) {
+        final rest = s.substring(prefix.length);
+        final slash = rest.indexOf('/');
+        final path = slash >= 0 ? rest.substring(slash) : '/';
+        return Uri.parse('https://apps.apple.com$path');
+      }
+    }
+    return null;
   }
 
   /// Downloads the APK at [url] and hands it to the Android package installer.
