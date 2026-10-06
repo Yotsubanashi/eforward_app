@@ -199,6 +199,7 @@ class _OtpScreenState extends State<OtpScreen> {
       'OTP verification failed [${result.statusCode}]: ${result.message}',
     );
     AppSnackbar.error(context, result.message);
+    _clearOtp();
   }
 
   // 👇 Deep search for token in any nested structure
@@ -258,20 +259,58 @@ class _OtpScreenState extends State<OtpScreen> {
     return null;
   }
 
-  void _onChanged(String value, int index) {
-    if (value.isNotEmpty) {
-      final upper = value.toUpperCase();
-      _controllers[index].value = TextEditingValue(
-        text: upper,
-        selection: TextSelection.collapsed(offset: upper.length),
-      );
+  void _clearOtp() {
+    for (final c in _controllers) {
+      c.clear();
     }
-    if (value.length == 1 && index < 5) {
+    _focusNodes[0].requestFocus();
+  }
+
+  void _onChanged(String value, int index) {
+    if (value.isEmpty) {
+      if (index > 0) _focusNodes[index - 1].requestFocus();
+      return;
+    }
+
+    // Pasted full code: spread across all boxes.
+    if (value.length >= 6) {
+      final digits = value.substring(value.length - 6);
+      for (var i = 0; i < 6; i++) {
+        _controllers[i].text = digits[i];
+      }
+      _focusNodes[5].unfocus();
+      _verifyCode();
+      return;
+    }
+
+    // Typing into a filled box replaces its digit with the newest one.
+    final digit = value.substring(value.length - 1);
+    _controllers[index].value = TextEditingValue(
+      text: digit,
+      selection: const TextSelection.collapsed(offset: 1),
+    );
+
+    if (index < 5) {
       _focusNodes[index + 1].requestFocus();
     }
-    if (value.isEmpty && index > 0) {
-      _focusNodes[index - 1].requestFocus();
+
+    if (_otpCode.length == 6 && !_isLoading) {
+      _focusNodes[index].unfocus();
+      _verifyCode();
     }
+  }
+
+  // Backspace on an empty box clears the previous box and moves back to it.
+  KeyEventResult _onKey(FocusNode node, KeyEvent event, int index) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.backspace &&
+        _controllers[index].text.isEmpty &&
+        index > 0) {
+      _controllers[index - 1].clear();
+      _focusNodes[index - 1].requestFocus();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   @override
@@ -396,39 +435,39 @@ class _OtpScreenState extends State<OtpScreen> {
                 // Resend Code (email OTP only — TOTP codes rotate in the app)
                 if (!widget.isAuthenticator)
                   TextButton(
-                  onPressed: _secondsRemaining == 0 ? _resendOtp : null,
-                  child: const Text(
-                    "RESEND CODE",
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.5,
-                      color: Color(0xFF1A1A1A),
+                    onPressed: _secondsRemaining == 0 ? _resendOtp : null,
+                    child: const Text(
+                      "RESEND CODE",
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.5,
+                        color: Color(0xFF1A1A1A),
+                      ),
                     ),
                   ),
-                ),
 
                 // Timer (email OTP only)
                 if (!widget.isAuthenticator)
                   RichText(
-                  text: TextSpan(
-                    text: "CODE EXPIRES IN  ",
-                    style: const TextStyle(
-                      fontSize: 10,
-                      color: Colors.black38,
-                      letterSpacing: 1,
-                    ),
-                    children: [
-                      TextSpan(
-                        text: _timerText,
-                        style: const TextStyle(
-                          color: Color(0xFFCC0000),
-                          fontWeight: FontWeight.w700,
-                        ),
+                    text: TextSpan(
+                      text: "CODE EXPIRES IN  ",
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Colors.black38,
+                        letterSpacing: 1,
                       ),
-                    ],
+                      children: [
+                        TextSpan(
+                          text: _timerText,
+                          style: const TextStyle(
+                            color: Color(0xFFCC0000),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
 
                 const SizedBox(height: 32),
 
@@ -488,40 +527,48 @@ class _OtpScreenState extends State<OtpScreen> {
     return SizedBox(
       width: 44,
       height: 52,
-      child: TextField(
-        controller: _controllers[index],
-        focusNode: _focusNodes[index],
-        textAlign: TextAlign.center,
-        textAlignVertical: TextAlignVertical.center,
-        textDirection: TextDirection.ltr,
-        keyboardType: TextInputType.number,
-        maxLength: 1,
-        inputFormatters: [
-          FilteringTextInputFormatter.digitsOnly,
-        ],
-        onChanged: (value) => _onChanged(value, index),
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF1A1A1A),
-          height: 1.0,
-        ),
-        decoration: InputDecoration(
-          counterText: "",
-          filled: true,
-          fillColor: Colors.white,
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(
-            vertical: 14,
-            horizontal: 0,
+      child: Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: (node, event) => _onKey(node, event, index),
+        child: TextField(
+          controller: _controllers[index],
+          focusNode: _focusNodes[index],
+          textAlign: TextAlign.center,
+          textAlignVertical: TextAlignVertical.center,
+          textDirection: TextDirection.ltr,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          onChanged: (value) => _onChanged(value, index),
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF1A1A1A),
+            height: 1.0,
           ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(4),
-            borderSide: const BorderSide(color: Color(0xFFDDDDDD), width: 1.5),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(4),
-            borderSide: const BorderSide(color: Color(0xFFCC0000), width: 1.5),
+          decoration: InputDecoration(
+            counterText: "",
+            filled: true,
+            fillColor: Colors.white,
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 14,
+              horizontal: 0,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(4),
+              borderSide: const BorderSide(
+                color: Color(0xFFDDDDDD),
+                width: 1.5,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(4),
+              borderSide: const BorderSide(
+                color: Color(0xFFCC0000),
+                width: 1.5,
+              ),
+            ),
           ),
         ),
       ),
