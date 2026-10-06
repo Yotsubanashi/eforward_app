@@ -494,11 +494,10 @@ class _OtpScreenState extends State<OtpScreen> {
         textAlign: TextAlign.center,
         textAlignVertical: TextAlignVertical.center,
         textDirection: TextDirection.ltr,
-        textCapitalization: TextCapitalization.characters,
-        keyboardType: TextInputType.visiblePassword,
+        keyboardType: TextInputType.number,
         maxLength: 1,
         inputFormatters: [
-          FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+          FilteringTextInputFormatter.digitsOnly,
         ],
         onChanged: (value) => _onChanged(value, index),
         style: const TextStyle(
