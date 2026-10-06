@@ -140,7 +140,35 @@ class AppVersionService {
   }
 
   Future<bool> launchDownload(Uri url) async {
-    return launchUrl(url, mode: LaunchMode.externalApplication);
+    // Rewrite iOS App Store deep links to their https equivalent. The
+    // `itms-apps://` scheme requires an entry in Info.plist's
+    // LSApplicationQueriesSchemes — without that, url_launcher may refuse to
+    // open it on iOS. `https://apps.apple.com/...` is auto-handled by iOS and
+    // opens the App Store app natively on-device while remaining a normal URL
+    // elsewhere, so the Update button always works.
+    final normalized = _normalizeForLaunch(url);
+    // Try the OS's preferred external handler first (App Store on iOS, Play
+    // Store on Android, browser otherwise). If that fails, try a platform
+    // default launch — some devices refuse `externalApplication` but accept it
+    // without a mode hint.
+    try {
+      final ok = await launchUrl(normalized, mode: LaunchMode.externalApplication);
+      if (ok) return true;
+    } catch (_) {/* fall through */}
+    try {
+      return await launchUrl(normalized);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Rewrites `itms-apps://apps.apple.com/...` → `https://apps.apple.com/...`.
+  /// Leaves every other URL untouched.
+  static Uri _normalizeForLaunch(Uri url) {
+    if (url.scheme == 'itms-apps' && url.host == 'apps.apple.com') {
+      return url.replace(scheme: 'https');
+    }
+    return url;
   }
 
   /// Downloads the APK at [url] and hands it to the Android package installer.
