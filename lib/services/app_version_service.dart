@@ -139,35 +139,25 @@ class AppVersionService {
     await intent.launch();
   }
 
+  /// Opens the download/store link. Mirrors the HRIS pattern: fire-and-forget
+  /// via `LaunchMode.externalApplication`, no success check — iOS can return
+  /// `false` from `launchUrl` even when the App Store actually opened, so a
+  /// bool-based success check caused spurious "Unable to open" errors.
+  /// Returns `false` only when the launch call itself THROWS.
   Future<bool> launchDownload(Uri url) async {
-    // Rewrite iOS App Store deep links to their https equivalent.
-    // `itms-apps://` requires an Info.plist LSApplicationQueriesSchemes entry
-    // — without it, url_launcher refuses to open the URL on iOS. The https
-    // form is auto-opened in the App Store app by iOS itself (no Info.plist
-    // change needed), and acts as a normal URL on every other platform.
+    // Rewrite iOS App Store deep links to their https equivalent. `itms-apps`
+    // is a non-standard scheme that needs an Info.plist whitelist entry;
+    // `https://apps.apple.com/...` opens the App Store app natively on iOS
+    // with no extra setup.
     final normalized = _normalizeForLaunch(url);
-    debugPrint('[launchDownload] original=$url  normalized=$normalized');
-
-    // Try the modes in order of preference:
-    //   externalNonBrowserApplication → iOS opens apps.apple.com directly in
-    //     the App Store app, Android opens market:// in Play Store.
-    //   externalApplication            → opens in default external app
-    //     (browser for https; usually the same result but less direct).
-    //   platformDefault                → last-ditch fallback that lets
-    //     Flutter pick.
-    for (final mode in const [
-      LaunchMode.externalNonBrowserApplication,
-      LaunchMode.externalApplication,
-      LaunchMode.platformDefault,
-    ]) {
-      try {
-        final ok = await launchUrl(normalized, mode: mode);
-        if (ok) return true;
-      } catch (e) {
-        debugPrint('[launchDownload] mode=$mode failed: $e');
-      }
+    debugPrint('[launchDownload] opening $normalized');
+    try {
+      await launchUrl(normalized, mode: LaunchMode.externalApplication);
+      return true;
+    } catch (e) {
+      debugPrint('[launchDownload] throw: $e');
+      return false;
     }
-    return false;
   }
 
   /// Rewrites `itms-apps://…apple.com/…` → `https://apps.apple.com/…`.
@@ -176,10 +166,7 @@ class AppVersionService {
   static Uri _normalizeForLaunch(Uri url) {
     final s = url.toString();
     if (s.startsWith('itms-apps://')) {
-      // Preserve the rest of the path/query; always target apps.apple.com.
       final rest = s.substring('itms-apps://'.length);
-      // Strip any legacy host prefix (e.g. "itunes.apple.com/" → use
-      // "apps.apple.com" uniformly, which iOS 13+ redirects for us).
       final slash = rest.indexOf('/');
       final path = slash >= 0 ? rest.substring(slash) : '/';
       return Uri.parse('https://apps.apple.com$path');
