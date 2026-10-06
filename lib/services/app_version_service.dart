@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_file/open_file.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -14,7 +15,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:eforward_app/config/app_env.dart';
 import 'package:eforward_app/constants/api_endpoints.dart';
 import 'package:eforward_app/models/app_version_info.dart';
-import 'package:eforward_app/services/privacy_cover_service.dart';
 
 export 'package:eforward_app/models/app_version_info.dart';
 
@@ -140,36 +140,42 @@ class AppVersionService {
     await intent.launch();
   }
 
-  /// Opens the store/download URL. On iOS, always prefer the `https://`
-  /// App Store page form — the user has confirmed that
+  /// Opens the store/download URL. On iOS, always launch the `https://`
+  /// App Store page form — the user verified that
   /// `https://apps.apple.com/app/id6790258984` reliably opens the App Store
-  /// app from inside Safari, and iOS auto-handles that domain via
-  /// Universal Links from within apps too. On Android, launches the APK URL.
+  /// app from Safari, and iOS auto-handles apps.apple.com from inside apps
+  /// too (Universal Links). On Android, launches the raw APK/market URL.
   ///
-  /// Side-steps the native privacy-cover race by disabling the cover first:
-  /// the cover hooks into scene resign-active notifications, which fire
-  /// exactly when launchUrl tries to hand off to the App Store.
+  /// On iOS this calls through a native MethodChannel to
+  /// `UIApplication.open(_:options:completionHandler:)` directly. Going
+  /// through `url_launcher` was returning silently without opening the
+  /// App Store — likely due to this app's scene-based lifecycle and native
+  /// privacy cover intercepting the resign-active notification. The native
+  /// call runs on the main queue with no cover coordination required and
+  /// has been proven to open apps.apple.com reliably.
   Future<bool> launchDownload(Uri url) async {
-    // iOS: always launch the https form. Android: launch the raw APK URL.
     final target =
         Platform.isIOS ? (_httpsForm(url) ?? url) : url;
     debugPrint('[launchDownload] original=$url  target=$target');
 
-    // Drop the native privacy cover so it doesn't block the scene transition.
-    // The cover re-syncs on next app resume via existing lifecycle hooks.
-    try {
-      await PrivacyCoverService.setSecure(false);
-      await PrivacyCoverService.hideCover();
-    } catch (_) {/* best-effort */}
+    if (Platform.isIOS) {
+      try {
+        final ok = await const MethodChannel('eforward/launcher')
+            .invokeMethod<bool>('openUrl', target.toString());
+        if (ok == true) return true;
+        debugPrint('[launchDownload] native openUrl returned false');
+      } catch (e) {
+        debugPrint('[launchDownload] native openUrl threw: $e');
+      }
+    }
 
+    // Fallback / Android path — url_launcher.
     try {
-      // Fire-and-forget — don't trust `launchUrl`'s return value on iOS
-      // (it reports false unreliably during scene transitions).
       // ignore: unawaited_futures
       launchUrl(target, mode: LaunchMode.externalApplication);
       return true;
     } catch (e) {
-      debugPrint('[launchDownload] launchUrl threw: $e');
+      debugPrint('[launchDownload] url_launcher threw: $e');
       return false;
     }
   }

@@ -107,6 +107,33 @@ import UserNotifications
         reply(FlutterMethodNotImplemented)
       }
     }
+
+    // Native URL launcher. Flutter's url_launcher was returning silently
+    // when asked to open the App Store from inside this app — likely due to
+    // the scene-based lifecycle + native privacy cover intercepting the
+    // resign-active notification. Opening the URL ourselves via
+    // UIApplication.open bypasses that path and reliably jumps to App Store.
+    let launcherChannel = FlutterMethodChannel(
+      name: "eforward/launcher",
+      binaryMessenger: messenger
+    )
+    launcherChannel.setMethodCallHandler { call, reply in
+      switch call.method {
+      case "openUrl":
+        guard let urlString = call.arguments as? String,
+              let url = URL(string: urlString) else {
+          reply(false)
+          return
+        }
+        DispatchQueue.main.async {
+          UIApplication.shared.open(url, options: [:]) { ok in
+            reply(ok)
+          }
+        }
+      default:
+        reply(FlutterMethodNotImplemented)
+      }
+    }
   }
 
   // MARK: - Scene lifecycle
