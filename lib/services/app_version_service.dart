@@ -139,39 +139,20 @@ class AppVersionService {
     await intent.launch();
   }
 
-  /// Opens the download/store link. Mirrors the HRIS pattern: fire-and-forget
-  /// via `LaunchMode.externalApplication`, no success check — iOS can return
-  /// `false` from `launchUrl` even when the App Store actually opened, so a
-  /// bool-based success check caused spurious "Unable to open" errors.
-  /// Returns `false` only when the launch call itself THROWS.
+  /// Opens the store/download URL as-is. Matches the HRIS pattern exactly:
+  /// `launchUrl` with `LaunchMode.externalApplication`, no URL rewriting, no
+  /// success check — iOS can return `false` from `launchUrl` even when the
+  /// App Store actually opened, so trusting that bool led to spurious
+  /// "Unable to open" errors. We only treat a thrown exception as failure.
   Future<bool> launchDownload(Uri url) async {
-    // Rewrite iOS App Store deep links to their https equivalent. `itms-apps`
-    // is a non-standard scheme that needs an Info.plist whitelist entry;
-    // `https://apps.apple.com/...` opens the App Store app natively on iOS
-    // with no extra setup.
-    final normalized = _normalizeForLaunch(url);
-    debugPrint('[launchDownload] opening $normalized');
+    debugPrint('[launchDownload] opening $url');
     try {
-      await launchUrl(normalized, mode: LaunchMode.externalApplication);
+      await launchUrl(url, mode: LaunchMode.externalApplication);
       return true;
     } catch (e) {
       debugPrint('[launchDownload] throw: $e');
       return false;
     }
-  }
-
-  /// Rewrites `itms-apps://…apple.com/…` → `https://apps.apple.com/…`.
-  /// Uses string manipulation (not Uri.host) because non-standard schemes
-  /// like `itms-apps` can parse with an empty host on some platforms.
-  static Uri _normalizeForLaunch(Uri url) {
-    final s = url.toString();
-    if (s.startsWith('itms-apps://')) {
-      final rest = s.substring('itms-apps://'.length);
-      final slash = rest.indexOf('/');
-      final path = slash >= 0 ? rest.substring(slash) : '/';
-      return Uri.parse('https://apps.apple.com$path');
-    }
-    return url;
   }
 
   /// Downloads the APK at [url] and hands it to the Android package installer.
