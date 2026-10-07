@@ -250,7 +250,15 @@ class AppVersionService {
           await getExternalStorageDirectory() ?? await getTemporaryDirectory();
       apkFile = File('${dir.path}/eforward-update.apk');
 
-      final request = http.Request('GET', url);
+      // Cache-bust: CDNs/proxies can keep serving an older APK at the same
+      // URL, which installs the old version and re-triggers the update gate.
+      final bustedUrl = url.replace(queryParameters: {
+        ...url.queryParameters,
+        '_ts': DateTime.now().millisecondsSinceEpoch.toString(),
+      });
+      final request = http.Request('GET', bustedUrl)
+        ..headers['Cache-Control'] = 'no-cache'
+        ..headers['Pragma'] = 'no-cache';
       final response = await _client.send(request);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return AppInstallResult.downloadFailed;
