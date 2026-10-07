@@ -220,8 +220,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _legacyCheckScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       // Give the force-update gate priority; don't stack dialogs.
+      // A fixed delay wasn't enough: on slow networks the version fetch was
+      // still in flight, so both dialogs stacked. Wait for the gate to settle.
       await Future<void>.delayed(const Duration(seconds: 2));
-      if (!mounted || _versionDialogVisible) return;
+      while (mounted && (_versionCheckInProgress || _versionDialogVisible)) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+      if (!mounted) return;
       if (!await LegacyAppService.isLegacyInstalled()) return;
       final ctx = navigatorKey.currentState?.overlay?.context;
       if (ctx == null || !mounted || _versionDialogVisible) return;
