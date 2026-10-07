@@ -37,6 +37,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final _appLinks = AppLinks();
   late final Future<bool> _hasSessionFuture = _hasSavedSession();
   bool _versionUpToDate = false;
+  // When the app last confirmed it was up to date. "Up to date" is only trusted
+  // for [_upToDateRecheckInterval]; after that a resume re-asks the server so a
+  // version released while the app sat in memory still triggers the prompt
+  // without the user having to kill the app from multitask.
+  DateTime? _upToDateCheckedAt;
+  static const _upToDateRecheckInterval = Duration(minutes: 1);
   bool _versionDialogVisible = false;
   bool _versionCheckInProgress = false;
   bool _initialVersionCheckScheduled = false;
@@ -278,6 +284,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       if (action == AppUpdateAction.none) {
         debugPrint('[VersionCheck] App is up to date');
         _versionUpToDate = true;
+        _upToDateCheckedAt = DateTime.now();
         _suppressVersionPromptUntil = null;
         return;
       }
@@ -343,6 +350,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       if (currentAfter != null && !(currentAfter < latest)) {
         debugPrint('[VersionCheck] Update completed, app is now up to date');
         _versionUpToDate = true;
+        _upToDateCheckedAt = DateTime.now();
         _suppressVersionPromptUntil = null;
         return;
       }
@@ -366,6 +374,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   Future<void> _recheckVersionAfterResume() async {
+    final checkedAt = _upToDateCheckedAt;
+    if (_versionUpToDate &&
+        checkedAt != null &&
+        DateTime.now().difference(checkedAt) >= _upToDateRecheckInterval) {
+      _versionUpToDate = false;
+    }
     if (_versionUpToDate || _versionDialogVisible || _versionCheckInProgress) {
       return;
     }
