@@ -33,6 +33,7 @@ class ApiEndpoints {
 
   // ─── App version ────────────────────────────────────────────────────────
   static const String appVersion = '/app/version2';
+  static const String appVersionAndroid = '/app/version';
 
   // ─── Notifications ──────────────────────────────────────────────────────
   static const String unreadCount = '/notifications/unread-count';

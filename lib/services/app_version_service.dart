@@ -26,9 +26,10 @@ class AppVersionService {
 
   // The backend defaults to android when `platform` is missing, which hands
   // iPhones a market:// (Play Store) link that iOS can't open.
-  static Uri get _defaultVersionEndpoint => Uri.parse(
-      '${AppEnv.apiBaseUrl}${ApiEndpoints.appVersion}'
-      '?platform=${Platform.isIOS ? 'ios' : 'android'}');
+  // Android stays on the original /app/version endpoint.
+  static Uri get _defaultVersionEndpoint => Platform.isIOS
+      ? Uri.parse('${AppEnv.apiBaseUrl}${ApiEndpoints.appVersion}?platform=ios')
+      : Uri.parse('${AppEnv.apiBaseUrl}${ApiEndpoints.appVersionAndroid}');
 
   /// Returns true when [installed] is older than [latest] from the backend.
   static bool isUpdateRequired(
