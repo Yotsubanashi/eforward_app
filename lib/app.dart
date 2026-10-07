@@ -43,6 +43,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool _legacyCheckScheduled = false;
   DateTime? _lastVersionPromptAt;
   DateTime? _suppressVersionPromptUntil;
+  // Soft prompt shows at most once per app launch: after "Later" (or an
+  // update attempt) it stays quiet on resume until the next cold start.
+  bool _softPromptShownThisLaunch = false;
 
   // Re-lock on resume: when the app is backgrounded/multitasked while a session
   // is active and the unlock toggle is on, require biometrics/PIN to return.
@@ -227,9 +230,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         await Future<void>.delayed(const Duration(milliseconds: 500));
       }
       if (!mounted) return;
-      if (!await LegacyAppService.isLegacyInstalled()) return;
+      if (!await LegacyAppService.shouldPrompt()) return;
       final ctx = navigatorKey.currentState?.overlay?.context;
       if (ctx == null || !mounted || _versionDialogVisible) return;
+      await LegacyAppService.markPrompted();
+      if (!ctx.mounted) return;
       await showRemoveLegacyAppDialog(ctx);
     });
   }
@@ -282,6 +287,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         return;
       }
 
+      if (action == AppUpdateAction.soft && _softPromptShownThisLaunch) {
+        debugPrint('[VersionCheck] Soft prompt already shown this launch');
+        return;
+      }
+
       debugPrint(
         '[VersionCheck] $action: $current < latest=${remote.latestVersion}'
         ' (min=${remote.minSupportedVersion})',
@@ -305,6 +315,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
       _versionDialogVisible = true;
       _lastVersionPromptAt = DateTime.now();
+      if (action == AppUpdateAction.soft) _softPromptShownThisLaunch = true;
 
       final updateInitiated = action == AppUpdateAction.forced
           ? await showForceUpdateDialog(

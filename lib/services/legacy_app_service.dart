@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Handles the leftover install created when the Android [applicationId] was
 /// renamed from `com.example.eforward_app` to `com.ardentnetworks.eforward`.
@@ -18,6 +19,30 @@ class LegacyAppService {
 
   /// The app's previous applicationId, now orphaned on upgraded devices.
   static const String legacyPackageName = 'com.example.eforward_app';
+
+  static const String _promptedKey = 'legacy_app_prompted';
+
+  /// True only the first time the old app is found: the prompt is shown once
+  /// per install. If the user keeps the old app, we don't nag them again.
+  static Future<bool> shouldPrompt() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(_promptedKey) ?? false) return false;
+    } catch (e) {
+      debugPrint('legacy prompt flag read failed: $e');
+    }
+    return isLegacyInstalled();
+  }
+
+  static Future<void> markPrompted() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_promptedKey, true);
+    } catch (e) {
+      debugPrint('legacy prompt flag write failed: $e');
+    }
+  }
 
   static Future<bool> isLegacyInstalled() async {
     if (!Platform.isAndroid) return false;
@@ -68,9 +93,9 @@ Future<void> showRemoveLegacyAppDialog(BuildContext context) async {
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         content: const Text(
-          'An older copy of E-Forward is still installed on this device from a '
-          'previous version. You can safely remove it — this newer app keeps '
-          'all your data.',
+          'An older copy of E-Forward is still installed on this device. '
+          'It no longer receives updates. Remove it so you only have one '
+          'E-Forward app.',
           textAlign: TextAlign.center,
           style: TextStyle(height: 1.4),
         ),

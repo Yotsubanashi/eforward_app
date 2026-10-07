@@ -250,6 +250,8 @@ class AppVersionService {
       final dir =
           await getExternalStorageDirectory() ?? await getTemporaryDirectory();
       apkFile = File('${dir.path}/eforward-update.apk');
+      // Never hand the installer a leftover/partial file from an earlier try.
+      if (await apkFile.exists()) await apkFile.delete();
 
       // Cache-bust: CDNs/proxies can keep serving an older APK at the same
       // URL, which installs the old version and re-triggers the update gate.
@@ -284,6 +286,12 @@ class AppVersionService {
       if (!await apkFile.exists() || await apkFile.length() == 0) {
         return AppInstallResult.downloadFailed;
       }
+      // A dropped connection can end the stream early; a truncated APK makes
+      // the installer fail with "There was a problem parsing the package".
+      if (total > 0 && received < total) {
+        return AppInstallResult.downloadFailed;
+      }
+      onProgress?.call(1);
 
       // open_file bundles a FileProvider and launches the system package
       // installer for APK files.
@@ -305,6 +313,111 @@ class AppVersionService {
 
   void dispose() {
     _client.close();
+  }
+}
+
+/// Android: downloads the APK behind a blocking progress dialog, then opens
+/// the system installer. If the in-app path fails it falls back to opening the
+/// URL in the browser; if "install unknown apps" was denied it shows a hint.
+Future<AppInstallResult> downloadAndInstallWithProgress(
+  BuildContext context,
+  Uri url,
+) async {
+  final progress = ValueNotifier<double?>(null);
+  final navigator = Navigator.of(context, rootNavigator: true);
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  var dialogOpen = true;
+
+  // ignore: unawaited_futures
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    useRootNavigator: true,
+    builder: (_) => PopScope(
+      canPop: false,
+      child: _DownloadProgressDialog(progress: progress),
+    ),
+  ).whenComplete(() => dialogOpen = false);
+
+  final svc = AppVersionService();
+  AppInstallResult result;
+  try {
+    result = await svc.downloadAndInstallApk(
+      url,
+      onProgress: (p) => progress.value = p.clamp(0.0, 1.0),
+    );
+  } catch (e) {
+    debugPrint('downloadAndInstallWithProgress failed: $e');
+    result = AppInstallResult.downloadFailed;
+  }
+
+  if (dialogOpen && navigator.mounted) navigator.pop();
+
+  switch (result) {
+    case AppInstallResult.installLaunched:
+      break;
+    case AppInstallResult.permissionDenied:
+      messenger?.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please allow installing apps from E-Forward, then tap Update again.',
+          ),
+        ),
+      );
+      break;
+    case AppInstallResult.downloadFailed:
+    case AppInstallResult.installFailed:
+    case AppInstallResult.unsupported:
+      messenger?.showSnackBar(
+        const SnackBar(
+          content: Text('Download failed. Opening the download link instead…'),
+        ),
+      );
+      await svc.launchDownload(url);
+      break;
+  }
+  svc.dispose();
+  return result;
+}
+
+class _DownloadProgressDialog extends StatelessWidget {
+  const _DownloadProgressDialog({required this.progress});
+
+  final ValueNotifier<double?> progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+        child: ValueListenableBuilder<double?>(
+          valueListenable: progress,
+          builder: (_, value, _) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Downloading update…',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 18),
+              LinearProgressIndicator(
+                value: value,
+                minHeight: 6,
+                color: _kBrandRed,
+                backgroundColor: const Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(3),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                value == null ? 'Starting…' : '${(value * 100).round()}%',
+                style: const TextStyle(color: _kMuted),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -338,43 +451,34 @@ Future<bool> showSoftUpdateDialog({
   required AppVersionInfo remote,
   required AppComparableVersion current,
 }) async {
-  var updateInitiated = false;
-
-  await showDialog<void>(
+  // The dialog only collects the choice; the update runs after it has closed
+  // so the caller's await covers the whole download → installer hand-off.
+  final wantsUpdate = await showDialog<bool>(
     context: context,
     barrierDismissible: true,
     barrierColor: Colors.black.withOpacity(0.45),
     builder: (dialogContext) => _SoftUpdateCard(
       remote: remote,
       current: current,
-      onUpdate: () async {
-        // Match HRIS: pop the dialog FIRST, then launch. iOS can refuse to
-        // transition out of the app while a modal is dismissing, which is
-        // what was causing the Update tap to silently no-op in e-forward.
-        if (dialogContext.mounted) Navigator.of(dialogContext).pop();
-        updateInitiated = true;
-        final svc = AppVersionService();
-        try {
-          if (Platform.isAndroid) {
-            final result = await svc.downloadAndInstallApk(remote.downloadUrl);
-            if (result != AppInstallResult.installLaunched) {
-              // Fall back to the store link if the APK install path failed.
-              await svc.launchDownload(remote.downloadUrl);
-            }
-            return;
-          }
-          await svc.launchDownload(remote.downloadUrl);
-        } catch (e) {
-          debugPrint('Soft update launch failed: $e');
-        } finally {
-          svc.dispose();
-        }
-      },
-      onLater: () => Navigator.of(dialogContext).pop(),
+      onUpdate: () async => Navigator.of(dialogContext).pop(true),
+      onLater: () => Navigator.of(dialogContext).pop(false),
     ),
   );
+  if (wantsUpdate != true || !context.mounted) return false;
 
-  return updateInitiated;
+  if (Platform.isAndroid) {
+    await downloadAndInstallWithProgress(context, remote.downloadUrl);
+    return true;
+  }
+  final svc = AppVersionService();
+  try {
+    await svc.launchDownload(remote.downloadUrl);
+  } catch (e) {
+    debugPrint('Soft update launch failed: $e');
+  } finally {
+    svc.dispose();
+  }
+  return true;
 }
 
 /// Shows the force-update dialog. Returns `true` if the user tapped "Update Now".
@@ -427,41 +531,22 @@ class _ForceUpdateScreenState extends State<_ForceUpdateScreen> {
   Future<void> _handleUpdate() async {
     if (_busy) return;
     setState(() => _busy = true);
-    final svc = AppVersionService();
     try {
-      // Android → try the in-app installer first. Whether the installer
-      // actually completes is decided by the user outside our app, so we
-      // never dismiss the wall from here either (cancel-install must land
-      // back on the wall, not on the obsolete content).
+      // The wall is never dismissed from here: whether the installer finishes
+      // is up to the user, and cancelling must land back on the wall.
       if (Platform.isAndroid) {
-        final result = await svc.downloadAndInstallApk(widget.remote.downloadUrl);
-        if (result == AppInstallResult.installLaunched) return;
-        if (result == AppInstallResult.permissionDenied) {
-          if (mounted) {
-            ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Please allow installing apps from this source, '
-                  'then tap Update again.',
-                ),
-              ),
-            );
-          }
-          return;
-        }
+        await downloadAndInstallWithProgress(context, widget.remote.downloadUrl);
+        return;
       }
-      // Fire the store launch. DO NOT dismiss the force wall — this is a
-      // mandatory update: the user must leave the app, install the new
-      // version, and relaunch. Keeping the wall ensures they can't get back
-      // to the app's content while still on the obsolete build.
-      await svc.launchDownload(widget.remote.downloadUrl);
+      final svc = AppVersionService();
+      try {
+        await svc.launchDownload(widget.remote.downloadUrl);
+      } finally {
+        svc.dispose();
+      }
     } catch (e) {
       debugPrint('Update launch failed: $e');
     } finally {
-      svc.dispose();
-      // Always re-enable the button so the user can tap again if the App
-      // Store didn't open (e.g. offline). The wall itself remains until the
-      // app is replaced by a store install.
       if (mounted) setState(() => _busy = false);
     }
   }
