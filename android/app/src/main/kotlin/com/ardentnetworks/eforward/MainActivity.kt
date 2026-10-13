@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -13,11 +14,11 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterFragmentActivity() {
     // Mirrors the iOS privacy cover (see ios/Runner/AppDelegate.swift). On
-    // Android the reliable way to keep session content out of the recents/app-
-    // switcher preview is FLAG_SECURE — the system renders a blank thumbnail
-    // instead of a snapshot, so there is no content to leak on reopen. Flutter
-    // tells us when the flag is warranted (active session + unlock enabled)
-    // through the shared "eforward/privacy" channel.
+    // Android 13+ the recents/app-switcher preview is blanked with
+    // setRecentsScreenshotEnabled(false), which — unlike FLAG_SECURE — still
+    // lets users take screenshots. Flutter tells us when blanking is warranted
+    // (active session + unlock enabled) through the shared "eforward/privacy"
+    // channel.
     private val privacyChannelName = "eforward/privacy"
 
     // Lets Dart detect a leftover install under the app's previous
@@ -72,12 +73,15 @@ class MainActivity : FlutterFragmentActivity() {
             when (call.method) {
                 "setSecure" -> {
                     val secure = call.arguments as? Boolean ?: false
-                    // Window flags must be touched on the UI thread.
+                    // Hide session content from the recents thumbnail only.
+                    // FLAG_SECURE is deliberately not used: it also blocks
+                    // user screenshots, which users need (e.g. to share a
+                    // document status). Android 13+ supports blanking the
+                    // recents preview on its own; older versions show it.
                     runOnUiThread {
-                        if (secure) {
-                            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-                        } else {
-                            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            setRecentsScreenshotEnabled(!secure)
                         }
                     }
                     result.success(null)

@@ -6,10 +6,7 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:open_file/open_file.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:eforward_app/config/app_env.dart';
@@ -218,97 +215,25 @@ class AppVersionService {
     return null;
   }
 
-  /// Downloads the APK at [url] and hands it to the Android package installer.
-  ///
-  /// This is what actually replaces the app on Android. The previous behaviour
-  /// only opened the URL in a browser, which downloaded the file but never
-  /// installed it — so the update never happened and the force-update gate kept
-  /// re-appearing in an endless loop.
-  ///
-  /// Returns [AppInstallResult.installLaunched] when the system installer was
-  /// opened. Callers should fall back to [launchDownload] on any other result.
-  Future<AppInstallResult> downloadAndInstallApk(
-    Uri url, {
-    void Function(double progress)? onProgress,
-  }) async {
-    if (!Platform.isAndroid) return AppInstallResult.unsupported;
-
-    // Android 8+ requires the user to allow "install unknown apps" for this app
-    // before the installer can run. Ask for it up front; without it the install
-    // intent silently fails and the loop would continue.
-    try {
-      final status = await Permission.requestInstallPackages.request();
-      if (!status.isGranted) return AppInstallResult.permissionDenied;
-    } catch (e) {
-      debugPrint('requestInstallPackages failed: $e');
-      // Older devices may not gate this permission — continue and let the
-      // installer surface any problem.
-    }
-
-    File? apkFile;
-    try {
-      final dir =
-          await getExternalStorageDirectory() ?? await getTemporaryDirectory();
-      apkFile = File('${dir.path}/eforward-update.apk');
-      // Never hand the installer a leftover/partial file from an earlier try.
-      if (await apkFile.exists()) await apkFile.delete();
-
-      // Cache-bust: CDNs/proxies can keep serving an older APK at the same
-      // URL, which installs the old version and re-triggers the update gate.
-      final bustedUrl = url.replace(queryParameters: {
-        ...url.queryParameters,
-        '_ts': DateTime.now().millisecondsSinceEpoch.toString(),
-      });
-      final request = http.Request('GET', bustedUrl)
-        ..headers['Cache-Control'] = 'no-cache'
-        ..headers['Pragma'] = 'no-cache';
-      final response = await _client.send(request);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        return AppInstallResult.downloadFailed;
-      }
-
-      final total = response.contentLength ?? 0;
-      var received = 0;
-      final sink = apkFile.openWrite();
+  /// Opens this app's Google Play listing so the user updates through Play.
+  /// Play policy forbids apps from updating themselves outside Google Play,
+  /// so Android never downloads or installs APKs in-app.
+  Future<bool> openPlayStoreListing() async {
+    final pkg = await getPackageName() ?? 'com.ardentnetworks.eforward';
+    final candidates = [
+      Uri.parse('market://details?id=$pkg'),
+      Uri.parse('https://play.google.com/store/apps/details?id=$pkg'),
+    ];
+    for (final candidate in candidates) {
       try {
-        await for (final chunk in response.stream) {
-          sink.add(chunk);
-          received += chunk.length;
-          if (total > 0 && onProgress != null) {
-            onProgress(received / total);
-          }
+        if (await launchUrl(candidate, mode: LaunchMode.externalApplication)) {
+          return true;
         }
-      } finally {
-        await sink.flush();
-        await sink.close();
+      } catch (e) {
+        debugPrint('[openPlayStoreListing] launch failed for $candidate: $e');
       }
-
-      if (!await apkFile.exists() || await apkFile.length() == 0) {
-        return AppInstallResult.downloadFailed;
-      }
-      // A dropped connection can end the stream early; a truncated APK makes
-      // the installer fail with "There was a problem parsing the package".
-      if (total > 0 && received < total) {
-        return AppInstallResult.downloadFailed;
-      }
-      onProgress?.call(1);
-
-      // open_file bundles a FileProvider and launches the system package
-      // installer for APK files.
-      final result = await OpenFile.open(
-        apkFile.path,
-        type: 'application/vnd.android.package-archive',
-      );
-
-      if (result.type == ResultType.done) {
-        return AppInstallResult.installLaunched;
-      }
-      debugPrint('OpenFile install result: ${result.type} ${result.message}');
-      return AppInstallResult.installFailed;
-    } catch (e) {
-      debugPrint('downloadAndInstallApk failed: $e');
-      return AppInstallResult.downloadFailed;
     }
+    return false;
   }
 
   void dispose() {
@@ -316,135 +241,12 @@ class AppVersionService {
   }
 }
 
-/// Android: downloads the APK behind a blocking progress dialog, then opens
-/// the system installer. If the in-app path fails it falls back to opening the
-/// URL in the browser; if "install unknown apps" was denied it shows a hint.
-Future<AppInstallResult> downloadAndInstallWithProgress(
-  BuildContext context,
-  Uri url,
-) async {
-  final progress = ValueNotifier<double?>(null);
-  final navigator = Navigator.of(context, rootNavigator: true);
-  final messenger = ScaffoldMessenger.maybeOf(context);
-  var dialogOpen = true;
-
-  // ignore: unawaited_futures
-  showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    useRootNavigator: true,
-    builder: (_) => PopScope(
-      canPop: false,
-      child: _DownloadProgressDialog(progress: progress),
-    ),
-  ).whenComplete(() => dialogOpen = false);
-
-  final svc = AppVersionService();
-  AppInstallResult result;
-  try {
-    result = await svc.downloadAndInstallApk(
-      url,
-      onProgress: (p) => progress.value = p.clamp(0.0, 1.0),
-    );
-  } catch (e) {
-    debugPrint('downloadAndInstallWithProgress failed: $e');
-    result = AppInstallResult.downloadFailed;
-  }
-
-  if (dialogOpen && navigator.mounted) navigator.pop();
-
-  switch (result) {
-    case AppInstallResult.installLaunched:
-      break;
-    case AppInstallResult.permissionDenied:
-      messenger?.showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please allow installing apps from E-Forward, then tap Update again.',
-          ),
-        ),
-      );
-      break;
-    case AppInstallResult.downloadFailed:
-    case AppInstallResult.installFailed:
-    case AppInstallResult.unsupported:
-      messenger?.showSnackBar(
-        const SnackBar(
-          content: Text('Download failed. Opening the download link instead…'),
-        ),
-      );
-      await svc.launchDownload(url);
-      break;
-  }
-  svc.dispose();
-  return result;
-}
-
-class _DownloadProgressDialog extends StatelessWidget {
-  const _DownloadProgressDialog({required this.progress});
-
-  final ValueNotifier<double?> progress;
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
-        child: ValueListenableBuilder<double?>(
-          valueListenable: progress,
-          builder: (_, value, _) => Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Downloading update…',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 18),
-              LinearProgressIndicator(
-                value: value,
-                minHeight: 6,
-                color: _kBrandRed,
-                backgroundColor: const Color(0xFFF3F4F6),
-                borderRadius: BorderRadius.circular(3),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                value == null ? 'Starting…' : '${(value * 100).round()}%',
-                style: const TextStyle(color: _kMuted),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Outcome of [AppVersionService.downloadAndInstallApk].
-enum AppInstallResult {
-  /// The system package installer was launched with the downloaded APK.
-  installLaunched,
-
-  /// Not Android — caller should open the download URL instead.
-  unsupported,
-
-  /// The user did not grant "install unknown apps".
-  permissionDenied,
-
-  /// The APK could not be downloaded.
-  downloadFailed,
-
-  /// The installer could not be opened for the downloaded file.
-  installFailed,
-}
-
 /// Brand accent used across the update dialog.
 const Color _kBrandRed = Color(0xFFCC0000);
 const Color _kMuted = Color(0xFF6B7280);
 
 /// Dismissible "a newer version is available" prompt. Returns `true` if the
-/// user tapped "Update Now" (download/install launched); `false` if they tapped
+/// user tapped "Update Now" (store page launched); `false` if they tapped
 /// "Later" or dismissed it.
 Future<bool> showSoftUpdateDialog({
   required BuildContext context,
@@ -452,7 +254,7 @@ Future<bool> showSoftUpdateDialog({
   required AppComparableVersion current,
 }) async {
   // The dialog only collects the choice; the update runs after it has closed
-  // so the caller's await covers the whole download → installer hand-off.
+  // so the caller's await covers the store hand-off.
   final wantsUpdate = await showDialog<bool>(
     context: context,
     barrierDismissible: true,
@@ -466,13 +268,13 @@ Future<bool> showSoftUpdateDialog({
   );
   if (wantsUpdate != true || !context.mounted) return false;
 
-  if (Platform.isAndroid) {
-    await downloadAndInstallWithProgress(context, remote.downloadUrl);
-    return true;
-  }
   final svc = AppVersionService();
   try {
-    await svc.launchDownload(remote.downloadUrl);
+    if (Platform.isAndroid) {
+      await svc.openPlayStoreListing();
+    } else {
+      await svc.launchDownload(remote.downloadUrl);
+    }
   } catch (e) {
     debugPrint('Soft update launch failed: $e');
   } finally {
@@ -485,7 +287,7 @@ Future<bool> showSoftUpdateDialog({
 /// Full-screen, non-dismissible mandatory-update wall. Pushed as a route (not
 /// a dialog) so it occupies the entire display — no back button, no barrier
 /// tap-through, no way past it except updating. Returns `true` once the user
-/// taps "Update Now" and the install/App Store link was launched.
+/// taps "Update Now" and the Play Store/App Store link was launched.
 Future<bool> showForceUpdateDialog({
   required BuildContext context,
   required AppVersionInfo remote,
@@ -510,7 +312,7 @@ Future<bool> showForceUpdateDialog({
 
 /// Full-screen force-update wall. Blocking (PopScope canPop:false),
 /// brand-gradient background, large icon + title + version chips, bottom
-/// primary action. Pops with `true` once the install/App Store link is
+/// primary action. Pops with `true` once the Play Store/App Store link is
 /// successfully launched.
 class _ForceUpdateScreen extends StatefulWidget {
   const _ForceUpdateScreen({
@@ -532,15 +334,15 @@ class _ForceUpdateScreenState extends State<_ForceUpdateScreen> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      // The wall is never dismissed from here: whether the installer finishes
-      // is up to the user, and cancelling must land back on the wall.
-      if (Platform.isAndroid) {
-        await downloadAndInstallWithProgress(context, widget.remote.downloadUrl);
-        return;
-      }
+      // The wall is never dismissed from here: whether the store update
+      // finishes is up to the user, and returning must land back on the wall.
       final svc = AppVersionService();
       try {
-        await svc.launchDownload(widget.remote.downloadUrl);
+        if (Platform.isAndroid) {
+          await svc.openPlayStoreListing();
+        } else {
+          await svc.launchDownload(widget.remote.downloadUrl);
+        }
       } finally {
         svc.dispose();
       }
