@@ -46,8 +46,8 @@ class PrivacyCoverService {
   }
 
   /// Tell native whether to protect the screen: on iOS this arms the cover shown
-  /// on the next resign-active; on Android it toggles FLAG_SECURE so session
-  /// content stays out of the recents preview (and screenshots).
+  /// on the next resign-active; on Android 13+ it blanks the recents preview so
+  /// session content stays out of it (screenshots remain allowed).
   static Future<void> setSecure(bool value) async {
     if (!Platform.isIOS && !Platform.isAndroid) return;
     try {
@@ -60,7 +60,7 @@ class PrivacyCoverService {
   /// Take the native cover down. iOS-only: it removes the resign-active cover
   /// once Flutter's own lock overlay (or the real content, when no lock is
   /// required) has painted, so the handoff shows no exposed content. A no-op on
-  /// Android, where FLAG_SECURE is a persistent window flag with nothing to hide.
+  /// Android, where the recents blanking is a persistent setting with nothing to hide.
   static Future<void> hideCover() async {
     if (!Platform.isIOS) return;
     try {
