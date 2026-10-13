@@ -99,9 +99,7 @@ class AuthApi {
         body: jsonEncode(payload),
       );
 
-      final dynamic decodedBody = response.body.isNotEmpty
-          ? jsonDecode(response.body)
-          : null;
+      final dynamic decodedBody = _decodeBody(response.body);
 
       // Always clear local session even if backend call fails
       await clearSession();
@@ -127,7 +125,7 @@ class AuthApi {
       return AuthLoginResult(
         isSuccess: false,
         statusCode: 0,
-        message: 'Network error: $error',
+        message: _networkErrorMessage(error),
       );
     }
   }
@@ -145,9 +143,7 @@ class AuthApi {
         body: jsonEncode({'refreshToken': token}),
       );
 
-      final dynamic decodedBody = response.body.isNotEmpty
-          ? jsonDecode(response.body)
-          : null;
+      final dynamic decodedBody = _decodeBody(response.body);
 
       debugPrint('Refresh token status: ${response.statusCode}');
       debugPrint('Refresh token response: ${response.body}');
@@ -179,7 +175,7 @@ class AuthApi {
       return AuthLoginResult(
         isSuccess: false,
         statusCode: 0,
-        message: 'Network error: $error',
+        message: _networkErrorMessage(error),
         requiredOTP: false,
       );
     }
@@ -295,9 +291,7 @@ class AuthApi {
         },
       );
 
-      final dynamic decodedBody = response.body.isNotEmpty
-          ? jsonDecode(response.body)
-          : null;
+      final dynamic decodedBody = _decodeBody(response.body);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return AuthLoginResult(
@@ -320,7 +314,7 @@ class AuthApi {
       return AuthLoginResult(
         isSuccess: false,
         statusCode: 0,
-        message: 'Network error: $error',
+        message: _networkErrorMessage(error),
       );
     }
   }
@@ -387,7 +381,7 @@ class AuthApi {
         body: jsonEncode(body),
       );
       final dynamic decodedBody =
-          response.body.isNotEmpty ? jsonDecode(response.body) : null;
+          _decodeBody(response.body);
       final Map<String, dynamic>? bodyMap =
           decodedBody is Map<String, dynamic> ? decodedBody : null;
       final ok = response.statusCode >= 200 && response.statusCode < 300;
@@ -403,7 +397,7 @@ class AuthApi {
       return AuthLoginResult(
         isSuccess: false,
         statusCode: 0,
-        message: 'Network error: $error',
+        message: _networkErrorMessage(error),
         requiredOTP: false,
       );
     }
@@ -431,9 +425,7 @@ class AuthApi {
         body: jsonEncode({'fname': fname, 'mname': mname, 'lname': lname}),
       );
 
-      final dynamic decodedBody = response.body.isNotEmpty
-          ? jsonDecode(response.body)
-          : null;
+      final dynamic decodedBody = _decodeBody(response.body);
 
       debugPrint('updateProfile status: ${response.statusCode}');
       debugPrint('updateProfile response: ${response.body}');
@@ -457,7 +449,7 @@ class AuthApi {
       return AuthLoginResult(
         isSuccess: false,
         statusCode: 0,
-        message: 'Network error: $error',
+        message: _networkErrorMessage(error),
       );
     }
   }
@@ -488,9 +480,7 @@ class AuthApi {
         }),
       );
 
-      final dynamic decodedBody = response.body.isNotEmpty
-          ? jsonDecode(response.body)
-          : null;
+      final dynamic decodedBody = _decodeBody(response.body);
 
       debugPrint('changePassword status: ${response.statusCode}');
       debugPrint('changePassword response: ${response.body}');
@@ -515,7 +505,7 @@ class AuthApi {
       return AuthLoginResult(
         isSuccess: false,
         statusCode: 0,
-        message: 'Network error: $error',
+        message: _networkErrorMessage(error),
       );
     }
   }
@@ -618,7 +608,7 @@ class AuthApi {
       return SignatureResult(
         isSuccess: false,
         statusCode: 0,
-        message: 'Network error: $error',
+        message: _networkErrorMessage(error),
       );
     }
   }
@@ -664,9 +654,7 @@ class AuthApi {
       debugPrint('Upload status: ${response.statusCode}');
       debugPrint('Upload response: ${response.body}');
 
-      final dynamic decodedBody = response.body.isNotEmpty
-          ? jsonDecode(response.body)
-          : null;
+      final dynamic decodedBody = _decodeBody(response.body);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return AuthLoginResult(
@@ -689,7 +677,7 @@ class AuthApi {
       return AuthLoginResult(
         isSuccess: false,
         statusCode: 0,
-        message: 'Network error: $error',
+        message: _networkErrorMessage(error),
       );
     }
   }
@@ -712,9 +700,7 @@ class AuthApi {
         body: jsonEncode(body),
       );
 
-      final dynamic decodedBody = response.body.isNotEmpty
-          ? jsonDecode(response.body)
-          : null;
+      final dynamic decodedBody = _decodeBody(response.body);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final Map<String, dynamic>? bodyMap =
@@ -742,20 +728,58 @@ class AuthApi {
       return AuthLoginResult(
         isSuccess: false,
         statusCode: 0,
-        message: 'Network error: $error',
+        message: _networkErrorMessage(error),
         requiredOTP: false,
       );
     }
   }
 
+  /// Decodes a response body without throwing, so a non-JSON error reply
+  /// (plain text / HTML) is not misreported as a network error.
+  dynamic _decodeBody(String body) {
+    if (body.trim().isEmpty) return null;
+    try {
+      return jsonDecode(body);
+    } catch (_) {
+      return body;
+    }
+  }
+
   String? _extractMessage(dynamic body) {
-    if (body is Map<String, dynamic>) {
-      final message = body['message'];
-      if (message is String && message.trim().isNotEmpty) {
-        return message;
+    if (body is Map) {
+      for (final key in ['message', 'error', 'msg', 'detail', 'errors']) {
+        final found = _extractMessage(body[key]);
+        if (found != null) return found;
       }
+      return null;
+    }
+    if (body is List) {
+      final parts = body
+          .map(_extractMessage)
+          .whereType<String>()
+          .toList();
+      return parts.isEmpty ? null : parts.join('\n');
+    }
+    if (body is String) {
+      final text = body.trim();
+      // Ignore HTML pages and very long bodies; they aren't user-facing.
+      if (text.isEmpty || text.startsWith('<') || text.length > 300) {
+        return null;
+      }
+      return text;
     }
     return null;
+  }
+
+  String _networkErrorMessage(Object error) {
+    debugPrint('AuthApi request error: $error');
+    if (error is SocketException || error is http.ClientException) {
+      return 'Unable to connect. Please check your internet connection.';
+    }
+    if (error is HandshakeException) {
+      return 'Secure connection failed. Please try again.';
+    }
+    return 'Something went wrong. Please try again.';
   }
 
   void dispose() {
