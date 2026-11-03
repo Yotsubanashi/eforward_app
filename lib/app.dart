@@ -20,6 +20,7 @@ import 'services/privacy_cover_service.dart';
 import 'services/secure_unlock_service.dart';
 import 'services/session_service.dart';
 import 'routes/route_generator.dart';
+import 'package:eforward_app/services/token_store.dart';
 
 // ✅ FIX: navigatorKey must be a global — NOT declared inside main()
 // If it's inside main(), the notification service loses the reference
@@ -457,8 +458,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _captureRefreshTokenForBiometric(SharedPreferences prefs) async {
     try {
       if (!await SecureUnlockService.isEnabled()) return;
-      final refreshToken =
-          prefs.getString(SharedPrefsKeys.refreshToken)?.trim() ?? '';
+      final refreshToken = await TokenStore.refreshToken();
       if (refreshToken.isNotEmpty) {
         await BiometricCredentialStore.saveRefreshToken(refreshToken);
       }
@@ -470,8 +470,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<bool> _hasSavedSession() async {
     final authApi = AuthApi();
     final prefs = await SharedPreferences.getInstance();
-    final accessToken =
-        prefs.getString(SharedPrefsKeys.accessToken)?.trim() ?? '';
+    final accessToken = await TokenStore.accessToken();
     if (accessToken.isEmpty) {
       authApi.dispose();
       AppBadgeService.clearBadge();
@@ -509,8 +508,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       return false;
     }
 
-    final refreshedAccessToken =
-        prefs.getString(SharedPrefsKeys.accessToken)?.trim() ?? '';
+    final refreshedAccessToken = await TokenStore.accessToken();
     if (refreshedAccessToken.isEmpty) {
       authApi.dispose();
       return false;
@@ -528,8 +526,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       return true;
     }
 
-    await prefs.remove(SharedPrefsKeys.accessToken);
-    await prefs.remove(SharedPrefsKeys.refreshToken);
+    await TokenStore.clear();
     await prefs.remove(SharedPrefsKeys.userData);
     AppBadgeService.clearBadge();
     return false;

@@ -4,7 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
+import 'package:eforward_app/services/api/authed_http.dart' as http;
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -23,6 +23,7 @@ import 'package:eforward_app/widgets/eforward_app_bar.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
 import 'package:eforward_app/widgets/section_label.dart';
 import 'package:eforward_app/widgets/status_pill.dart';
+import 'package:eforward_app/services/token_store.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // APPROVAL DETAIL PAGE
@@ -404,8 +405,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     }
     setState(() => _isSubmittingRevision = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token') ?? '';
+      final token = await TokenStore.accessToken();
       final id =
           widget.item['routing_id']?.toString() ??
           widget.item['id']?.toString() ??
@@ -467,8 +467,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     }
     setState(() => _isSubmittingAttachmentRequest = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token') ?? '';
+      final token = await TokenStore.accessToken();
       final id = _getRoutingId();
       if (token.isEmpty || id.isEmpty) {
         throw Exception('Missing token or approval ID');
@@ -502,8 +501,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
   Future<void> _fetchApprovalDetail() async {
     setState(() => _isLoadingDetail = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token') ?? '';
+      final token = await TokenStore.accessToken();
       final id =
           widget.item['routing_id']?.toString() ??
           widget.item['id']?.toString() ??
@@ -575,8 +573,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
     if (!mounted) return;
     setState(() => _isLoadingDocumentLinks = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token') ?? '';
+      final token = await TokenStore.accessToken();
 
       if (token.isEmpty) {
         if (mounted) {
@@ -614,8 +611,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
       _documentNotFound = false;
     });
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token') ?? '';
+      final token = await TokenStore.accessToken();
       final fileId = _extractFileId(detailData);
       if (fileId == null || fileId.isEmpty) {
         if (mounted) {
@@ -1002,8 +998,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         return;
       }
 
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token') ?? '';
+      final token = await TokenStore.accessToken();
 
       if (token.isEmpty) {
         if (mounted) {
@@ -1199,8 +1194,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
         return;
       }
 
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token') ?? '';
+      final token = await TokenStore.accessToken();
 
       if (token.isEmpty) {
         if (mounted) {
@@ -1306,7 +1300,7 @@ class _ApprovalDetailPageState extends State<ApprovalDetailPage> {
 
   Future<bool> _hasUploadedOrSavedSignature() async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('access_token') ?? '';
+    final token = await TokenStore.accessToken();
 
     if (token.isNotEmpty) {
       try {

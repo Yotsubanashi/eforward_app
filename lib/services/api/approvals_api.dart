@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:eforward_app/services/api/authed_http.dart' as http;
 import 'package:eforward_app/config/app_env.dart';
 import 'package:eforward_app/constants/api_endpoints.dart';
 

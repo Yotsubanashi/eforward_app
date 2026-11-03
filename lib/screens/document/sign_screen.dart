@@ -13,6 +13,7 @@ import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
 import '../../services/api/auth_api.dart';
 import 'widgets/signature_painter.dart';
+import 'package:eforward_app/services/token_store.dart';
 
 // ─── Sign Screen ─────────────────────────────────────────────────────────────
 
@@ -86,7 +87,7 @@ class _SignScreenState extends State<SignScreen>
     SharedPreferences prefs,
     int currentTab,
   ) async {
-    final token = prefs.getString('access_token') ?? '';
+    final token = await TokenStore.accessToken();
 
     if (token.isEmpty) {
       debugPrint('No token found, skipping signature upload.');

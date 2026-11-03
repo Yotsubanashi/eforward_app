@@ -1,13 +1,14 @@
 import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
+import 'package:eforward_app/services/api/authed_http.dart' as http;
 import 'dart:convert';
 import 'package:eforward_app/config/app_env.dart';
 import 'package:eforward_app/constants/api_endpoints.dart';
 import 'package:eforward_app/constants/shared_prefs_keys.dart';
 import 'package:eforward_app/utils/device_info_util.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:eforward_app/services/token_store.dart';
 
 class FCMTokenService {
   static String get _baseUrl => AppEnv.apiBaseUrl;
@@ -21,7 +22,7 @@ class FCMTokenService {
       if (employeeId.isEmpty) return false;
 
       final prefs = await SharedPreferences.getInstance();
-      final accessToken = prefs.getString(SharedPrefsKeys.accessToken) ?? '';
+      final accessToken = await TokenStore.accessToken();
 
       String? token = await _messaging.getToken();
       if (token == null) {
@@ -82,7 +83,7 @@ class FCMTokenService {
       if (employeeId.isEmpty) return;
 
       final prefs = await SharedPreferences.getInstance();
-      final accessToken = prefs.getString(SharedPrefsKeys.accessToken) ?? '';
+      final accessToken = await TokenStore.accessToken();
 
       String? token = await _messaging.getToken();
       token ??= prefs.getString(SharedPrefsKeys.fcmTokenCached);

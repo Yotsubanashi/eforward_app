@@ -2,10 +2,9 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../constants/shared_prefs_keys.dart';
 import 'secure_unlock_service.dart';
+import 'package:eforward_app/services/token_store.dart';
 
 /// Bridge to the native iOS privacy cover (see ios/Runner/AppDelegate.swift).
 ///
@@ -29,9 +28,7 @@ class PrivacyCoverService {
       // Never cover on a device that can't authenticate — there would be no way
       // to clear the lock and the user would be stranded.
       if (!await SecureUnlockService.isAvailable()) return false;
-      final prefs = await SharedPreferences.getInstance();
-      return (prefs.getString(SharedPrefsKeys.accessToken)?.trim() ?? '')
-          .isNotEmpty;
+      return (await TokenStore.accessToken()).isNotEmpty;
     } catch (_) {
       return false;
     }

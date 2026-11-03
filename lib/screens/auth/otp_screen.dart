@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api/auth_api.dart';
 import '../../services/notifications/fcm_token_service.dart';
+import '../../services/token_store.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/eforward_app_bar.dart';
@@ -14,6 +15,10 @@ import '../../widgets/loading_overlay.dart';
 class OtpScreen extends StatefulWidget {
   final String email;
 
+  /// Single-use ticket from `/auth/mobile-login` that binds this step to the
+  /// password check. Valid for 5 minutes and 5 code attempts.
+  final String? mfaTicket;
+
   /// True when the second factor is an authenticator app (TOTP) rather than an
   /// emailed code. Changes the copy and hides the email resend/expiry timer.
   final bool isAuthenticator;
@@ -21,6 +26,7 @@ class OtpScreen extends StatefulWidget {
   const OtpScreen({
     super.key,
     required this.email,
+    this.mfaTicket,
     this.isAuthenticator = false,
   });
 
@@ -39,6 +45,10 @@ class _OtpScreenState extends State<OtpScreen> {
   int _secondsRemaining = 300;
   Timer? _timer;
   bool _isLoading = false;
+
+  /// The live MFA ticket. Replaced if a resend mints a new one; dropped once
+  /// the backend says it is spent.
+  late String? _mfaTicket = widget.mfaTicket;
 
   @override
   void initState() {
@@ -80,6 +90,8 @@ class _OtpScreenState extends State<OtpScreen> {
 
     if (result.isSuccess) {
       debugPrint('OTP resent to email: ${result.message}');
+      final newTicket = result.data?['mfaTicket']?.toString();
+      if (newTicket != null && newTicket.isNotEmpty) _mfaTicket = newTicket;
       _startTimer();
       AppSnackbar.success(
         context,
@@ -111,27 +123,21 @@ class _OtpScreenState extends State<OtpScreen> {
 
     setState(() => _isLoading = true);
 
-    final result = await _authApi.verifyOtp(email: widget.email, otp: _otpCode);
+    final result = await _authApi.verifyOtp(
+      mfaTicket: _mfaTicket,
+      email: widget.email,
+      otp: _otpCode,
+    );
 
     if (!mounted) return;
 
     if (result.isSuccess) {
-      // 👇 Debug — print full response structure
-      debugPrint('=== OTP VERIFY RESPONSE ===');
-      debugPrint('Full data: ${result.data}');
-      result.data?.forEach((key, value) {
-        debugPrint('KEY: $key  →  VALUE: $value');
-        // Also print nested maps
-        if (value is Map) {
-          value.forEach((k, v) => debugPrint('  NESTED KEY: $k  →  VALUE: $v'));
-        }
-      });
-      debugPrint('===========================');
+      // The ticket is consumed on success; never replay it.
+      _mfaTicket = null;
 
       // Deep search for token in any nested structure
       String? token = _extractToken(result.data);
       final String? refreshToken = _extractRefreshToken(result.data);
-      debugPrint('Extracted token: $token');
 
       if (token == null || token.isEmpty) {
         setState(() => _isLoading = false);
@@ -142,13 +148,9 @@ class _OtpScreenState extends State<OtpScreen> {
         return;
       }
 
-      // 👇 Save token to SharedPreferences
+      // Tokens go to the keystore, never SharedPreferences.
+      await TokenStore.save(accessToken: token, refreshToken: refreshToken);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('access_token', token);
-      if (refreshToken != null && refreshToken.isNotEmpty) {
-        await prefs.setString('refresh_token', refreshToken);
-      }
-      debugPrint('✅ Token saved successfully!');
 
       // 👇 Single getMe call (removed duplicate)
       final userResult = await _authApi.getMe(token: token);
@@ -195,10 +197,38 @@ class _OtpScreenState extends State<OtpScreen> {
 
     setState(() => _isLoading = false);
 
-    debugPrint(
-      'OTP verification failed [${result.statusCode}]: ${result.message}',
-    );
-    AppSnackbar.error(context, result.message);
+    debugPrint('OTP verification failed [${result.statusCode}]');
+
+    switch (result.statusCode) {
+      case 410:
+        // Ticket expired (5 min), already used, or out of attempts. It can't
+        // be revived — discard it and restart from the password step.
+        _mfaTicket = null;
+        AppSnackbar.error(
+          context,
+          'Your verification session has expired. Please sign in again.',
+        );
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+        return;
+      case 503:
+        AppSnackbar.error(
+          context,
+          'Sign-in is temporarily unavailable. Please try again shortly.',
+        );
+      case 401:
+        AppSnackbar.error(
+          context,
+          widget.isAuthenticator
+              ? 'Incorrect code. Check your authenticator app and try again.'
+              : 'Incorrect code. Please try again.',
+        );
+      default:
+        AppSnackbar.error(context, result.message);
+    }
     _clearOtp();
   }
 

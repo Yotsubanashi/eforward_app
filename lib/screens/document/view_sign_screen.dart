@@ -16,6 +16,7 @@ import '../../config/app_env.dart';
 import '../../services/api/auth_api.dart';
 import '../../services/session_expiry_service.dart';
 import 'widgets/signature_painter.dart';
+import 'package:eforward_app/services/token_store.dart';
 
 // ─── View Sign Page ───────────────────────────────────────────────────────────
 
@@ -148,7 +149,7 @@ class _ViewSignPageState extends State<ViewSignPage>
   }
 
   Future<void> _fetchSignatureFromApi(SharedPreferences prefs) async {
-    final token = prefs.getString('access_token') ?? '';
+    final token = await TokenStore.accessToken();
     if (token.isEmpty) return;
 
     setState(() => _isLoadingSignature = true);
@@ -301,7 +302,7 @@ class _ViewSignPageState extends State<ViewSignPage>
     await prefs.setString('signature_timestamp', timestamp);
     await prefs.setBool('has_signature', true);
 
-    final token = prefs.getString('access_token') ?? '';
+    final token = await TokenStore.accessToken();
     if (token.isNotEmpty) {
       final result = await _authApi.uploadSignature(
         token: token,

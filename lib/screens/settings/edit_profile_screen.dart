@@ -8,6 +8,7 @@ import 'package:eforward_app/validators/required_field_validator.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
+import 'package:eforward_app/services/token_store.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -122,9 +123,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _isSaving = true);
 
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString(SharedPrefsKeys.accessToken) ??
-        prefs.getString('access_token') ??
-        '';
+    final token = await TokenStore.accessToken();
 
     final result = await _authApi.updateProfile(
       token: token,

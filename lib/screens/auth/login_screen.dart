@@ -9,6 +9,7 @@ import '../../services/notifications/fcm_token_service.dart';
 import '../../services/privacy_cover_service.dart';
 import '../../services/session_service.dart';
 import '../../services/secure_unlock_service.dart';
+import '../../services/token_store.dart';
 import '../../validators/email_validator.dart';
 import '../../validators/required_field_validator.dart';
 import '../../widgets/app_snackbar.dart';
@@ -255,24 +256,17 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     final result = await _authApi.refresh(token: refreshToken);
     if (!mounted || !result.isSuccess) return false;
 
-    final newAccess =
-        (result.data?['accessToken'] ??
-                result.data?['access_token'] ??
-                result.data?['token'])
-            ?.toString()
-            .trim();
-    if (newAccess == null || newAccess.isEmpty) return false;
-    final newRefresh =
-        (result.data?['refreshToken'] ?? result.data?['refresh_token'])
-            ?.toString()
-            .trim();
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('access_token', newAccess);
-    if (newRefresh != null && newRefresh.isNotEmpty) {
-      await prefs.setString('refresh_token', newRefresh);
+    final newAccess = TokenStore.accessTokenFrom(result.data);
+    if (newAccess == null) return false;
+    // The refresh token rotates: store BOTH new tokens, and keep the biometric
+    // copy in step so the next Face ID login doesn't present a spent token.
+    final newRefresh = TokenStore.refreshTokenFrom(result.data);
+    await TokenStore.save(accessToken: newAccess, refreshToken: newRefresh);
+    if (newRefresh != null) {
       await BiometricCredentialStore.saveRefreshToken(newRefresh);
     }
+
+    final prefs = await SharedPreferences.getInstance();
 
     // Load the profile the dashboard needs.
     final me = await _authApi.getMe(token: newAccess);
@@ -318,11 +312,15 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() => _isLoading = false);
       final isAuthenticator = result.data?['mfaMethod'] == 'totp';
+      // Single-use ticket proving the password step succeeded; verify-otp
+      // requires it. Held only in memory for the OTP screen's lifetime.
+      final mfaTicket = result.data?['mfaTicket']?.toString();
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => OtpScreen(
             email: email,
+            mfaTicket: mfaTicket,
             isAuthenticator: isAuthenticator,
           ),
         ),
@@ -342,19 +340,12 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       return;
     }
 
-    final token =
-        result.data?['accessToken'] ??
-        result.data?['access_token'] ??
-        result.data?['token'];
-    final refreshToken =
-        result.data?['refreshToken'] ?? result.data?['refresh_token'];
+    final token = TokenStore.accessTokenFrom(result.data);
+    final refreshToken = TokenStore.refreshTokenFrom(result.data);
 
-    if (token != null && token.toString().isNotEmpty) {
+    if (token != null) {
+      await TokenStore.save(accessToken: token, refreshToken: refreshToken);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('access_token', token.toString());
-      if (refreshToken != null && refreshToken.toString().isNotEmpty) {
-        await prefs.setString('refresh_token', refreshToken.toString());
-      }
       if (result.data != null) {
         await prefs.setString('user_data', jsonEncode(result.data));
 
@@ -380,8 +371,8 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     // Also stash the refresh token so the biometric button can restore the
     // session with NO password prompt (preferred path). Falls back to the
     // stored password only if the token is expired/revoked.
-    if (refreshToken != null && refreshToken.toString().trim().isNotEmpty) {
-      await BiometricCredentialStore.saveRefreshToken(refreshToken.toString());
+    if (refreshToken != null) {
+      await BiometricCredentialStore.saveRefreshToken(refreshToken);
     }
 
     // Arm the background/app-switcher cover for the new session before entering,

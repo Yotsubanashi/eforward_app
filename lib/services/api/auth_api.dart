@@ -8,7 +8,9 @@ import 'package:eforward_app/config/app_env.dart';
 import 'package:eforward_app/constants/api_endpoints.dart';
 import 'package:eforward_app/constants/shared_prefs_keys.dart';
 import 'package:eforward_app/models/auth_result.dart';
+import 'package:eforward_app/services/biometric_credential_store.dart';
 import 'package:eforward_app/services/session_service.dart';
+import 'package:eforward_app/services/token_store.dart';
 import 'package:eforward_app/utils/device_info_util.dart';
 
 export 'package:eforward_app/models/auth_result.dart';
@@ -32,13 +34,26 @@ class AuthApi {
     );
   }
 
+  /// Step 2 of MFA login. [mfaTicket] is the single-use ticket returned by
+  /// `/auth/mobile-login` alongside `requiredOTP`; the backend derives the
+  /// user from it. [email] is still sent so this build keeps working against a
+  /// backend that predates tickets (newer backends ignore it).
+  ///
+  /// Status codes: 401 wrong code (5 tries per ticket), 410 ticket expired /
+  /// used / out of attempts (restart from the password screen), 503 sign-in
+  /// temporarily unavailable, 400 missing ticket or code.
   Future<AuthLoginResult> verifyOtp({
+    required String? mfaTicket,
     required String email,
     required String otp,
   }) async {
     return _post(
       endpoint: ApiEndpoints.verifyOtp,
-      body: {'email': email, 'otp': otp},
+      body: {
+        if (mfaTicket != null && mfaTicket.isNotEmpty) 'mfaTicket': mfaTicket,
+        'email': email,
+        'otp': otp,
+      },
       successMessage: 'OTP verified successfully.',
       failureMessage: 'OTP verification failed.',
     );
@@ -55,8 +70,7 @@ class AuthApi {
 
   Future<AuthLoginResult> logout() async {
     final prefs = await SharedPreferences.getInstance();
-    final String accessToken =
-        prefs.getString(SharedPrefsKeys.accessToken) ?? '';
+    final String accessToken = await TokenStore.accessToken();
 
     // Get employee_id from storage directly or parse from user_data
     String? employeeId = prefs.getString(SharedPrefsKeys.employeeId);
@@ -146,7 +160,6 @@ class AuthApi {
       final dynamic decodedBody = _decodeBody(response.body);
 
       debugPrint('Refresh token status: ${response.statusCode}');
-      debugPrint('Refresh token response: ${response.body}');
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final Map<String, dynamic>? bodyMap =
@@ -181,10 +194,11 @@ class AuthApi {
     }
   }
 
+  /// Exchanges the stored refresh token for a new pair and stores BOTH the new
+  /// access and the rotated refresh token. Prefer `refreshAccessToken` in
+  /// authed_http.dart, which de-duplicates concurrent refreshes.
   Future<AuthLoginResult> refreshWithStoredToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    final storedRefreshToken =
-        prefs.getString(SharedPrefsKeys.refreshToken)?.trim() ?? '';
+    final storedRefreshToken = await TokenStore.refreshToken();
 
     if (storedRefreshToken.isEmpty) {
       await clearSession();
@@ -198,25 +212,16 @@ class AuthApi {
     final refreshResult = await refresh(token: storedRefreshToken);
 
     if (refreshResult.isSuccess) {
-      final newAccessToken =
-          refreshResult.data?['accessToken'] ??
-          refreshResult.data?['access_token'] ??
-          refreshResult.data?['token'];
-      final newRefreshToken =
-          refreshResult.data?['refreshToken'] ??
-          refreshResult.data?['refresh_token'];
-
-      if (newAccessToken is String && newAccessToken.trim().isNotEmpty) {
-        await prefs.setString(
-          SharedPrefsKeys.accessToken,
-          newAccessToken.trim(),
-        );
-      }
-      if (newRefreshToken is String && newRefreshToken.trim().isNotEmpty) {
-        await prefs.setString(
-          SharedPrefsKeys.refreshToken,
-          newRefreshToken.trim(),
-        );
+      final newRefreshToken = TokenStore.refreshTokenFrom(refreshResult.data);
+      await TokenStore.save(
+        accessToken: TokenStore.accessTokenFrom(refreshResult.data),
+        refreshToken: newRefreshToken,
+      );
+      // The refresh token rotates, so the copy kept for biometric login is now
+      // stale. Keep it in step, but only if biometric login had one.
+      if (newRefreshToken != null &&
+          await BiometricCredentialStore.readRefreshToken() != null) {
+        await BiometricCredentialStore.saveRefreshToken(newRefreshToken);
       }
 
       return refreshResult;
@@ -237,9 +242,8 @@ class AuthApi {
   }
 
   Future<void> clearSession() async {
+    await TokenStore.clear();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(SharedPrefsKeys.accessToken);
-    await prefs.remove(SharedPrefsKeys.refreshToken);
     await prefs.remove(SharedPrefsKeys.userData);
     await prefs.remove(SharedPrefsKeys.employeeId);
     await prefs.remove(SharedPrefsKeys.fcmTokenCached);
@@ -322,12 +326,7 @@ class AuthApi {
   // ─── MFA / Authenticator app (TOTP) ───────────────────────────────────────
 
   /// Reads the stored access token for authenticated MFA calls.
-  Future<String> _accessToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(SharedPrefsKeys.accessToken) ??
-        prefs.getString('access_token') ??
-        '';
-  }
+  Future<String> _accessToken() => TokenStore.accessToken();
 
   /// Begins authenticator enrollment. On success `data` contains `qrCode`
   /// (a data: image URL), `otpauthUrl`, and `secret` to show the user.

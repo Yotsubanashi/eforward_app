@@ -9,7 +9,7 @@ import 'package:eforward_app/screens/approvals/approvals_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:eforward_app/widgets/bottom_navigator.dart';
 import 'package:eforward_app/config/app_env.dart';
-import 'package:http/http.dart' as http;
+import 'package:eforward_app/services/api/authed_http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/services/secure_unlock_service.dart';
 import 'package:eforward_app/services/session_expiry_service.dart';
@@ -17,6 +17,7 @@ import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/approval_card.dart';
 import 'package:eforward_app/widgets/app_empty_state.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
+import 'package:eforward_app/services/token_store.dart';
 
 class DashboardPage extends StatefulWidget {
   final Map<String, dynamic>? userData;
@@ -320,8 +321,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _fetchPendingApprovals() async {
     setState(() => _isLoadingPending = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token') ?? '';
+      final token = await TokenStore.accessToken();
       if (token.isEmpty) {
         setState(() => _isLoadingPending = false);
         return;

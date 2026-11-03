@@ -6,12 +6,12 @@ import 'package:eforward_app/screens/auth/login_screen.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
 import 'package:eforward_app/validators/password_validator.dart';
 import 'package:eforward_app/validators/required_field_validator.dart';
-import 'package:eforward_app/constants/shared_prefs_keys.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
 import 'package:eforward_app/widgets/password_strength_indicator.dart';
 import 'package:eforward_app/widgets/password_match_message.dart';
 import 'package:eforward_app/widgets/fixed_bottom_bar.dart';
+import 'package:eforward_app/services/token_store.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -85,8 +85,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     setState(() => _isLoading = true);
 
     // Get token
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString(SharedPrefsKeys.accessToken) ?? '';
+    final token = await TokenStore.accessToken();
 
     if (token.isEmpty) {
       if (mounted) setState(() => _isLoading = false);

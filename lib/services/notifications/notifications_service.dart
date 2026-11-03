@@ -2,10 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:eforward_app/config/app_env.dart';
 import 'package:eforward_app/constants/api_endpoints.dart';
-import 'package:eforward_app/constants/shared_prefs_keys.dart';
 import 'package:eforward_app/services/notifications/app_badge_service.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:eforward_app/services/api/authed_http.dart' as http;
+import 'package:eforward_app/services/token_store.dart';
 
 class NotificationsService {
   static final NotificationsService _instance =
@@ -33,8 +32,7 @@ class NotificationsService {
   /// Fetch unread count from API and update the notifier
   Future<void> fetchUnreadCount() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString(SharedPrefsKeys.accessToken) ?? '';
+      final token = await TokenStore.accessToken();
       if (token.isEmpty) {
         unreadCountNotifier.value = 0;
         await AppBadgeService.clearBadge();
@@ -72,8 +70,7 @@ class NotificationsService {
   /// Mark a single notification as read and update unread count
   Future<bool> markAsRead(String notificationId) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString(SharedPrefsKeys.accessToken) ?? '';
+      final token = await TokenStore.accessToken();
       if (token.isEmpty) return false;
 
       final response = await http.patch(
@@ -109,8 +106,7 @@ class NotificationsService {
   /// Mark all notifications as read
   Future<bool> markAllAsRead() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString(SharedPrefsKeys.accessToken) ?? '';
+      final token = await TokenStore.accessToken();
       if (token.isEmpty) return false;
 
       final response = await http.patch(

@@ -6,6 +6,7 @@ import 'config/app_env.dart';
 import 'services/notifications/firebase_notification_service.dart';
 import 'services/app_lifecycle_service.dart';
 import 'services/post_update_reset.dart';
+import 'services/token_store.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -23,6 +24,10 @@ void main() async {
   // Restore the backend selected in a previous session (Ardent vs Versatech)
   // BEFORE any API call, so the startup session check hits the right backend.
   await AppEnv.restoreActiveBackend();
+
+  // Load the session tokens from the keystore (and move any left over in
+  // SharedPreferences by older builds) before anything reads them.
+  await TokenStore.init();
 
   // Post-update sign-out: if the installed app version changed since the last
   // launch, wipe the stored session so the user must sign in again. Runs

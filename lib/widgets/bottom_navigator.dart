@@ -2,13 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:eforward_app/config/app_env.dart';
-import 'package:http/http.dart' as http;
+import 'package:eforward_app/services/api/authed_http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/services/notifications/notifications_service.dart';
 import 'package:eforward_app/services/session_expiry_service.dart';
 import 'package:eforward_app/constants/shared_prefs_keys.dart';
 import 'package:eforward_app/constants/api_endpoints.dart';
 import 'package:eforward_app/routes/app_routes.dart';
+import 'package:eforward_app/services/token_store.dart';
 
 class BottomNavigator extends StatefulWidget {
   final int selectedIndex;
@@ -127,7 +128,7 @@ class _BottomNavigatorState extends State<BottomNavigator> {
       case 1:
         // Check local first
         bool hasSignature = prefs.getBool('has_signature') ?? false;
-        final token = prefs.getString(SharedPrefsKeys.accessToken) ?? '';
+        final token = await TokenStore.accessToken();
 
         // If not found locally, check API
         if (!hasSignature && token.isNotEmpty) {

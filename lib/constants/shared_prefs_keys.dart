@@ -3,8 +3,10 @@
 class SharedPrefsKeys {
   SharedPrefsKeys._();
 
-  static const String accessToken = 'access_token';
-  static const String refreshToken = 'refresh_token';
+  /// Deprecated: tokens now live in the keystore (see TokenStore). Read once
+  /// on startup to migrate old sessions; no longer written.
+  static const String legacyAccessToken = 'access_token';
+  static const String legacyRefreshToken = 'refresh_token';
   static const String userData = 'user_data';
   static const String employeeId = 'employee_id';
   static const String fcmTokenCached = 'fcm_token_cached';

@@ -1,10 +1,9 @@
 import 'dart:convert';
 import 'package:eforward_app/constants/api_endpoints.dart';
-import 'package:eforward_app/constants/shared_prefs_keys.dart';
 import 'package:eforward_app/services/session_expiry_service.dart';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:eforward_app/services/api/authed_http.dart' as http;
+import 'package:eforward_app/services/token_store.dart';
 
 /// Result of counting all pending approvals.
 class PendingCountResult {
@@ -37,8 +36,7 @@ const int _pendingCountMaxPages = 100;
 /// value untouched.
 Future<PendingCountResult?> countAllPending(String baseUrl) async {
   try {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString(SharedPrefsKeys.accessToken) ?? '';
+    final token = await TokenStore.accessToken();
     if (token.isEmpty) return null;
 
     final headers = {

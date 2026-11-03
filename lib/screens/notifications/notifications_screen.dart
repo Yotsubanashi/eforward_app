@@ -3,14 +3,14 @@ import 'dart:convert';
 import 'package:eforward_app/config/app_env.dart';
 import 'package:eforward_app/services/session_expiry_service.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:eforward_app/services/api/authed_http.dart' as http;
 import 'package:eforward_app/widgets/bottom_navigator.dart';
 import 'package:eforward_app/screens/approvals/approval_detail_screen.dart';
 import 'package:eforward_app/services/notifications/notifications_service.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/app_empty_state.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
+import 'package:eforward_app/services/token_store.dart';
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -85,8 +85,7 @@ class _NotificationsPageState extends State<NotificationsPage>
   Future<void> _fetchNotifications({int page = 1, bool append = false}) async {
     if (!append) setState(() => _isLoading = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token') ?? '';
+      final token = await TokenStore.accessToken();
       if (token.isEmpty) {
         setState(() => _isLoading = false);
         return;

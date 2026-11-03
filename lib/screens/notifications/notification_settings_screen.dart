@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eforward_app/services/notifications/firebase_notification_service.dart';
 import 'package:eforward_app/services/notifications/fcm_token_service.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
+import 'package:eforward_app/services/token_store.dart';
 
 class NotificationTestPage extends StatefulWidget {
   const NotificationTestPage({super.key});
@@ -322,7 +323,7 @@ class _NotificationTestPageState extends State<NotificationTestPage> {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final accessToken = prefs.getString('access_token') ?? '';
+      final accessToken = await TokenStore.accessToken();
 
       if (accessToken.isEmpty) {
         debugPrint('No access token found. Please login first.');

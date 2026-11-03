@@ -9,7 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
-import 'package:http/http.dart' as http;
+import 'package:eforward_app/services/api/authed_http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -21,6 +21,7 @@ import 'package:eforward_app/utils/manila_time.dart';
 import 'package:eforward_app/screens/approvals/approvals_screen.dart';
 import 'package:eforward_app/widgets/app_snackbar.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
+import 'package:eforward_app/services/token_store.dart';
 
 /// Runs on a background isolate via [compute] — parses the PDF just to read
 /// each page's intrinsic size. Must be a top-level function (isolates can't
@@ -498,7 +499,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
     setState(() => _isLoadingSignature = true);
     try {
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token') ?? '';
+      final token = await TokenStore.accessToken();
       if (token.isEmpty) {
         await _loadSignatureLocal(prefs);
         return;
@@ -961,8 +962,7 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
         return;
       }
 
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token') ?? '';
+      final token = await TokenStore.accessToken();
       final id =
           widget.item['routing_id']?.toString() ??
           widget.item['id']?.toString() ??
@@ -978,37 +978,39 @@ class _PdfSignerPageState extends State<PdfSignerPage> {
 
       final signaturePage = _currentPage + 1;
       final uri = Uri.parse('${AppEnv.apiBaseUrl}/approvals/$id/approve');
-      final request = http.MultipartRequest('POST', uri)
-        ..headers['Authorization'] = 'Bearer $token'
-        ..headers['Accept'] = 'application/json'
-        ..fields['remarks'] = _remarks
-        ..fields['signaturePlacement'] = jsonEncode({
-          'sign_page': signaturePage,
-          'sign_x': double.parse(_sigFracX.toStringAsFixed(4)),
-          'sign_y': double.parse(_sigFracY.toStringAsFixed(4)),
-          'sign_width': double.parse(_sigFracW.toStringAsFixed(4)),
-          'sign_height': double.parse(_sigFracHComputed.toStringAsFixed(4)),
-        });
+      // Built in a closure so it can be rebuilt and replayed if the access
+      // token was refreshed after a 401.
+      final response = await http.send(() async {
+        final request = http.MultipartRequest('POST', uri)
+          ..headers['Authorization'] = 'Bearer $token'
+          ..headers['Accept'] = 'application/json'
+          ..fields['remarks'] = _remarks
+          ..fields['signaturePlacement'] = jsonEncode({
+            'sign_page': signaturePage,
+            'sign_x': double.parse(_sigFracX.toStringAsFixed(4)),
+            'sign_y': double.parse(_sigFracY.toStringAsFixed(4)),
+            'sign_width': double.parse(_sigFracW.toStringAsFixed(4)),
+            'sign_height': double.parse(_sigFracHComputed.toStringAsFixed(4)),
+          });
 
-      request.files.add(
-        http.MultipartFile.fromBytes(
-          'signatureImage',
-          _signatureBytes!,
-          filename: 'signature.png',
-          contentType: MediaType('image', 'png'),
-        ),
-      );
-      request.files.add(
-        await http.MultipartFile.fromPath(
-          'signedPdf',
-          signedPdfFile.path,
-          filename: 'signed_document.pdf',
-          contentType: MediaType('application', 'pdf'),
-        ),
-      );
-
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'signatureImage',
+            _signatureBytes!,
+            filename: 'signature.png',
+            contentType: MediaType('image', 'png'),
+          ),
+        );
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'signedPdf',
+            signedPdfFile.path,
+            filename: 'signed_document.pdf',
+            contentType: MediaType('application', 'pdf'),
+          ),
+        );
+        return request;
+      });
       debugPrint('Approve status: ${response.statusCode}');
       debugPrint('Approve body:   ${response.body}');
 

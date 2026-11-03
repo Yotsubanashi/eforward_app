@@ -6,17 +6,16 @@ import 'package:eforward_app/utils/pending_count.dart';
 import 'package:eforward_app/constants/api_endpoints.dart';
 import 'package:eforward_app/screens/dashboard/dashboard_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:eforward_app/services/api/authed_http.dart' as http;
 import 'package:eforward_app/widgets/bottom_navigator.dart';
 import 'package:eforward_app/screens/approvals/approval_detail_screen.dart';
-import 'package:eforward_app/constants/shared_prefs_keys.dart';
 import 'package:eforward_app/services/session_expiry_service.dart';
 import 'package:eforward_app/widgets/approval_card.dart';
 import 'package:eforward_app/widgets/app_empty_state.dart';
 import 'package:eforward_app/widgets/app_error_state.dart';
 import 'package:eforward_app/widgets/eforward_app_bar.dart';
 import 'package:eforward_app/widgets/loading_overlay.dart';
+import 'package:eforward_app/services/token_store.dart';
 
 class ApprovalsPage extends StatefulWidget {
   final int initialTabIndex;
@@ -149,8 +148,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     });
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString(SharedPrefsKeys.accessToken) ?? '';
+      final token = await TokenStore.accessToken();
       if (token.isEmpty) {
         setState(() {
           _isLoadingPending = false;
@@ -231,8 +229,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     setState(() => _isLoadingMorePending = true);
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString(SharedPrefsKeys.accessToken) ?? '';
+      final token = await TokenStore.accessToken();
       if (token.isEmpty) {
         setState(() => _isLoadingMorePending = false);
         return;
@@ -295,8 +292,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     });
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString(SharedPrefsKeys.accessToken) ?? '';
+      final token = await TokenStore.accessToken();
       if (token.isEmpty) {
         setState(() {
           _isLoadingHistory = false;
@@ -362,8 +358,7 @@ class _ApprovalsPageState extends State<ApprovalsPage>
     setState(() => _isLoadingMoreHistory = true);
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString(SharedPrefsKeys.accessToken) ?? '';
+      final token = await TokenStore.accessToken();
       if (token.isEmpty) {
         setState(() => _isLoadingMoreHistory = false);
         return;
