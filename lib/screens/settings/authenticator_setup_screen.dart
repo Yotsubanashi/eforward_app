@@ -97,6 +97,8 @@ class _AuthenticatorSetupScreenState extends State<AuthenticatorSetupScreen> {
       Navigator.pop(context, true);
     } else {
       AppSnackbar.error(context, result.message);
+      // Wrong code: clear it so the user can type the next one fresh.
+      _codeController.clear();
     }
   }
 
